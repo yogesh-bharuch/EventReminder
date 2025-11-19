@@ -18,24 +18,28 @@ object ReportFakeData {
             AlarmEntry(
                 eventId = 1,
                 eventTitle = "Water Plants",
+                eventDateEpoch = nowMs,                 // original event date
                 nextTrigger = minutesFromNow(30),   // 30 min later (epoch)
                 offsetMinutes = 30
             ),
             AlarmEntry(
                 eventId = 2,
                 eventTitle = "Workout",
+                eventDateEpoch = nowMs,                 // original event date
                 nextTrigger = minutesFromNow(120),  // 2 hours later
                 offsetMinutes = 60
             ),
             AlarmEntry(
                 eventId = 3,
                 eventTitle = "Medicine",
+                eventDateEpoch = nowMs,                 // original event date
                 nextTrigger = minutesFromNow(10),   // 10 min later
                 offsetMinutes = 10
             ),
             AlarmEntry(
                 eventId = 4,
                 eventTitle = "Dinner Prep",
+                eventDateEpoch = nowMs,                 // original event date
                 nextTrigger = minutesFromNow(300),  // 5 hours later
                 offsetMinutes = 120
             ),

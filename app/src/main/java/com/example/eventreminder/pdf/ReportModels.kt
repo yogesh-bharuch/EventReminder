@@ -13,17 +13,23 @@ import java.time.LocalDateTime
  */
 
 /**
- * A single alarm entry inside the report
+ * A single alarm entry inside the report.
+ * Now includes:
+ *  - eventDateEpoch → original event date/time (epoch millis)
  */
 data class AlarmEntry(
     val eventId: Long,
     val eventTitle: String,
 
-    // MUST be epoch millis (UTC) for PDF date formatting
+    // Original event date/time set by the user
+    val eventDateEpoch: Long,
+
+    // Trigger after applying offset
     val nextTrigger: Long,
 
-    // MUST be Long for calculations (days, hours, mins)
+    // Offset in minutes (positive minutes before)
     val offsetMinutes: Long,
+    val description: String? = null
 )
 
 /**
@@ -42,43 +48,3 @@ data class ActiveAlarmReport(
     val sortedAlarms: List<AlarmEntry>,  // soonest first
     val generatedAt: LocalDateTime       // for header/footer timestamp
 )
-
-
-/*
-package com.example.eventreminder.pdf
-
-import java.time.LocalDateTime
-
-/**
- * =============================================================
- * PDF REPORT MODELS (TODO-1)
- * =============================================================
- */
-
-/**
- * A single alarm entry inside the report
- */
-data class AlarmEntry(
-    val eventId: Long,
-    val eventTitle: String,
-    val nextTrigger: LocalDateTime,
-    val offsetMinutes: Int,
-)
-
-/**
- * A section grouped by title on page 1
- */
-data class TitleSection(
-    val title: String,
-    val alarms: List<AlarmEntry>
-)
-
-/**
- * Full report data used by the PDF builder
- */
-data class ActiveAlarmReport(
-    val groupedByTitle: List<TitleSection>,
-    val sortedAlarms: List<AlarmEntry>,   // soonest first
-    val generatedAt: LocalDateTime
-)
-*/
