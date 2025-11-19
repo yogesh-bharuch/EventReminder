@@ -43,8 +43,8 @@ fun AppNavGraph(
             ReminderManagerScreen(onBack = { navController.popBackStack() })
         }
 
-        // Reminder manager
-        composable("debug_screen") {
+        // 🧪 Debug / Developer Tools
+        composable<DebugScreen> {
             DebugScreen()
         }
 

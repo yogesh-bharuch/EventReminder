@@ -86,7 +86,7 @@ fun HomeScreen(
                 return@Column
             }
 
-            Button(onClick = { navController.navigate("debug_screen") }) {
+            Button(onClick = { navController.navigate(DebugScreen) }) {
                 Text("Developer Tools")
             }
 
