@@ -15,5 +15,5 @@ fun openPdf(context: android.content.Context, uriString: String) {
     }
 
     context.startActivity(intent)
-    // v1.1
+    // v1.2
 }
