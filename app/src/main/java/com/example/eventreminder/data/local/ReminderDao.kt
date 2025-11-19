@@ -25,4 +25,8 @@ interface ReminderDao {
 
     @Query("SELECT * FROM reminders WHERE id = :id")
     suspend fun getById(id: Long): EventReminder?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(list: List<EventReminder>)
+
 }

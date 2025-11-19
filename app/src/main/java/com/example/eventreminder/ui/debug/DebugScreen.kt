@@ -25,22 +25,22 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.eventreminder.pdf.PdfViewModel
 import com.example.eventreminder.util.openPdf
 
-/**
- * DebugScreen (updated)
- * - TODO-0: Blank PDF test
- * - TODO-1: Mock report PDF test (text-only)
- * - TODO-2: Modern 2-page report generator
- */
+
 @Composable
 fun DebugScreen(
     viewModel: PdfViewModel = hiltViewModel()
 ) {
+    // ----------- Observers for all PDF test flows -----------
     val uri by viewModel.pdfUri.collectAsStateWithLifecycle()
     val todo1Uri by viewModel.todo1PdfUri.collectAsStateWithLifecycle()
     val todo2Uri by viewModel.todo2PdfUri.collectAsStateWithLifecycle()
 
+    // ⭐ NEW - TODO-3 REAL REPORT
+    val todo3Uri by viewModel.todo3PdfUri.collectAsStateWithLifecycle()
+
     val context = LocalContext.current
 
+    // Auto-open listener
     LaunchedEffect(Unit) {
         viewModel.openPdfEvent.collect { pdfUri ->
             openPdf(context, pdfUri)
@@ -54,23 +54,41 @@ fun DebugScreen(
             .padding(16.dp),
         horizontalAlignment = Alignment.Start
     ) {
-        Text(text = "Developer Tools", style = MaterialTheme.typography.headlineMedium)
+        Text(
+            text = "Developer Tools",
+            style = MaterialTheme.typography.headlineMedium
+        )
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        Text(text = "Use these tools for debugging and feature tests.", style = MaterialTheme.typography.bodyMedium)
+        Text(
+            text = "Use these tools for debugging and feature tests.",
+            style = MaterialTheme.typography.bodyMedium
+        )
 
         Spacer(modifier = Modifier.height(24.dp))
 
+        // ----------------------------------------------------
+        // MAIN CARD
+        // ----------------------------------------------------
         Card(
             modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant
+            )
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text(text = "PDF Generator Test", style = MaterialTheme.typography.titleLarge)
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "PDF Generator Test",
+                    style = MaterialTheme.typography.titleLarge
+                )
 
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // =========================================================
+                // TODO-0: Blank PDF
+                // =========================================================
                 Button(onClick = { viewModel.runBlankPdfTest() }) {
                     Text("Run PDF Test (TODO-0)")
                 }
@@ -78,14 +96,18 @@ fun DebugScreen(
                 Spacer(modifier = Modifier.height(12.dp))
 
                 if (uri != null) {
-                    Text(text = "PDF saved at:\n$uri", style = MaterialTheme.typography.bodyMedium)
+                    Text("PDF saved at:\n$uri", style = MaterialTheme.typography.bodyMedium)
                     Spacer(modifier = Modifier.height(8.dp))
-                    Button(onClick = { openPdf(context, uri!!) }) { Text("Open PDF") }
+                    Button(onClick = { openPdf(context, uri!!) }) {
+                        Text("Open PDF")
+                    }
                 }
 
-                Spacer(modifier = Modifier.height(18.dp))
+                Spacer(modifier = Modifier.height(24.dp))
 
-                // TODO-1 button
+                // =========================================================
+                // TODO-1: Fake Data Report
+                // =========================================================
                 Button(onClick = { viewModel.runTodo1Test() }) {
                     Text("Run TODO-1 PDF Test")
                 }
@@ -93,14 +115,18 @@ fun DebugScreen(
                 Spacer(modifier = Modifier.height(12.dp))
 
                 if (todo1Uri != null) {
-                    Text(text = "TODO-1 PDF saved at:\n$todo1Uri", style = MaterialTheme.typography.bodyMedium)
+                    Text("TODO-1 PDF saved at:\n$todo1Uri", style = MaterialTheme.typography.bodyMedium)
                     Spacer(modifier = Modifier.height(8.dp))
-                    Button(onClick = { openPdf(context, todo1Uri!!) }) { Text("Open TODO-1 PDF") }
+                    Button(onClick = { openPdf(context, todo1Uri!!) }) {
+                        Text("Open TODO-1 PDF")
+                    }
                 }
 
-                Spacer(modifier = Modifier.height(18.dp))
+                Spacer(modifier = Modifier.height(24.dp))
 
-                // TODO-2 button (new fancy report)
+                // =========================================================
+                // TODO-2: Styled Fake Data Report
+                // =========================================================
                 Button(onClick = { viewModel.runTodo2Test() }) {
                     Text("Run TODO-2 (Modern Report)")
                 }
@@ -108,9 +134,30 @@ fun DebugScreen(
                 Spacer(modifier = Modifier.height(12.dp))
 
                 if (todo2Uri != null) {
-                    Text(text = "TODO-2 PDF saved at:\n$todo2Uri", style = MaterialTheme.typography.bodyMedium)
+                    Text("TODO-2 PDF saved at:\n$todo2Uri", style = MaterialTheme.typography.bodyMedium)
                     Spacer(modifier = Modifier.height(8.dp))
-                    Button(onClick = { openPdf(context, todo2Uri!!) }) { Text("Open TODO-2 PDF") }
+                    Button(onClick = { openPdf(context, todo2Uri!!) }) {
+                        Text("Open TODO-2 PDF")
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // =========================================================
+                // ⭐ TODO-3: REAL REPORT (LIVE DATABASE)
+                // =========================================================
+                Button(onClick = { viewModel.runTodo3RealReport() }) {
+                    Text("Run TODO-3 (REAL DATA REPORT)")
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                if (todo3Uri != null) {
+                    Text("TODO-3 PDF saved at:\n$todo3Uri", style = MaterialTheme.typography.bodyMedium)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(onClick = { openPdf(context, todo3Uri!!) }) {
+                        Text("Open REAL TODO-3 PDF")
+                    }
                 }
             }
         }

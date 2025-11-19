@@ -7,50 +7,45 @@ import android.os.Environment
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import java.io.FileOutputStream
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 
 /**
  * =============================================================
- * PdfTodo2Generator
+ * PdfTodo2Generator (FINAL — SUMMARY ONLY ON PAGE 2)
  *
- * Produces a 2-page modern report:
- *  - Page 1: Grouped by Title (A→Z), alarms inside each title sorted soonest-first
- *  - Page 2: All alarms sorted soonest-first
- *
- * Design choices:
- *  - Title 24sp, Section headers 18sp bold, Body 13sp
- *  - Header: "Event Reminder Report — <date>"
- *  - Footer: Generated timestamp + Page X/Y
- *  - Thin grey separators between sections
+ * Features:
+ *  ✔ Date format: 09 Apr 1970, 11:09 AM
+ *  ✔ Offset: “1 day / 2 hours / 10 minutes before”
+ *  ✔ Column headers on both pages
+ *  ✔ Summary block at the END of PAGE 2 only
+ *  ✔ Modern layout (grey header row)
  * =============================================================
  */
 class PdfTodo2Generator @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
 
-    private val pageWidth = 595   // A4-like width in points
-    private val pageHeight = 842  // A4-like height in points
+    private val pageWidth = 595
+    private val pageHeight = 842
     private val margin = 40f
 
-    // Typography sizes (points)
     private val titleSize = 24f
     private val sectionSize = 18f
     private val bodySize = 13f
     private val smallSize = 11f
 
-    private val headerLineColor = Color.argb(30, 0, 0, 0) // faint line
-    private val separatorColor = Color.argb(60, 120, 120, 120) // thin grey line
+    private val headerLineColor = Color.argb(30, 0, 0, 0)
+    private val separatorColor = Color.argb(60, 120, 120, 120)
 
-    private val dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+    private val headerDateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+    private val alarmDateFormatter = DateTimeFormatter.ofPattern("dd MMM yyyy, hh:mm a")
 
-    /**
-     * =============================================================
-     * Function: generateReportPdf()
-     * - report: ActiveAlarmReport (grouped + sorted)
-     * Returns Result.success(path) or Result.failure(exception)
-     * =============================================================
-     */
+
+    // =============================================================
+    // PUBLIC ENTRY
+    // =============================================================
     fun generateReportPdf(report: ActiveAlarmReport): Result<String> {
         return try {
             val docs = context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS)
@@ -58,56 +53,61 @@ class PdfTodo2Generator @Inject constructor(
             if (!folder.exists()) folder.mkdirs()
 
             val file = File(folder, "report_todo2_${System.currentTimeMillis()}.pdf")
-
             val pdf = PdfDocument()
 
-            // Page 1: Grouped by Title
-            val pageInfo1 = PdfDocument.PageInfo.Builder(pageWidth, pageHeight, 1).create()
-            val page1 = pdf.startPage(pageInfo1)
-            drawGroupedPage(page1.canvas, report, 1, 2)
-            pdf.finishPage(page1)
+            // PAGE 1
+            val p1 = pdf.startPage(
+                PdfDocument.PageInfo.Builder(pageWidth, pageHeight, 1).create()
+            )
+            drawGroupedPage(p1.canvas, report, 1, 2)
+            pdf.finishPage(p1)
 
-            // Page 2: All alarms soonest-first
-            val pageInfo2 = PdfDocument.PageInfo.Builder(pageWidth, pageHeight, 2).create()
-            val page2 = pdf.startPage(pageInfo2)
-            drawFlatPage(page2.canvas, report, 2, 2)
-            pdf.finishPage(page2)
+            // PAGE 2
+            val p2 = pdf.startPage(
+                PdfDocument.PageInfo.Builder(pageWidth, pageHeight, 2).create()
+            )
+            drawFlatPage(p2.canvas, report, 2, 2)
+            pdf.finishPage(p2)
 
-            // Write PDF
             FileOutputStream(file).use { pdf.writeTo(it) }
             pdf.close()
 
             Result.success(file.absolutePath)
+
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
 
-    // -------------------------
-    // Helpers: draw page header & footer
-    // -------------------------
+    private fun reportNow() = java.time.LocalDateTime.now()
+
+    // =============================================================
+    // HEADER
+    // =============================================================
     private fun drawHeader(canvas: Canvas, titleText: String) {
-        val paint = Paint().apply {
+
+        val titlePaint = Paint().apply {
             isAntiAlias = true
             color = Color.BLACK
             textSize = titleSize
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
-        // Title (left)
-        canvas.drawText(titleText, margin, margin + titleSize, paint)
 
-        // Date (right)
+        canvas.drawText(titleText, margin, margin + titleSize, titlePaint)
+
+        // Right side date
         val datePaint = Paint().apply {
             isAntiAlias = true
             color = Color.DKGRAY
-            textSize = smallSize.toFloat()
+            textSize = smallSize
         }
-        val generatedAt = dateFormatter.format(reportNow())
-        val rightText = "Generated: $generatedAt"
-        val textWidth = datePaint.measureText(rightText)
-        canvas.drawText(rightText, pageWidth - margin - textWidth, margin + smallSize, datePaint)
 
-        // thin line
+        val generated = headerDateFormatter.format(reportNow())
+        val dateText = "Generated: $generated"
+        val dx = pageWidth - margin - datePaint.measureText(dateText)
+        canvas.drawText(dateText, dx, margin + smallSize, datePaint)
+
+        // Line under header
         val linePaint = Paint().apply {
             color = headerLineColor
             strokeWidth = 1f
@@ -116,210 +116,272 @@ class PdfTodo2Generator @Inject constructor(
         canvas.drawLine(margin, y, pageWidth - margin, y, linePaint)
     }
 
-    private fun drawFooter(canvas: Canvas, pageNumber: Int, totalPages: Int, generatedAtStr: String) {
-        val footerPaint = Paint().apply {
+    // =============================================================
+    // FOOTER
+    // =============================================================
+    private fun drawFooter(canvas: Canvas, pageNumber: Int, totalPages: Int, generated: String) {
+
+        val paint = Paint().apply {
             isAntiAlias = true
             color = Color.DKGRAY
             textSize = smallSize
         }
 
-        val footerY = pageHeight - margin + 10f
+        val y = pageHeight - margin + 10f
 
-        // Left footer text
-        val leftText = "Event Reminder System"
-        canvas.drawText(leftText, margin, footerY, footerPaint)
+        canvas.drawText("Event Reminder System", margin, y, paint)
 
-        // Center timestamp
-        val midText = "Generated: $generatedAtStr"
-        val midX = (pageWidth / 2f) - (footerPaint.measureText(midText) / 2f)
-        canvas.drawText(midText, midX, footerY, footerPaint)
+        val center = "Generated: $generated"
+        val cx = (pageWidth / 2f) - (paint.measureText(center) / 2f)
+        canvas.drawText(center, cx, y, paint)
 
-        // Page number (right)
-        val rightText = "Page $pageNumber/$totalPages"
-        val rightX = pageWidth - margin - footerPaint.measureText(rightText)
-        canvas.drawText(rightText, rightX, footerY, footerPaint)
+        val page = "Page $pageNumber/$totalPages"
+        val px = pageWidth - margin - paint.measureText(page)
+        canvas.drawText(page, px, y, paint)
     }
 
-    private fun reportNow() = java.time.LocalDateTime.now()
 
-    // -------------------------
-    // Page 1: Grouped by Title
-    // -------------------------
-    private fun drawGroupedPage(canvas: Canvas, report: ActiveAlarmReport, pageNumber: Int, totalPages: Int) {
-        val generatedAtStr = dateFormatter.format(report.generatedAt)
-        // header
-        val headerTitle = "Event Reminder Report — ${context.getStringResourceOrDefault("app_name", "Event Reminder")}"
+    // =============================================================
+    // COLUMN HEADER (grey bar)
+    // =============================================================
+    private fun drawColumnHeader(canvas: Canvas, startY: Float): Float {
+
+        val bg = Paint().apply { color = Color.rgb(235, 235, 235) }
+
+        val text = Paint().apply {
+            color = Color.BLACK
+            isAntiAlias = true
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textSize = bodySize
+        }
+
+        val top = startY
+        val bottom = top + bodySize + 14f
+
+        canvas.drawRect(RectF(margin, top, pageWidth - margin, bottom), bg)
+
+        canvas.drawText("Time", margin + 8f, bottom - 6f, text)
+        canvas.drawText("Event Title", margin + 160f, bottom - 6f, text)
+
+        val ox = pageWidth - margin - text.measureText("Offset")
+        canvas.drawText("Offset", ox, bottom - 6f, text)
+
+        return bottom + 10f
+    }
+
+
+    // =============================================================
+    // FORMATTERS
+    // =============================================================
+    private fun formatDate(epochMillis: Long): String {
+        val zdt = java.time.Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault())
+        return alarmDateFormatter.format(zdt)
+    }
+
+    private fun formatOffset(minutes: Long): String {
+        if (minutes == 0L) return "At time"
+
+        val days = minutes / 1440
+        val hours = (minutes % 1440) / 60
+        val mins = minutes % 60
+
+        val parts = mutableListOf<String>()
+        if (days > 0) parts.add("$days day${if (days > 1) "s" else ""}")
+        if (hours > 0) parts.add("$hours hour${if (hours > 1) "s" else ""}")
+        if (mins > 0) parts.add("$mins minute${if (mins > 1) "s" else ""}")
+
+        return parts.joinToString(" ") + " before"
+    }
+
+
+    // =============================================================
+    // PAGE 1 — GROUPED
+    // =============================================================
+    private fun drawGroupedPage(
+        canvas: Canvas,
+        report: ActiveAlarmReport,
+        pageNumber: Int,
+        totalPages: Int
+    ) {
+        val generated = headerDateFormatter.format(report.generatedAt)
+
+        val headerTitle =
+            "Event Reminder Report — ${context.getStringResourceOrDefault("app_name", "Event Reminder")}"
+
         drawHeader(canvas, headerTitle)
 
-        // start content under header
         var y = margin + titleSize + 30f
+        y = drawColumnHeader(canvas, y)
 
-        // paint definitions
         val sectionPaint = Paint().apply {
             isAntiAlias = true
             color = Color.BLACK
             textSize = sectionSize
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
-        val bodyPaint = Paint().apply {
+
+        val body = Paint().apply {
             isAntiAlias = true
             color = Color.DKGRAY
             textSize = bodySize
         }
-        val smallPaint = Paint().apply {
-            isAntiAlias = true
-            color = Color.GRAY
-            textSize = smallSize.toFloat()
-        }
-        val separatorPaint = Paint().apply {
+
+        val sep = Paint().apply {
             color = separatorColor
             strokeWidth = 1f
         }
 
-        // iterate groups
-        val groups = report.groupedByTitle
-        for ((index, group) in groups.withIndex()) {
-            // Section title
+        for (group in report.groupedByTitle) {
+
             canvas.drawText(group.title, margin, y, sectionPaint)
             y += sectionSize + 8f
 
-            // alarms inside
-            val sortedAlarms = group.alarms.sortedBy { it.nextTrigger }
-            for (alarm in sortedAlarms) {
-                // line: time — title — offset
-                val timeStr = alarm.nextTrigger.toString()
-                val left = "${timeStr}  "
-                val mid = alarm.eventTitle
-                val right = "${alarm.offsetMinutes} min"
+            val sorted = group.alarms.sortedBy { it.nextTrigger }
 
-                // draw left (time)
-                canvas.drawText(left, margin + 8f, y, bodyPaint)
+            for (alarm in sorted) {
 
-                // draw mid (title) with wrap if needed
-                val midX = margin + 140f
-                canvas.drawText(mid, midX, y, bodyPaint)
+                val timeText = formatDate(alarm.nextTrigger)
+                val offsetText = formatOffset(alarm.offsetMinutes)
 
-                // draw right aligned offset
-                val rightPaint = bodyPaint
-                val rightTextWidth = rightPaint.measureText(right)
-                canvas.drawText(right, pageWidth - margin - rightTextWidth, y, rightPaint)
+                canvas.drawText(timeText, margin + 8f, y, body)
+                canvas.drawText(alarm.eventTitle, margin + 160f, y, body)
 
-                y += bodySize + 6f
+                val ox = pageWidth - margin - body.measureText(offsetText)
+                canvas.drawText(offsetText, ox, y, body)
 
-                // page break if needed
-                if (y > pageHeight - margin - 80f) {
-                    // draw footer for this page and start a new one (not implemented multi-page inside grouped)
-                    // For TODO-2 we expect content to fit; otherwise real pagination logic is required.
-                    // We will stop adding more to keep two pages exact.
-                    break
-                }
+                y += bodySize + 8f
+
+                // STOP page 1 early — leave no summary here
+                if (y > pageHeight - margin - 60f) break
             }
 
-            // separator line between sections
-            canvas.drawLine(margin, y + 4f, pageWidth - margin, y + 4f, separatorPaint)
+            canvas.drawLine(margin, y + 2f, pageWidth - margin, y + 2f, sep)
             y += 18f
-
-            // small safety break if out of space
-            if (y > pageHeight - margin - 80f) {
-                break
-            }
         }
 
-        // footer
-        drawFooter(canvas, pageNumber, totalPages, generatedAtStr)
+        drawFooter(canvas, pageNumber, totalPages, generated)
     }
 
-    // -------------------------
-    // Page 2: Flat sorted list
-    // -------------------------
-    private fun drawFlatPage(canvas: Canvas, report: ActiveAlarmReport, pageNumber: Int, totalPages: Int) {
-        val generatedAtStr = dateFormatter.format(report.generatedAt)
-        val headerTitle = "Event Reminder Report — ${context.getStringResourceOrDefault("app_name", "Event Reminder")}"
+
+    // =============================================================
+    // PAGE 2 — FLAT LIST + SUMMARY AT BOTTOM ONLY
+    // =============================================================
+    private fun drawFlatPage(
+        canvas: Canvas,
+        report: ActiveAlarmReport,
+        pageNumber: Int,
+        totalPages: Int
+    ) {
+
+        val generated = headerDateFormatter.format(report.generatedAt)
+
+        val headerTitle =
+            "Event Reminder Report — ${context.getStringResourceOrDefault("app_name", "Event Reminder")}"
+
         drawHeader(canvas, headerTitle)
 
         var y = margin + titleSize + 30f
+        y = drawColumnHeader(canvas, y)
 
-        val bodyPaint = Paint().apply {
+        val body = Paint().apply {
             isAntiAlias = true
             color = Color.DKGRAY
             textSize = bodySize
         }
-        val sectionPaint = Paint().apply {
+
+        val sep = Paint().apply {
+            color = separatorColor
+            strokeWidth = 1f
+        }
+
+        for (alarm in report.sortedAlarms) {
+
+            val timeText = formatDate(alarm.nextTrigger)
+            val offsetText = formatOffset(alarm.offsetMinutes)
+
+            canvas.drawText(timeText, margin + 8f, y, body)
+            canvas.drawText(alarm.eventTitle, margin + 160f, y, body)
+
+            val ox = pageWidth - margin - body.measureText(offsetText)
+            canvas.drawText(offsetText, ox, y, body)
+
+            y += bodySize + 8f
+
+            canvas.drawLine(margin, y + 2f, pageWidth - margin, y + 2f, sep)
+            y += 12f
+
+            // Keep space for summary block
+            if (y > pageHeight - margin - 160f) break
+        }
+
+        // ===========================================
+        // SUMMARY ONLY ON PAGE 2
+        // ===========================================
+        drawSummaryBox(canvas, pageHeight - margin - 140f, report)
+
+        drawFooter(canvas, pageNumber, totalPages, generated)
+    }
+
+
+    // =============================================================
+    // SUMMARY BOX (USED ONLY ON PAGE 2)
+    // =============================================================
+    private fun drawSummaryBox(canvas: Canvas, top: Float, report: ActiveAlarmReport) {
+
+        val left = margin
+        val right = pageWidth - margin
+        val bottom = top + 120f
+
+        val box = Paint().apply { color = Color.argb(20, 0, 0, 0) }
+
+        canvas.drawRect(RectF(left, top, right, bottom), box)
+
+        val headerPaint = Paint().apply {
             isAntiAlias = true
             color = Color.BLACK
             textSize = sectionSize
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
-        val separatorPaint = Paint().apply {
-            color = separatorColor
-            strokeWidth = 1f
+
+        val text = Paint().apply {
+            isAntiAlias = true
+            color = Color.DKGRAY
+            textSize = bodySize
         }
 
-        canvas.drawText("All Alarms (Soonest First)", margin, y, sectionPaint)
-        y += sectionSize + 12f
+        val total = report.groupedByTitle.sumOf { it.alarms.size }
 
-        val alarms = report.sortedAlarms
-        for (alarm in alarms) {
-            val timeStr = alarm.nextTrigger.toString()
-            val line = "${timeStr} - ${alarm.eventTitle} (offset ${alarm.offsetMinutes}m)"
-            canvas.drawText(line, margin + 8f, y, bodyPaint)
-            y += bodySize + 8f
+        val earliest = report.sortedAlarms.minByOrNull { it.nextTrigger }?.nextTrigger
+        val latest = report.sortedAlarms.maxByOrNull { it.nextTrigger }?.nextTrigger
 
-            // separator
-            canvas.drawLine(margin + 8f, y + 2f, pageWidth - margin - 8f, y + 2f, separatorPaint)
-            y += 10f
+        val eStr = earliest?.let { formatDate(it) } ?: "-"
+        val lStr = latest?.let { formatDate(it) } ?: "-"
 
-            if (y > pageHeight - margin - 80f) {
-                // stop — no additional pages in TODO-2
-                break
-            }
-        }
+        var y = top + 28f
+        canvas.drawText("Summary", left + 12f, y, headerPaint)
 
-        // Summary box at bottom (compact)
-        val summaryStartY = pageHeight - margin - 120f
-        if (summaryStartY > y + 20f) {
-            val boxPaint = Paint().apply {
-                color = Color.argb(20, 0, 0, 0)
-            }
-            val rectLeft = margin
-            val rectTop = summaryStartY
-            val rectRight = pageWidth - margin
-            val rectBottom = pageHeight - margin - 30f
-            canvas.drawRect(RectF(rectLeft, rectTop, rectRight, rectBottom), boxPaint)
+        y += sectionSize + 4f
+        canvas.drawText("Total alarms: $total", left + 12f, y, text)
+        y += bodySize + 6f
 
-            val summaryPaint = Paint().apply {
-                color = Color.BLACK
-                textSize = bodySize
-                isAntiAlias = true
-            }
+        canvas.drawText("Earliest: $eStr", left + 12f, y, text)
+        y += bodySize + 6f
 
-            val totalEvents = report.groupedByTitle.sumOf { it.alarms.size }
-            val earliest = report.sortedAlarms.minByOrNull { it.nextTrigger }?.nextTrigger?.toString() ?: "-"
-            val latest = report.sortedAlarms.maxByOrNull { it.nextTrigger }?.nextTrigger?.toString() ?: "-"
+        canvas.drawText("Latest: $lStr", left + 12f, y, text)
+        y += bodySize + 6f
 
-            var sy = rectTop + 24f
-            canvas.drawText("Summary", rectLeft + 12f, sy, sectionPaint)
-            sy += sectionSize
-            canvas.drawText("Total events: $totalEvents", rectLeft + 12f, sy, summaryPaint)
-            sy += bodySize + 6f
-            canvas.drawText("Earliest: $earliest", rectLeft + 12f, sy, summaryPaint)
-            sy += bodySize + 6f
-            canvas.drawText("Latest: $latest", rectLeft + 12f, sy, summaryPaint)
-            sy += bodySize + 6f
-            canvas.drawText("Sections: ${report.groupedByTitle.size}", rectLeft + 12f, sy, summaryPaint)
-        }
-
-        // footer
-        drawFooter(canvas, pageNumber, totalPages, generatedAtStr)
+        canvas.drawText("Sections: ${report.groupedByTitle.size}", left + 12f, y, text)
     }
 
-    // small helper to fetch a string resource if exists, else default
-    private fun Context.getStringResourceOrDefault(name: String, default: String): String {
-        return try {
+
+    // =============================================================
+    // RESOURCE HELPER
+    // =============================================================
+    private fun Context.getStringResourceOrDefault(name: String, default: String): String =
+        try {
             val id = resources.getIdentifier(name, "string", packageName)
             if (id != 0) resources.getString(id) else default
-        } catch (t: Throwable) {
+        } catch (_: Throwable) {
             default
         }
-    }
 }
