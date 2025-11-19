@@ -1,0 +1,314 @@
+{
+  "project_info": {
+    "project_number": "193717253804",
+    "project_id": "threegen-b5677",
+    "storage_bucket": "threegen-b5677.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:193717253804:android:2965cacbb885e4efb6d109",
+        "android_client_info": {
+          "package_name": "com.example.LearnDI"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCcEAWYtlRryhdWpZUqA9RERP1_PtEz9hk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:193717253804:android:d112c209e7b6da3eb6d109",
+        "android_client_info": {
+          "package_name": "com.example.balarkgen"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCcEAWYtlRryhdWpZUqA9RERP1_PtEz9hk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:193717253804:android:78992170d65d8418b6d109",
+        "android_client_info": {
+          "package_name": "com.example.birthdaywish"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCcEAWYtlRryhdWpZUqA9RERP1_PtEz9hk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:193717253804:android:1853b8f1c35234a5b6d109",
+        "android_client_info": {
+          "package_name": "com.example.eventreminder"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCcEAWYtlRryhdWpZUqA9RERP1_PtEz9hk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:193717253804:android:4190cfe56bb1eb52b6d109",
+        "android_client_info": {
+          "package_name": "com.example.familytree"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCcEAWYtlRryhdWpZUqA9RERP1_PtEz9hk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:193717253804:android:ee07579e25c1a3bab6d109",
+        "android_client_info": {
+          "package_name": "com.example.firebaseloginhost"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCcEAWYtlRryhdWpZUqA9RERP1_PtEz9hk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:193717253804:android:3ad10607b8474addb6d109",
+        "android_client_info": {
+          "package_name": "com.example.firebaseloginmodule"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCcEAWYtlRryhdWpZUqA9RERP1_PtEz9hk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:193717253804:android:cb72a7fe20536d74b6d109",
+        "android_client_info": {
+          "package_name": "com.example.firebaseroomsync"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCcEAWYtlRryhdWpZUqA9RERP1_PtEz9hk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:193717253804:android:617eb0f7f71c9199b6d109",
+        "android_client_info": {
+          "package_name": "com.example.groupexpence"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCcEAWYtlRryhdWpZUqA9RERP1_PtEz9hk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:193717253804:android:1a789d27fda7632fb6d109",
+        "android_client_info": {
+          "package_name": "com.example.hello"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCcEAWYtlRryhdWpZUqA9RERP1_PtEz9hk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:193717253804:android:25dbe44a9f9554f7b6d109",
+        "android_client_info": {
+          "package_name": "com.example.learndi"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCcEAWYtlRryhdWpZUqA9RERP1_PtEz9hk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:193717253804:android:5dc60d77d2d22fc0b6d109",
+        "android_client_info": {
+          "package_name": "com.example.newfirebaseloginapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCcEAWYtlRryhdWpZUqA9RERP1_PtEz9hk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:193717253804:android:23279fcf9e78d2cdb6d109",
+        "android_client_info": {
+          "package_name": "com.example.reminderexporttest"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCcEAWYtlRryhdWpZUqA9RERP1_PtEz9hk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:193717253804:android:71876979089e8e97b6d109",
+        "android_client_info": {
+          "package_name": "com.example.shoppinglistapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCcEAWYtlRryhdWpZUqA9RERP1_PtEz9hk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:193717253804:android:dea17d8cd546fdbfb6d109",
+        "android_client_info": {
+          "package_name": "com.example.teenpattiscorebook"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCcEAWYtlRryhdWpZUqA9RERP1_PtEz9hk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:193717253804:android:dc70e562cc7bb8a4b6d109",
+        "android_client_info": {
+          "package_name": "com.example.threegen"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCcEAWYtlRryhdWpZUqA9RERP1_PtEz9hk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
