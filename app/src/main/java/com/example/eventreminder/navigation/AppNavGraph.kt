@@ -5,6 +5,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.toRoute
+import com.example.eventreminder.ui.debug.CardDebugScreen
 import com.example.eventreminder.ui.debug.DebugScreen
 import com.example.firebaseloginmodule.FirebaseLoginEntry
 import com.example.eventreminder.ui.screens.HomeScreen
@@ -46,6 +47,11 @@ fun AppNavGraph(
         // 🧪 Debug / Developer Tools
         composable<DebugScreen> {
             DebugScreen()
+        }
+
+        // 🧪 Card Debug / Developer Tools
+        composable<CardDebugScreen> {
+            CardDebugScreen(navController = navController)
         }
 
 
