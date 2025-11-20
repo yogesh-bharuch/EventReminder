@@ -87,8 +87,8 @@ fun HomeScreen(
             }
 
             Button(onClick = {
-                //navController.navigate(DebugScreen)
-                navController.navigate(CardDebugScreen)
+                //navController.navigate(DebugRoute)
+                navController.navigate(CardDebugRoute)
             }) {
                 Text("Developer Tools")
             }

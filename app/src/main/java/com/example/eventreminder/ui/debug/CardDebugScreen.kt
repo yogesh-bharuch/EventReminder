@@ -4,7 +4,6 @@ import android.R
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -45,21 +44,26 @@ import com.example.eventreminder.card.ui.StickerPackPicker
 // =============================================================
 // Constants
 // =============================================================
-private const val TAG = "CardDebugScreen"
+private const val TAG = "CardDebugRoute"
 
 /**
- * CardDebugScreen
+ * CardDebugRoute
  *
  * Developer Tools screen for testing Card Generator features.
  * This screen will host debug buttons for each TODO milestone.
  */
 @Composable
 fun CardDebugScreen(
-    navController: NavController
+    navController: NavController,
+    reminderId: Long,
+    eventType: String
 ) {
     // =============================================================
     // Setup
     // =============================================================
+
+    Timber.tag(TAG).d("DEBUG SCREEN got → id=$reminderId type=$eventType")
+
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 

@@ -8,11 +8,25 @@ import com.example.eventreminder.scheduler.AlarmScheduler
 import com.example.eventreminder.util.NextOccurrenceCalculator
 import com.example.eventreminder.util.NotificationHelper
 import dagger.hilt.android.AndroidEntryPoint
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import timber.log.Timber
 import java.time.Instant
 import javax.inject.Inject
 
+// =============================================================
+// Constants
+// =============================================================
+private const val TAG = "ReminderReceiver"
+
+/**
+ * ReminderReceiver
+ *
+ * Handles alarm triggers → shows notification + reschedules next event.
+ * NOW enhanced for TODO-7:
+ *  - Notification tap will pass data into MainActivity for Card Generator flow.
+ */
 @AndroidEntryPoint
 class ReminderReceiver : BroadcastReceiver() {
 
@@ -22,6 +36,10 @@ class ReminderReceiver : BroadcastReceiver() {
         const val EXTRA_MESSAGE = "extra_message"
         const val EXTRA_REPEAT_RULE = "extra_repeat_rule"
         const val EXTRA_OFFSET_MILLIS = "offsetMillis"
+
+        // NEW — Card-generation routing extras (TODO-7)
+        const val EXTRA_FROM_NOTIFICATION = "from_notification"
+        const val EXTRA_EVENT_TYPE = "event_type"  // BIRTHDAY / ANNIVERSARY
     }
 
     @Inject lateinit var repo: ReminderRepository
@@ -32,32 +50,42 @@ class ReminderReceiver : BroadcastReceiver() {
         val id = intent.getLongExtra(EXTRA_REMINDER_ID, -1)
         if (id == -1L) return
 
-        val title = intent.getStringExtra(EXTRA_TITLE) ?: "Reminder"
+        val title   = intent.getStringExtra(EXTRA_TITLE) ?: "Reminder"
         val message = intent.getStringExtra(EXTRA_MESSAGE) ?: ""
-        val repeatRule = intent.getStringExtra(EXTRA_REPEAT_RULE)
+        val repeatRule   = intent.getStringExtra(EXTRA_REPEAT_RULE)
         val offsetMillis = intent.getLongExtra(EXTRA_OFFSET_MILLIS, 0L)
 
-        // Fire notification
-        NotificationHelper.showNotification(context, title, message)
+        // =============================================================
+        // Show notification → NOW includes deep-link extras
+        // =============================================================
+        NotificationHelper.showNotification(
+            context = context,
+            title = title,
+            message = message,
+            extras = mapOf(
+                EXTRA_FROM_NOTIFICATION to true,
+                EXTRA_REMINDER_ID to id,
+                EXTRA_EVENT_TYPE to inferEventType(title, message) // NEW helper
+            )
+        )
 
-        // Recurring logic → async
+        // =============================================================
+        // Recurring Scheduling
+        // =============================================================
         CoroutineScope(Dispatchers.IO).launch {
 
             val r = repo.getReminder(id) ?: return@launch
 
-            if (repeatRule.isNullOrEmpty()) return@launch // one-time
+            if (repeatRule.isNullOrEmpty()) return@launch   // no repeat → done
 
-            // Next event time
             val nextEvent = NextOccurrenceCalculator.nextOccurrence(
                 r.eventEpochMillis,
                 r.timeZone,
                 r.repeatRule
             ) ?: return@launch
 
-            // Update DB event time
             repo.update(r.copy(eventEpochMillis = nextEvent))
 
-            // Reschedule all offsets
             val offsets = r.reminderOffsets.ifEmpty { listOf(0L) }
 
             scheduler.scheduleAll(
@@ -69,8 +97,22 @@ class ReminderReceiver : BroadcastReceiver() {
                 offsets = offsets
             )
 
-            Timber.tag("ReminderReceiver")
-                .d("Rescheduled recurring id=$id for nextEvent=${Instant.ofEpochMilli(nextEvent)}")
+            Timber.tag(TAG).d(
+                "Rescheduled recurring id=$id → next=${Instant.ofEpochMilli(nextEvent)}"
+            )
+        }
+    }
+
+    // =============================================================
+    // NEW (TODO-7) — Helper to infer card type from title/message
+    // =============================================================
+    private fun inferEventType(title: String, message: String): String {
+        val raw = "$title $message".lowercase()
+
+        return when {
+            raw.contains("birthday")     -> "BIRTHDAY"
+            raw.contains("anniversary")  -> "ANNIVERSARY"
+            else                         -> "UNKNOWN"
         }
     }
 }

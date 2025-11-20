@@ -21,7 +21,7 @@ private const val TAG = "CardSampleData"
  * CardSampleData
  *
  * Generates sample card data for testing the rendering engine
- * inside CardDebugScreen before hooking real database events.
+ * inside CardDebugRoute before hooking real database events.
  *
  * All sample requests now include:
  * - text blocks

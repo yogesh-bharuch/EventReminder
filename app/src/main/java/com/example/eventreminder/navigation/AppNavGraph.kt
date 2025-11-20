@@ -10,7 +10,6 @@ import com.example.eventreminder.ui.debug.DebugScreen
 import com.example.firebaseloginmodule.FirebaseLoginEntry
 import com.example.eventreminder.ui.screens.HomeScreen
 import com.example.eventreminder.ui.screens.AddEditReminderScreen
-import com.example.eventreminder.ui.screens.EventEntryScreen
 import com.example.eventreminder.ui.screens.ReminderManagerScreen
 
 @Composable
@@ -45,13 +44,19 @@ fun AppNavGraph(
         }
 
         // 🧪 Debug / Developer Tools
-        composable<DebugScreen> {
+        composable<DebugRoute> {
             DebugScreen()
         }
 
         // 🧪 Card Debug / Developer Tools
-        composable<CardDebugScreen> {
-            CardDebugScreen(navController = navController)
+        composable<CardDebugRoute> { entry ->
+            val args = entry.toRoute<CardDebugRoute>()
+
+            CardDebugScreen(
+                navController = navController,
+                reminderId = args.reminderId,
+                eventType = args.eventType
+            )
         }
 
 
