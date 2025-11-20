@@ -38,7 +38,6 @@ object CardSampleData {
 
         Timber.tag(TAG).d("Generating sampleBirthdayForMom()")
 
-        // Canvas dimensions (CardRenderRequest default uses 1080x1080)
         val canvasWidth = 1080f
 
         // ---------------------------------------------------------
@@ -64,7 +63,7 @@ object CardSampleData {
         val age = AgeInfo(eventDate = LocalDate.parse("1980-11-20"))
 
         // ---------------------------------------------------------
-        // TEXT BLOCKS
+        // TEXT BLOCKS (clean spacing + autoFit)
         // ---------------------------------------------------------
         val textBlocks = listOf(
 
@@ -73,41 +72,41 @@ object CardSampleData {
             // =============================================================
             CardTextBlock(
                 text = "Happy Birthday!",
-                fontSize = 52.sp,
+                fontSize = 58.sp,
                 fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
                 color = theme.accentColor,
-                x = canvasWidth / 2f,          // center X
-                y = 80f,                       // TOP POSITION
-                maxWidth = canvasWidth * 0.80f,
+                x = canvasWidth / 2f,
+                y = 100f,
+                maxWidth = canvasWidth * 0.82f,
                 alignment = TextAlignment.Center,
-                autoFit = true                // static, spacing controlled manually
+                autoFit = true
             ),
 
             // =============================================================
-            // Name block (Large Center Text)
+            // Name block
             // =============================================================
             CardTextBlock(
                 text = "Mom ❤️",
-                fontSize = 64.sp,
+                fontSize = 72.sp,
                 fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold,
                 color = theme.accentColor,
-                x = canvasWidth / 2f,          // center X
-                y = 200f,                      // BELOW greeting (120px)
+                x = canvasWidth / 2f,
+                y = 230f,
                 maxWidth = canvasWidth * 0.70f,
                 alignment = TextAlignment.Center,
                 autoFit = true
             ),
 
             // =============================================================
-            // Age line (Left aligned)
+            // Age line
             // =============================================================
             CardTextBlock(
                 text = "Turns ${age.years} Today!",
-                fontSize = 68.sp,
+                fontSize = 44.sp,
                 fontWeight = androidx.compose.ui.text.font.FontWeight.Medium,
                 color = Color(0xFFAD1457),
-                x = canvasWidth * 0.10f,       // left margin
-                y = 330f,                      // below name block
+                x = canvasWidth * 0.10f,
+                y = 360f,
                 maxWidth = canvasWidth * 0.80f,
                 alignment = TextAlignment.Left,
                 autoFit = true
@@ -115,7 +114,7 @@ object CardSampleData {
         )
 
         // ---------------------------------------------------------
-        // RETURN SAMPLE REQUEST (with mandatory photoLayer)
+        // RETURN REQUEST (includes photoLayer but no stickers here)
         // ---------------------------------------------------------
         return CardRenderRequest(
             theme = theme,
@@ -128,18 +127,20 @@ object CardSampleData {
             ),
             textBlocks = textBlocks,
 
-            // ⭐ IMPORTANT: photoLayer MUST exist or TODO-5 cannot work
             photoLayer = CardPhotoLayer(
-                photoUri = null,                                          // filled later via .copy() in Debug Screen
-                cropType = CardPhotoLayer.CropType.Circle,                // default circle crop
-                x = canvasWidth * 0.30f,                                  // centered horizontal
-                y = 480f,                                                 // below text
-                size = 380f,                                              // large portrait circle
-                borderColor = Color.White.toArgb(),                       // optional
-                borderWidth = 12f                                         // clean white border
-            )
+                photoUri = null,                           // set in Debug screen
+                cropType = CardPhotoLayer.CropType.Circle,
+                x = canvasWidth * 0.30f,
+                y = 480f,
+                size = 380f,
+                borderColor = Color.White.toArgb(),
+                borderWidth = 12f
+            ),
+
+            stickers = emptyList() // added later in TODO-6
         )
     }
+
 
     // =============================================================
     // Sample Anniversary Card — “Parents”
