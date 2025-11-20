@@ -54,9 +54,9 @@ private const val TAG = "CardDebugRoute"
  */
 @Composable
 fun CardDebugScreen(
-    navController: NavController,
-    reminderId: Long,
-    eventType: String
+    //navController: NavController,
+    reminderId: Long = -1L,
+    eventType: String = "UNKNOWN"
 ) {
     // =============================================================
     // Setup

@@ -10,6 +10,7 @@ import com.example.eventreminder.ui.theme.EventReminderTheme
 import com.google.firebase.auth.FirebaseAuth
 import dagger.hilt.android.AndroidEntryPoint
 import timber.log.Timber
+import androidx.compose.runtime.LaunchedEffect
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -22,11 +23,10 @@ class MainActivity : ComponentActivity() {
         // Step 1: Read notification extras
         // ---------------------------------------------
         val fromNotification = intent.getBooleanExtra("from_notification", false)
-        val reminderId      = intent.getLongExtra("reminder_id", -1)
-        val eventType       = intent.getStringExtra("event_type")
+        val reminderId = intent.getLongExtra("reminder_id", -1L)
+        val eventType  = intent.getStringExtra("event_type")
 
-
-        // Determine start destination (login or home)
+        // Determine if user is logged in
         val isLoggedIn = FirebaseAuth.getInstance().currentUser != null
         val start = if (isLoggedIn) HomeRoute else LoginRoute
 
@@ -34,10 +34,13 @@ class MainActivity : ComponentActivity() {
 
             val navController = rememberNavController()
 
-            Timber.tag("NotificationTest").d("Launch → fromNotification=$fromNotification id=$reminderId type=$eventType")
+            Timber.tag("NotificationTest").d(
+                "Launch → fromNotification=$fromNotification id=$reminderId type=$eventType"
+            )
 
             EventReminderTheme {
 
+                // Normal App Navigation
                 AppNavGraph(
                     navController = navController,
                     startDestination = start
@@ -46,21 +49,19 @@ class MainActivity : ComponentActivity() {
                 // ---------------------------------------------
                 // Step 2: Safe navigation (only if logged IN)
                 // ---------------------------------------------
-                androidx.compose.runtime.LaunchedEffect(isLoggedIn) {
+                LaunchedEffect(isLoggedIn) {
 
                     if (fromNotification && isLoggedIn) {
 
                         Timber.tag("MainActivity")
-                            .d("Handling notification → navigating to CardDebug…")
+                            .d("Handling notification → navigating to CardScreen(reminderId=$reminderId)")
 
+                        // Navigate to FINAL card screen (NOT debug)
                         navController.navigate(
-                            CardDebugRoute(
-                                reminderId = reminderId,
-                                eventType  = eventType ?: "UNKNOWN"
-                            )
+                            CardRoute(reminderId = reminderId)
                         )
 
-                        // Clear one-shot extras (prevents repeat navigation after rotation + resume)
+                        // Clear extras to avoid re-navigation on configuration change
                         intent.removeExtra("from_notification")
                         intent.removeExtra("reminder_id")
                         intent.removeExtra("event_type")

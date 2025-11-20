@@ -5,6 +5,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.toRoute
+import com.example.eventreminder.cards.ui.CardScreen
 import com.example.eventreminder.ui.debug.CardDebugScreen
 import com.example.eventreminder.ui.debug.DebugScreen
 import com.example.firebaseloginmodule.FirebaseLoginEntry
@@ -53,7 +54,7 @@ fun AppNavGraph(
             val args = entry.toRoute<CardDebugRoute>()
 
             CardDebugScreen(
-                navController = navController,
+                //navController = navController,
                 reminderId = args.reminderId,
                 eventType = args.eventType
             )
@@ -67,6 +68,15 @@ fun AppNavGraph(
             AddEditReminderScreen(
                 navController = navController,
                 eventId = args.eventId
+            )
+        }
+
+        // 🎨 FINAL USER CARD SCREEN
+        composable<CardRoute> { entry ->
+            val args = entry.toRoute<CardRoute>()
+
+            CardScreen(
+                reminderId = args.reminderId
             )
         }
     }

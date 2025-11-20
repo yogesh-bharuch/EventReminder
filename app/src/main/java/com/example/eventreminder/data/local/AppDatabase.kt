@@ -1,6 +1,5 @@
 package com.example.eventreminder.data.local
 
-
 import androidx.room.Database
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
@@ -9,7 +8,7 @@ import com.example.eventreminder.data.model.EventReminder
 
 @Database(
     entities = [EventReminder::class],
-    version = 2,
+    version = 1,
     exportSchema = false
 )
 @TypeConverters(Converters::class)

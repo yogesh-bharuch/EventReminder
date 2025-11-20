@@ -19,9 +19,9 @@ class ReminderViewModel @Inject constructor(
     private val scheduler: AlarmScheduler
 ) : ViewModel() {
 
-    // ------------------------------------------------------------
+    // ============================================================
     // UI State
-    // ------------------------------------------------------------
+    // ============================================================
     data class UiState(
         val editReminder: EventReminder? = null,
         val errorMessage: String? = null,
@@ -31,9 +31,9 @@ class ReminderViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(UiState())
     val uiState: StateFlow<UiState> = _uiState
 
-    // ------------------------------------------------------------
+    // ============================================================
     // GROUPED UI (Home Screen)
-    // ------------------------------------------------------------
+    // ============================================================
     val groupedEvents: StateFlow<List<GroupedUiSection>> =
         repo.getAllReminders()
             .map { list ->
@@ -47,7 +47,6 @@ class ReminderViewModel @Inject constructor(
                 val laterList = mutableListOf<EventReminderUI>()
 
                 list.forEach { ev ->
-
                     val ui = EventReminderUI.from(
                         id = ev.id,
                         title = ev.title,
@@ -87,12 +86,14 @@ class ReminderViewModel @Inject constructor(
             }
             .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
-    // ------------------------------------------------------------
+    // ============================================================
     // LOAD REMINDER
-    // ------------------------------------------------------------
+    // ============================================================
     fun load(id: Long) = viewModelScope.launch {
         try {
-            _uiState.value = _uiState.value.copy(editReminder = repo.getReminder(id))
+            _uiState.value = _uiState.value.copy(
+                editReminder = repo.getReminder(id)
+            )
         } catch (e: Exception) {
             _uiState.value = _uiState.value.copy(errorMessage = e.message)
         }
@@ -101,9 +102,9 @@ class ReminderViewModel @Inject constructor(
     fun resetSaved() { _uiState.value = _uiState.value.copy(saved = false) }
     fun resetError() { _uiState.value = _uiState.value.copy(errorMessage = null) }
 
-    // ------------------------------------------------------------
+    // ============================================================
     // SAVE REMINDER + MULTIPLE ALARMS
-    // ------------------------------------------------------------
+    // ============================================================
     fun saveReminder(reminder: EventReminder) = viewModelScope.launch {
         try {
             val isNew = reminder.id == 0L
@@ -120,20 +121,19 @@ class ReminderViewModel @Inject constructor(
 
             val offsets = saved.reminderOffsets.ifEmpty { listOf(0L) }
 
-            // Compute next event (UTC)
             val nextEvent = NextOccurrenceCalculator.nextOccurrence(
                 saved.eventEpochMillis,
                 saved.timeZone,
                 saved.repeatRule
             ) ?: saved.eventEpochMillis
 
-            // CLEAR ALL OLD ALARMS (must pass offsets)
+            // Clear old alarms
             scheduler.cancelAll(
                 reminderId = id,
                 offsets = saved.reminderOffsets
             )
 
-            // If enabled, schedule new
+            // Schedule new
             if (saved.enabled) {
                 scheduler.scheduleAll(
                     reminderId = id,
@@ -145,7 +145,10 @@ class ReminderViewModel @Inject constructor(
                 )
             }
 
-            _uiState.value = _uiState.value.copy(saved = true, editReminder = saved)
+            _uiState.value = _uiState.value.copy(
+                saved = true,
+                editReminder = saved
+            )
 
         } catch (e: Exception) {
             Timber.e(e)
@@ -153,9 +156,9 @@ class ReminderViewModel @Inject constructor(
         }
     }
 
-    // ------------------------------------------------------------
-    // DELETE + CANCEL ALARMS
-    // ------------------------------------------------------------
+    // ============================================================
+    // DELETE REMINDER + CANCEL ALARMS
+    // ============================================================
     fun deleteEvent(id: Long) = viewModelScope.launch {
         try {
             val reminder = repo.getReminder(id) ?: return@launch

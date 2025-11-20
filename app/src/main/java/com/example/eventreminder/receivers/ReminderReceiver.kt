@@ -63,9 +63,9 @@ class ReminderReceiver : BroadcastReceiver() {
             title = title,
             message = message,
             extras = mapOf(
-                EXTRA_FROM_NOTIFICATION to true,
-                EXTRA_REMINDER_ID to id,
-                EXTRA_EVENT_TYPE to inferEventType(title, message) // NEW helper
+                "from_notification" to true,
+                "reminder_id" to id,
+                "event_type" to inferEventType(title, message)
             )
         )
 
@@ -84,7 +84,7 @@ class ReminderReceiver : BroadcastReceiver() {
                 r.repeatRule
             ) ?: return@launch
 
-            repo.update(r.copy(eventEpochMillis = nextEvent))
+            //repo.update(r.copy(eventEpochMillis = nextEvent))
 
             val offsets = r.reminderOffsets.ifEmpty { listOf(0L) }
 

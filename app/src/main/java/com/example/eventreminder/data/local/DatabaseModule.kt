@@ -2,13 +2,13 @@ package com.example.eventreminder.data.local
 
 import android.content.Context
 import androidx.room.Room
-import com.example.eventreminder.data.model.EventReminder
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
 import dagger.hilt.android.qualifiers.ApplicationContext
+import com.example.eventreminder.util.NextOccurrenceCalculator
 
 
 @Module
@@ -33,4 +33,9 @@ object DatabaseModule {
     @Singleton
     fun provideReminderDao(db: AppDatabase): ReminderDao =
         db.reminderDao()
+
+    @Provides
+    @Singleton
+    fun provideNextOccurrenceCalculator(): NextOccurrenceCalculator =
+        NextOccurrenceCalculator
 }
