@@ -48,21 +48,33 @@ class CardViewModel @Inject constructor(
     private val _uiState = MutableStateFlow<CardUiState>(CardUiState.Loading)
     val uiState: StateFlow<CardUiState> = _uiState.asStateFlow()
 
-    // Image state: file path of cached circular avatar (nullable)
-    private val _avatarPath = MutableStateFlow<String?>(null)
-    val avatarPath: StateFlow<String?> = _avatarPath.asStateFlow()
-
-    // In-memory avatar bitmap for immediate preview (not persisted)
+    // Avatar image state (in-memory + cached path)
     private val _avatarBitmap = MutableStateFlow<Bitmap?>(null)
     val avatarBitmap: StateFlow<Bitmap?> = _avatarBitmap.asStateFlow()
 
-    // Typed navigation argument (from CardScreen ← NavGraph)
+    private val _avatarPath = MutableStateFlow<String?>(null)
+    val avatarPath: StateFlow<String?> = _avatarPath.asStateFlow()
+
+    // ---------------------------------------------------------
+    // Avatar transform state (so avatar can be moved/scaled like a sticker)
+    // Mode A: only one avatar; transform preserved in VM while editing session.
+    // Values are in dp for x/y offsets and scale as float.
+    // ---------------------------------------------------------
+    private val _avatarOffsetX = MutableStateFlow(220f)   // default inside-card left padding (dp)
+    private val _avatarOffsetY = MutableStateFlow(24f)   // default top padding (dp)
+    private val _avatarScale = MutableStateFlow(1.1f)
+    private val _avatarRotation = MutableStateFlow(0f)
+
+    val avatarOffsetX: StateFlow<Float> = _avatarOffsetX.asStateFlow()
+    val avatarOffsetY: StateFlow<Float> = _avatarOffsetY.asStateFlow()
+    val avatarScale: StateFlow<Float> = _avatarScale.asStateFlow()
+    val avatarRotation: StateFlow<Float> = _avatarRotation.asStateFlow()
+
+    // Typed navigation arg
     private val reminderIdArg: Long = savedStateHandle.get<Long>("reminderId") ?: -1L
 
     init {
-        Timber.tag(TAG)
-            .d("CardViewModel init → reminderId=%d", reminderIdArg)
-
+        Timber.tag(TAG).d("CardViewModel init → reminderId=%d", reminderIdArg)
         if (reminderIdArg == -1L) {
             _uiState.value = CardUiState.Placeholder
         } else {
@@ -70,80 +82,9 @@ class CardViewModel @Inject constructor(
         }
     }
 
-    // Existing functions left intact (stickers, loadReminder, helpers)...
-    // For brevity I keep the original sticker methods and buildCardData method as before:
-    // addSticker / removeSticker / updateSticker / buildCardData / helpers
-    // (COPY your existing implementations here; they are unchanged)
-
-    // -------------------------
-    // Image pipeline public API
-    // -------------------------
-
-    /**
-     * Called after user selected an image URI from the system picker.
-     * Loads a downsampled bitmap in background and emits it for cropping UI.
-     */
-    fun onImageUriSelected(context: Context, uri: Uri) {
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val bmp = ImageUtil.loadBitmapFromUri(context, uri, maxDim = 1600)
-                if (bmp != null) {
-                    // Emit in-memory bitmap for cropper UI
-                    _avatarBitmap.value = bmp
-                    Timber.tag(TAG).d("Loaded image for cropping: ${bmp.width}x${bmp.height}")
-                } else {
-                    Timber.tag(TAG).w("Failed to decode selected image")
-                }
-            } catch (t: Throwable) {
-                Timber.tag(TAG).e(t, "Error loading selected image")
-            }
-        }
-    }
-
-    /**
-     * Called when user confirms crop. Accepts a square-cropped bitmap,
-     * converts to circular avatar, saves to cache, and emits final state.
-     */
-    fun onCroppedSquareBitmapSaved(context: Context, croppedSquare: Bitmap) {
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                // Ensure square (center crop if not)
-                val square = ImageUtil.centerCropSquare(croppedSquare)
-
-                // Convert to circular avatar
-                val circ = ImageUtil.toCircularBitmap(square)
-
-                // Save to cache and emit path
-                val path = ImageUtil.saveBitmapToCache(context, circ)
-                if (path != null) {
-                    _avatarPath.value = path
-                    _avatarBitmap.value = circ
-                    Timber.tag(TAG).d("Avatar saved to: $path")
-                } else {
-                    Timber.tag(TAG).e("Failed to save avatar to cache")
-                }
-            } catch (t: Throwable) {
-                Timber.tag(TAG).e(t, "Error processing cropped bitmap")
-            }
-        }
-    }
-
-    /**
-     * Optional: remove avatar (clear)
-     */
-    fun clearAvatar() {
-        _avatarPath.value = null
-        _avatarBitmap.value = null
-    }
-
-    // -------------------------
-    // Keep original functions below (stickers + buildCardData)
-    // -------------------------
-
-    fun refresh() {
-        if (reminderIdArg != -1L) loadReminder(reminderIdArg)
-    }
-
+    // ---------------------------------------------------------
+    // Existing sticker APIs (unchanged)
+    // ---------------------------------------------------------
     fun addSticker(item: StickerItem) {
         val current = (_uiState.value as? CardUiState.Data)?.cardData ?: return
 
@@ -183,20 +124,108 @@ class CardViewModel @Inject constructor(
         )
     }
 
+    // ---------------------------------------------------------
+    // Image / Avatar pipeline
+    // ---------------------------------------------------------
+    /**
+     * After user selects an image Uri — load a downsampled bitmap for cropper/preview.
+     */
+    fun onImageUriSelected(context: Context, uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val bmp = ImageUtil.loadBitmapFromUri(context, uri, maxDim = 1600)
+                if (bmp != null) {
+                    _avatarBitmap.value = bmp
+                    Timber.tag(TAG).d("Loaded image for cropping: ${bmp.width}x${bmp.height}")
+                } else {
+                    Timber.tag(TAG).w("Failed to decode selected image")
+                }
+            } catch (t: Throwable) {
+                Timber.tag(TAG).e(t, "Error loading selected image")
+            }
+        }
+    }
+
+    /**
+     * When user confirms crop — convert to circular avatar, save to cache,
+     * replace any existing avatar (Mode A).
+     */
+    fun onCroppedSquareBitmapSaved(context: Context, croppedSquare: Bitmap) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val square = ImageUtil.centerCropSquare(croppedSquare)
+                val circ = ImageUtil.toCircularBitmap(square)
+                val path = ImageUtil.saveBitmapToCache(context, circ)
+                if (path != null) {
+                    // Replace existing avatar (Mode A)
+                    _avatarPath.value = path
+                    _avatarBitmap.value = circ
+
+                    // Reset default transform for new avatar so it sits nicely
+                    _avatarOffsetX.value = 12f
+                    _avatarOffsetY.value = 12f
+                    _avatarScale.value = 1f
+                    _avatarRotation.value = 0f
+
+                    Timber.tag(TAG).d("Avatar saved to cache → $path")
+                } else {
+                    Timber.tag(TAG).e("Failed to save avatar to cache")
+                }
+            } catch (t: Throwable) {
+                Timber.tag(TAG).e(t, "Error processing cropped bitmap")
+            }
+        }
+    }
+
+    /**
+     * Replace avatar with null (clear). Mode A: keep this private or behind explicit UI.
+     */
+    fun clearAvatar() {
+        _avatarPath.value = null
+        _avatarBitmap.value = null
+        // reset transforms
+        _avatarOffsetX.value = 12f
+        _avatarOffsetY.value = 12f
+        _avatarScale.value = 1f
+        _avatarRotation.value = 0f
+    }
+
+    // ---------------------------------------------------------
+    // Avatar transform updates (called by AvatarDraggable composable)
+    // ---------------------------------------------------------
+    fun updateAvatarTransform(xDp: Float, yDp: Float, scale: Float, rotation: Float = 0f) {
+        _avatarOffsetX.value = xDp
+        _avatarOffsetY.value = yDp
+        _avatarScale.value = scale
+        _avatarRotation.value = rotation
+    }
+
+    // Optional individual updates
+    fun updateAvatarOffset(xDp: Float, yDp: Float) {
+        _avatarOffsetX.value = xDp
+        _avatarOffsetY.value = yDp
+    }
+
+    fun updateAvatarScale(scale: Float) {
+        _avatarScale.value = scale
+    }
+
+    // ---------------------------------------------------------
+    // Existing reminder loading + card building code (unchanged)
+    // ---------------------------------------------------------
+    fun refresh() { if (reminderIdArg != -1L) loadReminder(reminderIdArg) }
+
     private fun loadReminder(id: Long) {
         viewModelScope.launch {
             _uiState.value = CardUiState.Loading
-
             try {
                 val reminder = repo.getReminder(id)
                 if (reminder == null) {
                     _uiState.value = CardUiState.Error("Reminder not found.")
                     return@launch
                 }
-
                 val cardData = buildCardData(reminder)
                 _uiState.value = CardUiState.Data(cardData)
-
             } catch (e: Exception) {
                 Timber.tag(TAG).e(e, "Failed to load reminder id=%d", id)
                 _uiState.value = CardUiState.Error("Failed to load reminder.")

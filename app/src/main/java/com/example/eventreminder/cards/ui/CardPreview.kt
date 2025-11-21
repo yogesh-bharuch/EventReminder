@@ -19,12 +19,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.eventreminder.cards.CardViewModel
@@ -39,7 +41,7 @@ import timber.log.Timber
 private const val TAG = "CardPreview"
 
 // =============================================================
-// PUBLIC API — CardPreview with avatar callback
+// PUBLIC API — CardPreview with avatar support
 // =============================================================
 @Composable
 fun CardPreview(
@@ -68,36 +70,68 @@ fun CardPreview(
 }
 
 // =============================================================
-// AVATAR COMPONENT — shared across templates (A1 style)
+// AVATAR DRAGGABLE — Mode A (single avatar)
 // =============================================================
 @Composable
-private fun AvatarInsideCard(
-    avatar: android.graphics.Bitmap?,
+private fun AvatarDraggable(
+    avatarBitmap: android.graphics.Bitmap?,
+    vm: CardViewModel,
     onClick: () -> Unit
 ) {
+    // Read transform state from VM
+    val xDp by vm.avatarOffsetX.collectAsState()
+    val yDp by vm.avatarOffsetY.collectAsState()
+    val scale by vm.avatarScale.collectAsState()
+    val rotation by vm.avatarRotation.collectAsState()
+
+    val density = LocalDensity.current
+
+    // Local gesture state
+    var localOffsetX by remember { mutableStateOf(xDp) }
+    var localOffsetY by remember { mutableStateOf(yDp) }
+    var localScale by remember { mutableStateOf(scale) }
+    var localRotation by remember { mutableStateOf(rotation) }
+
+    // Sync local -> VM when transforms change
+    LaunchedEffect(localOffsetX, localOffsetY, localScale, localRotation) {
+        vm.updateAvatarTransform(localOffsetX, localOffsetY, localScale, localRotation)
+    }
+
     Box(
         modifier = Modifier
-            .padding(start = 16.dp, top = 16.dp)
-            .size(72.dp)
+            .offset(localOffsetX.dp, localOffsetY.dp)
+            .size((72 * localScale).dp)
             .clip(CircleShape)
             .shadow(6.dp, CircleShape)
             .background(Color.White.copy(alpha = 0.6f))
             .pointerInput(Unit) {
-                detectTapGestures(onTap = { onClick() })
+                detectTransformGestures { _, pan, zoom, rotationArc ->
+                    // Convert pan in pixels to dp using density
+                    val dxDp = with(density) { pan.x.toDp().value }
+                    val dyDp = with(density) { pan.y.toDp().value }
+
+                    localOffsetX += dxDp
+                    localOffsetY += dyDp
+
+                    localScale = (localScale * zoom).coerceIn(0.4f, 3.0f)
+                    localRotation += rotationArc
+                }
+            }
+            .pointerInput(Unit) {
+                detectTapGestures(onTap = { onClick() /* open picker if needed */ })
             },
         contentAlignment = Alignment.Center
     ) {
-
-        if (avatar != null) {
-
+        if (avatarBitmap != null) {
             Image(
-                bitmap = avatar.asImageBitmap(),
+                bitmap = avatarBitmap.asImageBitmap(),
                 contentDescription = "avatar",
-                modifier = Modifier.clip(CircleShape)
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { rotationZ = localRotation }
+                    .clip(CircleShape)
             )
-
         } else {
-            // Placeholder
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -112,7 +146,7 @@ private fun AvatarInsideCard(
 }
 
 // =============================================================
-// TEMPLATE: Birthday Card
+// TEMPLATE: BirthdayCard (uses AvatarDraggable inside)
 // =============================================================
 @Composable
 private fun BirthdayCard(
@@ -121,7 +155,7 @@ private fun BirthdayCard(
     vm: CardViewModel,
     onAvatarClick: () -> Unit
 ) {
-    val avatar = vm.avatarBitmap.collectAsState().value
+    val avatarBmp by vm.avatarBitmap.collectAsState()
 
     Surface(
         modifier = modifier
@@ -131,66 +165,71 @@ private fun BirthdayCard(
             .clip(RoundedCornerShape(16.dp)),
         color = MaterialTheme.colorScheme.primaryContainer
     ) {
-
         Box(Modifier.fillMaxSize()) {
 
-            // AVATAR
-            AvatarInsideCard(avatar, onAvatarClick)
+            // Avatar draggable (top-left inside)
+            AvatarDraggable(avatarBitmap = avatarBmp, vm = vm, onClick = onAvatarClick)
 
-            // MAIN CONTENT
+            // Main content shifted right to avoid avatar overlap
             Column(
                 modifier = Modifier
-                    .padding(start = 100.dp, top = 22.dp, end = 20.dp)
+                    .padding(start = 20.dp, top = 20.dp, end = 20.dp)
             ) {
-
                 Text(
-                    text = cardData.title,
+                    text = "Haapy " + cardData.title,
                     style = MaterialTheme.typography.headlineSmall.copy(fontSize = 22.sp)
                 )
-
                 cardData.name?.let {
                     Spacer(Modifier.height(6.dp))
                     Text(text = it, style = MaterialTheme.typography.titleMedium)
                 }
-
                 Spacer(Modifier.height(12.dp))
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Age", style = MaterialTheme.typography.bodyMedium)
-                    Spacer(Modifier.width(8.dp))
+                // YEARS BADGE (glowing circle)
+                Box(
+                    modifier = Modifier
+                        .size(60.dp)
+                        .graphicsLayer {
+                            shadowElevation = 24.dp.toPx()   // strong glow
+                            shape = CircleShape
+                            clip = false
+                        }
+                        .clip(CircleShape)
+                        .background(
+                            brush = Brush.radialGradient(
+                                colors = listOf(
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.25f),
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.05f)
+                                )
+                            )
+                        )
+                        .border(
+                            width = 3.dp,
+                            color = MaterialTheme.colorScheme.primary,
+                            shape = CircleShape
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
                     Text(
                         text = cardData.ageOrYearsLabel ?: "-",
-                        style = MaterialTheme.typography.headlineSmall
+                        style = MaterialTheme.typography.headlineSmall.copy(
+                            fontSize = 22.sp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
                     )
                 }
 
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(55.dp))
+                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(text = "BirthDate: ${cardData.originalDateLabel}", style = MaterialTheme.typography.labelSmall)
 
-                Text(
-                    "Original: ${cardData.originalDateLabel}",
-                    style = MaterialTheme.typography.bodySmall
-                )
-                Text(
-                    "Next: ${cardData.nextDateLabel}",
-                    style = MaterialTheme.typography.bodySmall
-                )
+                    Spacer(modifier = Modifier.weight(1f)) // pushes next text to right
+
+                    Text(text = "Yogesh", style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.End)
+                }
+
             }
 
-            // TIMEZONE BADGE
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(12.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(
-                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.80f)
-                    )
-                    .padding(horizontal = 10.dp, vertical = 6.dp)
-            ) {
-                Text(cardData.timezone.id, style = MaterialTheme.typography.bodySmall)
-            }
-
-            // STICKERS
             RenderStickers(
                 stickers = cardData.stickers,
                 onDelete = { vm.removeSticker(it) },
@@ -201,7 +240,7 @@ private fun BirthdayCard(
 }
 
 // =============================================================
-// TEMPLATE: Anniversary Card
+// TEMPLATE: AnniversaryCard (uses AvatarDraggable)
 // =============================================================
 @Composable
 private fun AnniversaryCard(
@@ -210,8 +249,7 @@ private fun AnniversaryCard(
     vm: CardViewModel,
     onAvatarClick: () -> Unit
 ) {
-
-    val avatar = vm.avatarBitmap.collectAsState().value
+    val avatarBmp by vm.avatarBitmap.collectAsState()
 
     Surface(
         modifier = modifier
@@ -221,19 +259,16 @@ private fun AnniversaryCard(
             .clip(RoundedCornerShape(16.dp)),
         color = MaterialTheme.colorScheme.secondaryContainer
     ) {
-
         Box(Modifier.fillMaxSize()) {
 
-            AvatarInsideCard(avatar, onAvatarClick)
+            AvatarDraggable(avatarBmp, vm, onAvatarClick)
 
             Column(
                 modifier = Modifier
                     .padding(start = 100.dp, top = 20.dp, end = 20.dp)
             ) {
-
                 Text(cardData.title, style = MaterialTheme.typography.headlineSmall)
                 Spacer(Modifier.height(10.dp))
-
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Years", style = MaterialTheme.typography.bodyMedium)
                     Spacer(Modifier.width(8.dp))
@@ -242,17 +277,9 @@ private fun AnniversaryCard(
                         style = MaterialTheme.typography.headlineSmall
                     )
                 }
-
                 Spacer(Modifier.height(12.dp))
-
-                Text(
-                    "Original: ${cardData.originalDateLabel}",
-                    style = MaterialTheme.typography.bodySmall
-                )
-                Text(
-                    "Next: ${cardData.nextDateLabel}",
-                    style = MaterialTheme.typography.bodySmall
-                )
+                Text("Original: ${cardData.originalDateLabel}", style = MaterialTheme.typography.bodySmall)
+                Text("Next: ${cardData.nextDateLabel}", style = MaterialTheme.typography.bodySmall)
             }
 
             RenderStickers(
@@ -265,7 +292,7 @@ private fun AnniversaryCard(
 }
 
 // =============================================================
-// TEMPLATE: Generic Card
+// TEMPLATE: GenericCard (uses AvatarDraggable)
 // =============================================================
 @Composable
 private fun GenericCard(
@@ -274,7 +301,7 @@ private fun GenericCard(
     vm: CardViewModel,
     onAvatarClick: () -> Unit
 ) {
-    val avatar = vm.avatarBitmap.collectAsState().value
+    val avatarBmp by vm.avatarBitmap.collectAsState()
 
     Surface(
         modifier = modifier
@@ -284,14 +311,12 @@ private fun GenericCard(
             .clip(RoundedCornerShape(12.dp)),
         tonalElevation = 2.dp
     ) {
-
         Box(Modifier.fillMaxSize()) {
 
-            AvatarInsideCard(avatar, onAvatarClick)
+            AvatarDraggable(avatarBmp, vm, onAvatarClick)
 
             Column(
-                modifier = Modifier
-                    .padding(start = 100.dp, top = 20.dp, end = 20.dp)
+                modifier = Modifier.padding(start = 100.dp, top = 20.dp, end = 20.dp)
             ) {
                 Text(cardData.title, style = MaterialTheme.typography.titleLarge)
                 Spacer(Modifier.height(6.dp))
@@ -309,7 +334,7 @@ private fun GenericCard(
 }
 
 // =============================================================
-// STICKER RENDERER
+// STICKER RENDERER + DRAGGABLE (unchanged)
 // =============================================================
 @Composable
 fun RenderStickers(
@@ -326,9 +351,6 @@ fun RenderStickers(
     }
 }
 
-// =============================================================
-// DRAGGABLE + SCALABLE STICKER (Image + Emoji)
-// =============================================================
 @Composable
 fun DraggableSticker(
     sticker: CardSticker,
@@ -341,7 +363,6 @@ fun DraggableSticker(
     var offsetY by remember { mutableStateOf(sticker.y) }
     var scale by remember { mutableStateOf(sticker.scale) }
 
-    // Update model → VM
     LaunchedEffect(offsetX, offsetY, scale) {
         sticker.x = offsetX
         sticker.y = offsetY
@@ -349,27 +370,20 @@ fun DraggableSticker(
         onUpdate(sticker)
     }
 
-    val gestureModifier =
-        Modifier
-            .pointerInput(Unit) {
-                detectTransformGestures { _, pan, zoom, _ ->
-
-                    val dx = with(density) { pan.x.toDp().value }
-                    val dy = with(density) { pan.y.toDp().value }
-
-                    offsetX += dx
-                    offsetY += dy
-
-                    scale = (scale * zoom).coerceIn(0.5f, 3.5f)
-                }
+    val gestureModifier = Modifier
+        .pointerInput(Unit) {
+            detectTransformGestures { _, pan, zoom, _ ->
+                val dx = with(density) { pan.x.toDp().value }
+                val dy = with(density) { pan.y.toDp().value }
+                offsetX += dx
+                offsetY += dy
+                scale = (scale * zoom).coerceIn(0.5f, 3.5f)
             }
-            .pointerInput(Unit) {
-                detectTapGestures(
-                    onLongPress = { onDelete(sticker) }
-                )
-            }
+        }
+        .pointerInput(Unit) {
+            detectTapGestures(onLongPress = { onDelete(sticker) })
+        }
 
-    // IMAGE STICKER
     if (sticker.drawableResId != null) {
         Image(
             painter = painterResource(sticker.drawableResId),
@@ -383,7 +397,6 @@ fun DraggableSticker(
         return
     }
 
-    // TEXT / EMOJI STICKER
     if (sticker.text != null) {
         Text(
             text = sticker.text,
