@@ -26,6 +26,11 @@ private const val TAG = "AlarmScheduler"
  * Schedules exact alarms for all reminder offsets.
  * This class DOES NOT handle notification tap intents.
  * (Handled inside ReminderReceiver → NotificationHelper)
+ *
+ * NOTE: request codes are now derived from the same deterministic
+ * notification-id formula used by ReminderReceiver/BootReceiver to
+ * avoid mismatches between PendingIntent request codes and posted
+ * notification ids.
  */
 @Singleton
 class AlarmScheduler @Inject constructor(
@@ -40,15 +45,30 @@ class AlarmScheduler @Inject constructor(
         DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss z")
 
     // =============================================================
-    // Request Code Generator
+    // Notification ID generator (shared formula)
     // =============================================================
+    /**
+     * Generate deterministic notification id based on reminderId + offsetMillis.
+     * This matches the logic used in ReminderReceiver and BootReceiver.
+     */
+    private fun generateNotificationId(reminderId: Long, offsetMillis: Long): Int {
+        val low = reminderId.toInt()
+        val high = (reminderId ushr 32).toInt()
+        val off = (offsetMillis xor (offsetMillis ushr 32)).toInt()
+        val v = (low xor high xor off)
+        return if (v == Int.MIN_VALUE) Int.MAX_VALUE else kotlin.math.abs(v)
+    }
 
+    // =============================================================
+    // Request Code Generator (uses same deterministic ID)
+    // =============================================================
     /**
      * Generate stable request code based on reminderId + offsetMillis.
+     * We intentionally reuse the deterministic notification id here to
+     * make it easy to relate PendingIntent request codes to notification ids.
      */
     private fun requestCodeFor(reminderId: Long, offsetMillis: Long): Int {
-        val mix = reminderId * 31 + offsetMillis
-        return (mix xor (mix ushr 32)).toInt()
+        return generateNotificationId(reminderId, offsetMillis)
     }
 
     // =============================================================
@@ -68,6 +88,7 @@ class AlarmScheduler @Inject constructor(
     ): PendingIntent {
 
         val intent = Intent(context, ReminderReceiver::class.java).apply {
+            // Keep the action unique and descriptive
             action = "com.example.eventreminder.REMIND_${reminderId}_$offsetMillis"
 
             putExtra(ReminderReceiver.EXTRA_REMINDER_ID, reminderId)
@@ -108,6 +129,10 @@ class AlarmScheduler @Inject constructor(
 
     /**
      * Schedule one exact alarm for one offset.
+     *
+     * NOTE: `eventTriggerMillis` is the "base" event time; function subtracts
+     * offsetMillis to compute actual trigger time (keeps backward compatibility
+     * with callers that pass base or adjusted values).
      */
     fun scheduleExact(
         reminderId: Long,

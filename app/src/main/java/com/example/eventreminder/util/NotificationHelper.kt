@@ -19,28 +19,33 @@ import timber.log.Timber
 // =============================================================
 private const val TAG = "NotificationHelper"
 private const val CHANNEL_ID = "event_channel"
+private const val CHANNEL_NAME = "Event Reminders"
 
 /**
  * NotificationHelper
  *
- * Now enhanced for TODO-7:
- * - Adds deep-link PendingIntent
- * - Passes extras for card generation flow
+ * Builds and posts notifications with advanced styling and actions:
+ *  - Emoji-rich BigText for birthdays/anniversaries
+ *  - Open Card & Dismiss action buttons
+ *  - Non-auto-cancel / persistent (not dismissable by swipe)
+ *
+ * NOTE: showNotification is a synchronous helper invoked from BroadcastReceiver.
  */
 object NotificationHelper {
 
     /**
      * Show reminder notification with deep link into MainActivity.
      *
-     * @param extras additional routing data:
-     *     - from_notification: Boolean
-     *     - reminder_id: Long
-     *     - event_type: BIRTHDAY / ANNIVERSARY
+     * @param notificationId deterministic id for later cancellation
+     * @param eventType optional: "BIRTHDAY" / "ANNIVERSARY" / "UNKNOWN"
+     * @param extras routing extras that will be forwarded to MainActivity when opening card
      */
     fun showNotification(
         context: Context,
+        notificationId: Int,
         title: String,
         message: String,
+        eventType: String = "UNKNOWN",
         extras: Map<String, Any?> = emptyMap()
     ) {
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -56,7 +61,7 @@ object NotificationHelper {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "Event Reminders",
+                CHANNEL_NAME,
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
                 description = "Reminders for your events"
@@ -73,53 +78,118 @@ object NotificationHelper {
         }
 
         // ---------------------------------------------------------
-        // Build deep-link intent → MainActivity
+        // Build deep-link intent → MainActivity (tap on notification)
+        // Use explicit MainActivity + extras so OS can recreate app and route correctly.
         // ---------------------------------------------------------
         val tapIntent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            // ensure we route to existing activity if available, otherwise start fresh
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
 
-            // ⭐ Pass routing extras (TODO-7)
+            // Forward routing extras for CardScreen
             extras.forEach { (key, value) ->
                 when (value) {
                     is Boolean -> putExtra(key, value)
                     is Long -> putExtra(key, value)
                     is String -> putExtra(key, value)
+                    is Int -> putExtra(key, value)
                 }
             }
         }
 
-        val pendingTap = PendingIntent.getActivity(
+        val tapPendingIntent = PendingIntent.getActivity(
             context,
-            System.currentTimeMillis().toInt(),
+            // stable request code derived from notificationId to ensure uniqueness across pending intents
+            notificationId,
             tapIntent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        Timber.tag(TAG).d("Notification → extras: $extras")
+        // ---------------------------------------------------------
+        // Action: Open Card (same as tap)
+        // ---------------------------------------------------------
+        val openIntent = Intent(context, MainActivity::class.java).apply {
+            action = ReminderReceiver.ACTION_OPEN_CARD
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            extras.forEach { (key, value) ->
+                when (value) {
+                    is Boolean -> putExtra(key, value)
+                    is Long -> putExtra(key, value)
+                    is String -> putExtra(key, value)
+                    is Int -> putExtra(key, value)
+                }
+            }
+        }
+        val openPendingIntent = PendingIntent.getActivity(
+            context,
+            // different request code to avoid collision with tapPendingIntent
+            notificationId + 1,
+            openIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
 
         // ---------------------------------------------------------
-        // Build notification
+        // Action: Dismiss — handled by ReminderReceiver (Broadcast)
         // ---------------------------------------------------------
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setContentTitle(title)                    // Title of the notification
-            .setContentText(message)                  // Body text
-            .setSmallIcon(R.drawable.ic_notification) // Icon shown in status bar
-            .setAutoCancel(true)                      // Dismiss when tapped
-            .setPriority(NotificationCompat.PRIORITY_HIGH) // High priority for heads-up
-            .setSound(soundUri)                       // Custom sound (pre-Oreo)
-            .setVibrate(longArrayOf(0, 250, 250, 250))// Vibration pattern
-            .setContentIntent(pendingTap)             // Deep link or action
-            .build()
+        val dismissIntent = Intent(context, ReminderReceiver::class.java).apply {
+            action = ReminderReceiver.ACTION_DISMISS
+            putExtra(ReminderReceiver.EXTRA_NOTIFICATION_ID, notificationId)
+        }
+        val dismissPendingIntent = PendingIntent.getBroadcast(
+            context,
+            // another distinct request code
+            notificationId + 2,
+            dismissIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
+        Timber.tag(TAG).d("Notification → extras: $extras | notificationId=$notificationId")
 
         // ---------------------------------------------------------
-        // Display notification
+        // Build rich content (emoji-aware). Use BigTextStyle for readability.
         // ---------------------------------------------------------
-        nm.notify(System.currentTimeMillis().toInt(), notification)
+        val emojiPrefix = when (eventType.uppercase()) {
+            "BIRTHDAY" -> "\uD83C\uDF89 "   // 🎉
+            "ANNIVERSARY" -> "\u2764\uFE0F " // ❤️
+            else -> ""
+        }
+        val fullMessage = "$emojiPrefix$message"
 
-        //logging
-        val notificationId = System.currentTimeMillis().toInt()
-        val timestamp = java.text.SimpleDateFormat("dd MMM yyyy, h:mm a", java.util.Locale.getDefault())
-            .format(java.util.Date())
-        Timber.tag(TAG).d("Notification posted → ID: $notificationId | Time: $timestamp | Title: \"$title\" | Message: \"$message\"")
+        val builder = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setContentTitle(title)
+            .setContentText(message)
+            .setSmallIcon(R.drawable.ic_notification)
+            // IMPORTANT: do not auto-cancel — we want the user to explicitly act.
+            .setAutoCancel(false)
+            // Make it not dismissable by swipe to satisfy requirement (user must tap action).
+            .setOngoing(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setSound(soundUri)
+            .setVibrate(longArrayOf(0, 250, 250, 250))
+            .setContentIntent(tapPendingIntent)
+            // Add action buttons
+            .addAction(
+                R.drawable.ic_open, // small icon resource (ensure icon exists)
+                "Open Card",
+                openPendingIntent
+            )
+            .addAction(
+                R.drawable.ic_close, // small icon resource (ensure icon exists)
+                "Dismiss",
+                dismissPendingIntent
+            )
+            // BigText style for expanded view
+            .setStyle(
+                NotificationCompat.BigTextStyle()
+                    .bigText(fullMessage)
+            )
+
+        // ---------------------------------------------------------
+        // Post notification
+        // ---------------------------------------------------------
+        nm.notify(notificationId, builder.build())
+
+        Timber.tag(TAG).d(
+            "Notification posted → ID: $notificationId | Title: \"$title\" | Message: \"$message\" | eventType=$eventType"
+        )
     }
 }
