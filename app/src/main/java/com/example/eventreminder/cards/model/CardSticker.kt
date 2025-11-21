@@ -1,21 +1,28 @@
 package com.example.eventreminder.cards.model
 
-import androidx.annotation.DrawableRes
+import java.util.UUID
+
+// =============================================================
+// CardSticker
+// =============================================================
 
 /**
- * Represents a sticker placed on the card.
+ * CardSticker
  *
- * @param drawableResId Resource ID of the sticker image (PNG/WebP/SVG in res)
- * @param x  X position in dp
- * @param y  Y position in dp
- * @param scale Sticker size multiplier (1f = 100%)
- * @param rotation Rotation in degrees
+ * A universal sticker model. A sticker can be:
+ *  - image sticker: drawableResId != null
+ *  - text sticker: text != null (emoji, letter, number, or phrase)
+ *
+ * Mutable fields (x,y,scale,rotation) are updated during interaction.
+ * id is stable and used for equality and updates.
  */
+
 data class CardSticker(
-    val id: Long = System.currentTimeMillis(),
-    @DrawableRes val drawableResId: Int,
-    var x: Float,
-    var y: Float,
+    val id: String = UUID.randomUUID().toString(),
+    val drawableResId: Int? = null,
+    val text: String? = null,
+    var x: Float = 0f,
+    var y: Float = 0f,
     var scale: Float = 1f,
-    val rotation: Float = 0f
+    var rotation: Float = 0f
 )

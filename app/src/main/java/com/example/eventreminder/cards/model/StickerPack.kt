@@ -8,7 +8,9 @@ data class StickerPack(
     val items: List<StickerItem>
 )
 
+/*
 data class StickerItem(
     val id: String,
     @DrawableRes val resId: Int
 )
+*/

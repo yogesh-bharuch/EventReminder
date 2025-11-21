@@ -17,4 +17,35 @@ object StickerPacks {
     )
 
     val default = listOf(birthdayPack)
+
+    val emojiPack = StickerPack(
+        id = "emoji_pack",
+        name = "Emoji",
+        items = listOf(
+            StickerItem(id = "e1", text = "🎂"),
+            StickerItem(id = "e2", text = "🎉"),
+            StickerItem(id = "e3", text = "🎈"),
+            StickerItem(id = "e4", text = "✨"),
+            StickerItem(id = "e5", text = "💖"),
+            StickerItem(id = "e6", text = "🥳")
+        )
+    )
+
+    val lettersPack = StickerPack(
+        id = "letters_pack",
+        name = "Letters",
+        items = ('A'..'Z').map { ch ->
+            StickerItem(id = "l_$ch", text = ch.toString())
+        }
+    )
+
+    val numbersPack = StickerPack(
+        id = "numbers_pack",
+        name = "Numbers",
+        items = ('0'..'9').map { n ->
+            StickerItem(id = "n_$n", text = n.toString())
+        }
+    )
+
+    val allPacks = listOf(birthdayPack, emojiPack, lettersPack, numbersPack)
 }

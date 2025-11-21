@@ -258,7 +258,7 @@ fun RenderStickers(
 }
 
 // =============================================================
-// DRAGGABLE + SCALABLE STICKER
+// DRAGGABLE + SCALABLE STICKER (Image + Emoji Support)
 // =============================================================
 
 @Composable
@@ -269,11 +269,12 @@ fun DraggableSticker(
 ) {
     val density = LocalDensity.current
 
+    // Sticker state
     var offsetX by remember { mutableStateOf(sticker.x) }
     var offsetY by remember { mutableStateOf(sticker.y) }
     var scale by remember { mutableStateOf(sticker.scale) }
 
-    // Update ViewModel in real-time
+    // Sync back to ViewModel
     LaunchedEffect(offsetX, offsetY, scale) {
         sticker.x = offsetX
         sticker.y = offsetY
@@ -286,13 +287,14 @@ fun DraggableSticker(
         .pointerInput(Unit) {
             detectTransformGestures { _, pan, zoom, _ ->
 
-                // MOVE
+                // Natural Movement
                 val dx = with(density) { pan.x.toDp().value }
                 val dy = with(density) { pan.y.toDp().value }
+
                 offsetX += dx
                 offsetY += dy
 
-                // SCALE
+                // Scaling
                 scale = (scale * zoom).coerceIn(0.5f, 3.5f)
             }
         }
@@ -302,14 +304,33 @@ fun DraggableSticker(
             )
         }
 
-    // ----------- Sticker Image -----------
-    Image(
-        painter = painterResource(sticker.drawableResId),
-        contentDescription = null,
-        modifier = Modifier
-            .offset(offsetX.dp, offsetY.dp)
-            .size((96 * scale).dp)
-            .graphicsLayer { rotationZ = sticker.rotation }
-            .then(gestureModifier)
-    )
+    // =============================================================
+    // IMAGE STICKER
+    // =============================================================
+    if (sticker.drawableResId != null) {
+        Image(
+            painter = painterResource(sticker.drawableResId),
+            contentDescription = null,
+            modifier = Modifier
+                .offset(offsetX.dp, offsetY.dp)
+                .size((96 * scale).dp)
+                .graphicsLayer { rotationZ = sticker.rotation }
+                .then(gestureModifier)
+        )
+        return
+    }
+
+    // =============================================================
+    // TEXT / EMOJI STICKER
+    // =============================================================
+    if (sticker.text != null) {
+        Text(
+            text = sticker.text,
+            fontSize = (40 * scale).sp,
+            modifier = Modifier
+                .offset(offsetX.dp, offsetY.dp)
+                .graphicsLayer { rotationZ = sticker.rotation }
+                .then(gestureModifier)
+        )
+    }
 }

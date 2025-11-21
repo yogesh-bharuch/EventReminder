@@ -96,13 +96,14 @@ class CardViewModel @Inject constructor(
 
         val newSticker = CardSticker(
             drawableResId = item.resId,
+            text = item.text,
             x = 100f,
             y = 100f,
             scale = 1f,
             rotation = 0f
         )
 
-        Timber.tag(TAG).d("Adding sticker id=%d", newSticker.id)
+        Timber.tag(TAG).d("Adding sticker id=%S", newSticker.id)
 
         _uiState.value = CardUiState.Data(
             current.copy(stickers = current.stickers + newSticker)
@@ -112,7 +113,7 @@ class CardViewModel @Inject constructor(
     fun removeSticker(sticker: CardSticker) {
         val current = (_uiState.value as? CardUiState.Data)?.cardData ?: return
 
-        Timber.tag(TAG).d("Removing sticker id=%d", sticker.id)
+        Timber.tag(TAG).d("Removing sticker id=%S", sticker.id)
 
         _uiState.value = CardUiState.Data(
             current.copy(stickers = current.stickers.filter { it.id != sticker.id })
