@@ -53,8 +53,7 @@ class MainActivity : ComponentActivity() {
 
                     if (fromNotification && isLoggedIn) {
 
-                        Timber.tag("MainActivity")
-                            .d("Handling notification → navigating to CardScreen(reminderId=$reminderId)")
+                        Timber.tag("MainActivity").d("Handling notification → navigating to CardScreen(reminderId=$reminderId)")
 
                         // Navigate to FINAL card screen (NOT debug)
                         navController.navigate(

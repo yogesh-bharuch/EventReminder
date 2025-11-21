@@ -14,6 +14,7 @@ import com.example.eventreminder.cards.state.CardUiState
 import com.example.eventreminder.cards.capture.CaptureBox
 import com.example.eventreminder.cards.capture.CaptureController
 import com.example.eventreminder.cards.capture.CardShareHelper
+import com.example.eventreminder.cards.model.StickerPacks
 import timber.log.Timber
 
 // =============================================================
@@ -53,8 +54,7 @@ fun CardScreen(
         }
     ) { paddingValues ->
 
-        Box(
-            modifier = Modifier
+        Box(modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
                 .padding(16.dp)
@@ -62,21 +62,9 @@ fun CardScreen(
 
             when (uiState) {
 
-                is CardUiState.Loading ->
-                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-
-                is CardUiState.Error ->
-                    Text(
-                        text = (uiState as CardUiState.Error).message,
-                        modifier = Modifier.align(Alignment.Center)
-                    )
-
-                is CardUiState.Placeholder ->
-                    Text(
-                        "No reminderId provided.",
-                        modifier = Modifier.align(Alignment.Center)
-                    )
-
+                is CardUiState.Loading -> CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                is CardUiState.Error -> Text(text = (uiState as CardUiState.Error).message, modifier = Modifier.align(Alignment.Center))
+                is CardUiState.Placeholder -> Text("No reminderId provided.", modifier = Modifier.align(Alignment.Center))
                 is CardUiState.Data -> {
 
                     val cardData = (uiState as CardUiState.Data).cardData
@@ -93,11 +81,16 @@ fun CardScreen(
                                 latestBitmap = bmp
                             }
                         ) {
-                            CardPreview(
-                                cardData = cardData,
-                                modifier = Modifier.fillMaxWidth()
-                            )
+                            CardPreview(cardData = cardData, modifier = Modifier.fillMaxWidth(), vm = viewModel)
                         }
+
+                        StickerBar(
+                            items = StickerPacks.birthdayPack.items,
+                            onStickerClick = { item ->
+                                // call VM to add a sticker
+                                viewModel.addSticker(item)
+                            }
+                        )
 
                         // ---------------------------------------------------------
                         // ACTION BUTTONS

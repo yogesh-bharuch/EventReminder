@@ -34,7 +34,7 @@ fun CaptureBox(
 
     Box(
         modifier = modifier
-            .graphicsLayer()
+            //.graphicsLayer()
             .onGloballyPositioned { layoutCoordinates ->
                 // Window offset of this composable (x,y in screen)
                 topLeft = layoutCoordinates.localToWindow(Offset.Zero)

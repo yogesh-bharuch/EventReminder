@@ -1,15 +1,12 @@
 package com.example.eventreminder.cards
 
-// =============================================================
-// Imports
-// =============================================================
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.eventreminder.R
 import com.example.eventreminder.cards.model.CardData
 import com.example.eventreminder.cards.model.CardSticker
 import com.example.eventreminder.cards.model.EventKind
+import com.example.eventreminder.cards.model.StickerItem
 import com.example.eventreminder.cards.state.CardUiState
 import com.example.eventreminder.data.model.EventReminder
 import com.example.eventreminder.data.model.ReminderTitle
@@ -46,11 +43,12 @@ class CardViewModel @Inject constructor(
     private val _uiState = MutableStateFlow<CardUiState>(CardUiState.Loading)
     val uiState: StateFlow<CardUiState> = _uiState.asStateFlow()
 
-    // Pulled from navigation arguments (typed navigation)
+    // Typed navigation argument (from CardScreen ← NavGraph)
     private val reminderIdArg: Long = savedStateHandle.get<Long>("reminderId") ?: -1L
 
     init {
-        Timber.tag(TAG).d("Initialized CardViewModel with reminderId=%d", reminderIdArg)
+        Timber.tag(TAG)
+            .d("CardViewModel init → reminderId=%d", reminderIdArg)
 
         if (reminderIdArg == -1L) {
             _uiState.value = CardUiState.Placeholder
@@ -59,14 +57,15 @@ class CardViewModel @Inject constructor(
         }
     }
 
+    // ---------------------------------------------------------
+    // Public API
+    // ---------------------------------------------------------
     fun refresh() {
-        if (reminderIdArg != -1L) {
-            loadReminder(reminderIdArg)
-        }
+        if (reminderIdArg != -1L) loadReminder(reminderIdArg)
     }
 
     // =========================================================
-    // Load Reminder
+    // Load Reminder + Transform to CardData
     // =========================================================
     private fun loadReminder(id: Long) {
         viewModelScope.launch {
@@ -79,24 +78,64 @@ class CardViewModel @Inject constructor(
                     return@launch
                 }
 
-                val card = buildCardData(reminder)
+                val cardData = buildCardData(reminder)
+                _uiState.value = CardUiState.Data(cardData)
 
-                _uiState.value = CardUiState.Data(card)
-
-            } catch (t: Throwable) {
-                Timber.tag(TAG).e(t, "Failed to load reminder id=%d", id)
+            } catch (e: Exception) {
+                Timber.tag(TAG).e(e, "Failed to load reminder id=%d", id)
                 _uiState.value = CardUiState.Error("Failed to load reminder.")
             }
         }
     }
 
     // =========================================================
-    // Build CardData (Core transformation)
+    // Sticker Add / Update / Delete
+    // =========================================================
+    fun addSticker(item: StickerItem) {
+        val current = (_uiState.value as? CardUiState.Data)?.cardData ?: return
+
+        val newSticker = CardSticker(
+            drawableResId = item.resId,
+            x = 100f,
+            y = 100f,
+            scale = 1f,
+            rotation = 0f
+        )
+
+        Timber.tag(TAG).d("Adding sticker id=%d", newSticker.id)
+
+        _uiState.value = CardUiState.Data(
+            current.copy(stickers = current.stickers + newSticker)
+        )
+    }
+
+    fun removeSticker(sticker: CardSticker) {
+        val current = (_uiState.value as? CardUiState.Data)?.cardData ?: return
+
+        Timber.tag(TAG).d("Removing sticker id=%d", sticker.id)
+
+        _uiState.value = CardUiState.Data(
+            current.copy(stickers = current.stickers.filter { it.id != sticker.id })
+        )
+    }
+
+    fun updateSticker(sticker: CardSticker) {
+        val current = (_uiState.value as? CardUiState.Data)?.cardData ?: return
+
+        _uiState.value = CardUiState.Data(
+            current.copy(
+                stickers = current.stickers.map { if (it.id == sticker.id) sticker else it }
+            )
+        )
+    }
+
+    // =========================================================
+    // Build CardData from EventReminder
     // =========================================================
     private fun buildCardData(reminder: EventReminder): CardData {
 
         // --------------------------
-        // Safety: ZoneId
+        // Resolve ZoneId safely
         // --------------------------
         val zone = try {
             ZoneId.of(reminder.timeZone)
@@ -120,44 +159,43 @@ class CardViewModel @Inject constructor(
                 reminder.timeZone,
                 reminder.repeatRule
             )
-        } catch (ex: Exception) {
-            Timber.tag(TAG).w(ex, "NextOccurrenceCalculator failed")
+        } catch (e: Exception) {
+            Timber.tag(TAG).w(e, "NextOccurrenceCalculator failed")
             null
         }
 
-        val nextInstantResolved = when {
+        val nextInstant = when {
             nextEpochMillis != null -> Instant.ofEpochMilli(nextEpochMillis)
             originalInstant.isAfter(Instant.now()) -> originalInstant
             else -> null
         }
 
         // --------------------------
-        // Formatting labels
+        // Date labels
         // --------------------------
-        val fmtOriginal = DateTimeFormatter.ofPattern("MMM d, yyyy")
-        val fmtNext = DateTimeFormatter.ofPattern("EEE, MMM d, yyyy")
-
-        val originalLabel = originalZdt.format(fmtOriginal)
-        val nextLabel = nextInstantResolved?.atZone(zone)?.format(fmtNext) ?: "N/A"
+        val originalLabel = originalZdt.format(DateTimeFormatter.ofPattern("MMM d, yyyy"))
+        val nextLabel = nextInstant?.atZone(zone)
+            ?.format(DateTimeFormatter.ofPattern("EEE, MMM d, yyyy"))
+            ?: "N/A"
 
         // --------------------------
-        // Determine kind (birthday / anniversary / generic)
+        // Determine event type
         // --------------------------
         val eventKind = mapTitleToEventKind(reminder.title)
 
         // --------------------------
-        // Age / Years label (only for Birthday/Anniversary)
+        // Age / Years (if needed)
         // --------------------------
         val yearsLabel = when (eventKind) {
             EventKind.BIRTHDAY, EventKind.ANNIVERSARY ->
-                computeYearsLabel(originalZdt.toLocalDate(), nextInstantResolved, zone)
+                computeYearsLabel(originalZdt.toLocalDate(), nextInstant, zone)
             else -> null
         }
 
         // --------------------------
-        // Base CardData
+        // Final CardData
         // --------------------------
-        val baseCard = CardData(
+        return CardData(
             reminderId = reminder.id,
             title = reminder.title.ifBlank { "Event" },
             name = reminder.description,
@@ -165,28 +203,9 @@ class CardViewModel @Inject constructor(
             ageOrYearsLabel = yearsLabel,
             originalDateLabel = originalLabel,
             nextDateLabel = nextLabel,
-            timezone = zone
+            timezone = zone,
+            stickers = emptyList()   // No default stickers (user adds manually)
         )
-
-        // =====================================================
-        // ⭐ STICKER INJECTION (TODO-8 Phase-2)
-        // =====================================================
-        val stickers = listOf(
-            CardSticker(
-                drawableResId = R.drawable.ic_image2, // ← your custom sticker file
-                x = 144f,
-                y = 48f,
-                scale = 1.1f
-            ),
-            CardSticker(
-                drawableResId = R.drawable.ic_cake, // ← your custom sticker file
-                x = 144f,
-                y = 144f,
-                scale = 0.8f
-            )
-        )
-
-        return baseCard.copy(stickers = stickers)
     }
 
     // =========================================================
@@ -205,6 +224,7 @@ class CardViewModel @Inject constructor(
         } catch (_: Exception) {}
 
         val lower = title.lowercase()
+
         return when {
             "birth" in lower -> EventKind.BIRTHDAY
             "anniv" in lower -> EventKind.ANNIVERSARY
@@ -218,16 +238,14 @@ class CardViewModel @Inject constructor(
         zone: ZoneId
     ): String? {
         return try {
-            val compareDate = (nextInstant ?: Instant.now())
-                .atZone(zone).toLocalDate()
+            val compareDate = (nextInstant ?: Instant.now()).atZone(zone).toLocalDate()
 
             var years = compareDate.year - originalDate.year
             if (compareDate.isBefore(originalDate.withYear(compareDate.year))) {
                 years--
             }
 
-            if (years >= 0) years.toString() else null
-
+            years.takeIf { it >= 0 }?.toString()
         } catch (e: Exception) {
             Timber.tag(TAG).w(e, "Failed computing years label")
             null

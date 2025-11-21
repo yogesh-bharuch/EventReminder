@@ -12,9 +12,10 @@ import androidx.annotation.DrawableRes
  * @param rotation Rotation in degrees
  */
 data class CardSticker(
+    val id: Long = System.currentTimeMillis(),
     @DrawableRes val drawableResId: Int,
-    val x: Float,
-    val y: Float,
-    val scale: Float = 1f,
+    var x: Float,
+    var y: Float,
+    var scale: Float = 1f,
     val rotation: Float = 0f
 )

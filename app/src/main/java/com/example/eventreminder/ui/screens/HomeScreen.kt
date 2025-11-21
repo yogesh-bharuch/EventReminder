@@ -88,7 +88,8 @@ fun HomeScreen(
 
             Button(onClick = {
                 //navController.navigate(DebugRoute)
-                navController.navigate(CardDebugRoute(reminderId = -1L, eventType = "UNKNOWN"))
+                //navController.navigate(CardDebugRoute(reminderId = -1L, eventType = "UNKNOWN"))
+                navController.navigate(CardRoute(reminderId = 26))
             }) {
                 Text("Developer Tools")
             }

@@ -5,6 +5,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.os.Build
 import android.provider.MediaStore
+import android.widget.Toast
 import timber.log.Timber
 import java.io.OutputStream
 
@@ -41,6 +42,7 @@ object BitmapSaver {
                 bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
             } ?: return null
 
+            Toast.makeText(context, "Saved to gallery", Toast.LENGTH_SHORT).show()
             uri.toString()
         } catch (e: Exception) {
             Timber.tag(TAG).e(e, "saveToGallery failed")

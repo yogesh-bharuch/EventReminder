@@ -1,24 +1,26 @@
 package com.example.eventreminder.cards.ui
 
-// =============================================================
-// Imports
-// =============================================================
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.eventreminder.cards.CardViewModel
 import com.example.eventreminder.cards.model.CardData
 import com.example.eventreminder.cards.model.CardSticker
 import com.example.eventreminder.cards.model.EventKind
@@ -30,38 +32,42 @@ import timber.log.Timber
 private const val TAG = "CardPreview"
 
 // =============================================================
-// PUBLIC API — Entry point for card templates
+// PUBLIC API — Entry point for rendering card templates
 // =============================================================
 
 /**
  * CardPreview
  *
- * Decides which card layout to render based on eventKind.
- * Stickers are handled inside each template.
+ * Decides which visual template to render based on eventKind.
+ * Stickers are drawn on top of the template inside each card.
  */
 @Composable
 fun CardPreview(
     cardData: CardData,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    vm: CardViewModel
 ) {
-    Timber.tag(TAG)
-        .d("Rendering card preview → kind=%s id=%d", cardData.eventKind, cardData.reminderId)
+    Timber.tag(TAG).d(
+        "Rendering card → kind=%s id=%d",
+        cardData.eventKind,
+        cardData.reminderId
+    )
 
     when (cardData.eventKind) {
-        EventKind.BIRTHDAY -> BirthdayCard(cardData, modifier)
-        EventKind.ANNIVERSARY -> AnniversaryCard(cardData, modifier)
-        else -> GenericCard(cardData, modifier)
+        EventKind.BIRTHDAY -> BirthdayCard(cardData, modifier, vm)
+        EventKind.ANNIVERSARY -> AnniversaryCard(cardData, modifier, vm)
+        else -> GenericCard(cardData, modifier, vm)
     }
 }
 
 // =============================================================
-// TEMPLATE: Birthday Card — Modern Flat UI (TODO-8 Style A)
+// TEMPLATE: Birthday Card
 // =============================================================
-
 @Composable
 private fun BirthdayCard(
     cardData: CardData,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    vm: CardViewModel
 ) {
     Surface(
         modifier = modifier
@@ -71,39 +77,49 @@ private fun BirthdayCard(
             .clip(RoundedCornerShape(16.dp)),
         color = MaterialTheme.colorScheme.primaryContainer
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize()) {
 
-            // ------------------------
-            // MAIN CONTENT
-            // ------------------------
-            Column(modifier = Modifier
+            // ----------- MAIN CONTENT -----------
+            Column(
+                modifier = Modifier
                     .padding(20.dp)
                     .align(Alignment.CenterStart)
             ) {
-                Text(text = cardData.title, style = MaterialTheme.typography.headlineSmall.copy(fontSize = 22.sp))
+
+                Text(
+                    text = cardData.title,
+                    style = MaterialTheme.typography.headlineSmall.copy(fontSize = 22.sp)
+                )
 
                 cardData.name?.let {
-                    Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(Modifier.height(6.dp))
                     Text(text = it, style = MaterialTheme.typography.titleMedium)
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(Modifier.height(12.dp))
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Age", style = MaterialTheme.typography.bodyMedium)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(text = cardData.ageOrYearsLabel ?: "-", style = MaterialTheme.typography.headlineSmall)
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = cardData.ageOrYearsLabel ?: "-",
+                        style = MaterialTheme.typography.headlineSmall
+                    )
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(Modifier.height(8.dp))
 
-                Text("Original: ${cardData.originalDateLabel}", style = MaterialTheme.typography.bodySmall)
-                Text("Next: ${cardData.nextDateLabel}", style = MaterialTheme.typography.bodySmall)
+                Text(
+                    "Original: ${cardData.originalDateLabel}",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Text(
+                    "Next: ${cardData.nextDateLabel}",
+                    style = MaterialTheme.typography.bodySmall
+                )
             }
 
-            // ------------------------
-            // TIMEZONE BADGE
-            // ------------------------
+            // ----------- TIMEZONE BADGE -----------
             Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
@@ -112,25 +128,27 @@ private fun BirthdayCard(
                     .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.80f))
                     .padding(horizontal = 10.dp, vertical = 6.dp)
             ) {
-                Text(text = cardData.timezone.id, style = MaterialTheme.typography.bodySmall)
+                Text(cardData.timezone.id, style = MaterialTheme.typography.bodySmall)
             }
 
-            // ------------------------
-            // ⭐ STICKERS OVERLAY
-            // ------------------------
-            RenderStickers(cardData.stickers)
+            // ----------- STICKERS -----------
+            RenderStickers(
+                stickers = cardData.stickers,
+                onDelete = { vm.removeSticker(it) },
+                onUpdate = { vm.updateSticker(it) }
+            )
         }
     }
 }
 
 // =============================================================
-// TEMPLATE: Anniversary Card — Modern Flat UI (TODO-8 Style A)
+// TEMPLATE: Anniversary Card
 // =============================================================
-
 @Composable
 private fun AnniversaryCard(
     cardData: CardData,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    vm: CardViewModel
 ) {
     Surface(
         modifier = modifier
@@ -140,44 +158,54 @@ private fun AnniversaryCard(
             .clip(RoundedCornerShape(16.dp)),
         color = MaterialTheme.colorScheme.secondaryContainer
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize()) {
 
-            // MAIN CONTENT
-            Column(modifier = Modifier.padding(20.dp)) {
+            // ----------- MAIN CONTENT -----------
+            Column(Modifier.padding(20.dp)) {
 
-                Text(text = cardData.title, style = MaterialTheme.typography.headlineSmall)
+                Text(cardData.title, style = MaterialTheme.typography.headlineSmall)
 
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(Modifier.height(10.dp))
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Years", style = MaterialTheme.typography.bodyMedium)
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(Modifier.width(8.dp))
                     Text(
                         text = cardData.ageOrYearsLabel ?: "-",
                         style = MaterialTheme.typography.headlineSmall
                     )
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(Modifier.height(12.dp))
 
-                Text("Original: ${cardData.originalDateLabel}", style = MaterialTheme.typography.bodySmall)
-                Text("Next: ${cardData.nextDateLabel}", style = MaterialTheme.typography.bodySmall)
+                Text(
+                    "Original: ${cardData.originalDateLabel}",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Text(
+                    "Next: ${cardData.nextDateLabel}",
+                    style = MaterialTheme.typography.bodySmall
+                )
             }
 
-            // ⭐ STICKERS
-            RenderStickers(cardData.stickers)
+            // ----------- STICKERS -----------
+            RenderStickers(
+                stickers = cardData.stickers,
+                onDelete = { vm.removeSticker(it) },
+                onUpdate = { vm.updateSticker(it) }
+            )
         }
     }
 }
 
 // =============================================================
-// TEMPLATE: Generic Card — Minimal Flat UI
+// TEMPLATE: Generic Card
 // =============================================================
-
 @Composable
 private fun GenericCard(
     cardData: CardData,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    vm: CardViewModel
 ) {
     Surface(
         modifier = modifier
@@ -187,41 +215,101 @@ private fun GenericCard(
             .clip(RoundedCornerShape(12.dp)),
         tonalElevation = 2.dp
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize()) {
 
-            // MAIN CONTENT
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(text = cardData.title, style = MaterialTheme.typography.titleLarge)
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(text = cardData.originalDateLabel, style = MaterialTheme.typography.bodySmall)
-                Text(text = cardData.nextDateLabel, style = MaterialTheme.typography.bodySmall)
+            // ----------- MAIN CONTENT -----------
+            Column(Modifier.padding(16.dp)) {
+                Text(cardData.title, style = MaterialTheme.typography.titleLarge)
+                Spacer(Modifier.height(6.dp))
+                Text(cardData.originalDateLabel, style = MaterialTheme.typography.bodySmall)
+                Text(cardData.nextDateLabel, style = MaterialTheme.typography.bodySmall)
             }
 
-            // ⭐ STICKERS
-            RenderStickers(cardData.stickers)
+            // ----------- STICKERS -----------
+            RenderStickers(
+                stickers = cardData.stickers,
+                onDelete = { vm.removeSticker(it) },
+                onUpdate = { vm.updateSticker(it) }
+            )
         }
     }
 }
 
 // =============================================================
-// INTERNAL — Sticker Renderer
+// STICKER RENDERER
 // =============================================================
 
 /**
- * Draw all stickers on top of the card.
+ * Renders all stickers on top of a card template.
  */
 @Composable
-private fun RenderStickers(stickers: List<CardSticker>) {
+fun RenderStickers(
+    stickers: List<CardSticker>,
+    onDelete: (CardSticker) -> Unit,
+    onUpdate: (CardSticker) -> Unit
+) {
     stickers.forEach { sticker ->
-        Image(
-            painter = painterResource(id = sticker.drawableResId),
-            contentDescription = null,
-            modifier = Modifier
-                .offset(sticker.x.dp, sticker.y.dp)
-                .size(96.dp * sticker.scale)
-                .graphicsLayer {
-                    rotationZ = sticker.rotation
-                }
+        DraggableSticker(
+            sticker = sticker,
+            onDelete = onDelete,
+            onUpdate = onUpdate
         )
     }
+}
+
+// =============================================================
+// DRAGGABLE + SCALABLE STICKER
+// =============================================================
+
+@Composable
+fun DraggableSticker(
+    sticker: CardSticker,
+    onDelete: (CardSticker) -> Unit,
+    onUpdate: (CardSticker) -> Unit
+) {
+    val density = LocalDensity.current
+
+    var offsetX by remember { mutableStateOf(sticker.x) }
+    var offsetY by remember { mutableStateOf(sticker.y) }
+    var scale by remember { mutableStateOf(sticker.scale) }
+
+    // Update ViewModel in real-time
+    LaunchedEffect(offsetX, offsetY, scale) {
+        sticker.x = offsetX
+        sticker.y = offsetY
+        sticker.scale = scale
+        onUpdate(sticker)
+    }
+
+    // ----------- Gesture Handler -----------
+    val gestureModifier = Modifier
+        .pointerInput(Unit) {
+            detectTransformGestures { _, pan, zoom, _ ->
+
+                // MOVE
+                val dx = with(density) { pan.x.toDp().value }
+                val dy = with(density) { pan.y.toDp().value }
+                offsetX += dx
+                offsetY += dy
+
+                // SCALE
+                scale = (scale * zoom).coerceIn(0.5f, 3.5f)
+            }
+        }
+        .pointerInput(Unit) {
+            detectTapGestures(
+                onLongPress = { onDelete(sticker) }
+            )
+        }
+
+    // ----------- Sticker Image -----------
+    Image(
+        painter = painterResource(sticker.drawableResId),
+        contentDescription = null,
+        modifier = Modifier
+            .offset(offsetX.dp, offsetY.dp)
+            .size((96 * scale).dp)
+            .graphicsLayer { rotationZ = sticker.rotation }
+            .then(gestureModifier)
+    )
 }
