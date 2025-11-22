@@ -9,7 +9,7 @@ import com.example.eventreminder.R
  * Keep packs simple arrays of BackgroundItem / StickerItem.
  */
 
-data class StickerItem(
+data class StickerItem_1(
     val id: String,
     @DrawableRes val resId: Int? = null,
     val text: String? = null
