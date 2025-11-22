@@ -25,21 +25,20 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.navigation.NavController
 import kotlinx.coroutines.launch
 import timber.log.Timber
 import android.net.Uri
 import androidx.compose.foundation.lazy.LazyColumn
-import com.example.eventreminder.card.model.withStickerPack
+import com.example.eventreminder.card_o.model.withStickerPack
 
 // Project functions
-import com.example.eventreminder.card.createBlankCardTest
-import com.example.eventreminder.card.render.CardRenderer
-import com.example.eventreminder.card.sample.CardSampleData
-import com.example.eventreminder.card.theme.ThemeEngine
+import com.example.eventreminder.card_o.createBlankCardTest
+import com.example.eventreminder.card_o.render.CardRenderer
+import com.example.eventreminder.card_o.sample.CardSampleData
+import com.example.eventreminder.card_o.theme.ThemeEngine
 import androidx.core.net.toUri
-import com.example.eventreminder.card.model.CardSticker
-import com.example.eventreminder.card.ui.StickerPackPicker
+import com.example.eventreminder.card_o.model.CardSticker
+import com.example.eventreminder.card_o.ui.StickerPackPicker
 
 // =============================================================
 // Constants

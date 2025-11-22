@@ -1,4 +1,4 @@
-package com.example.eventreminder.card.sample
+package com.example.eventreminder.card_o.sample
 
 // =============================================================
 // Imports
@@ -8,7 +8,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.sp
-import com.example.eventreminder.card.model.*
+import com.example.eventreminder.card_o.model.*
 import java.time.LocalDate
 import timber.log.Timber
 

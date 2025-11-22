@@ -1,4 +1,4 @@
-package com.example.eventreminder.card.render
+package com.example.eventreminder.card_o.render
 
 // =============================================================
 // Imports
@@ -9,7 +9,7 @@ import android.graphics.*
 import android.os.Build
 import android.provider.MediaStore
 import androidx.compose.ui.graphics.toArgb
-import com.example.eventreminder.card.model.CardRenderRequest
+import com.example.eventreminder.card_o.model.CardRenderRequest
 import timber.log.Timber
 import java.io.IOException
 import java.text.SimpleDateFormat

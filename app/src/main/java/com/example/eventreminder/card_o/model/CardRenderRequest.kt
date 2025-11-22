@@ -1,8 +1,6 @@
-package com.example.eventreminder.card.model
+package com.example.eventreminder.card_o.model
 
 // region Imports
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
 import timber.log.Timber
 // endregion
 

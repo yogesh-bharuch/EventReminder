@@ -1,4 +1,4 @@
-package com.example.eventreminder.card.model
+package com.example.eventreminder.card_o.model
 
 // region Imports
 import androidx.compose.ui.graphics.Color

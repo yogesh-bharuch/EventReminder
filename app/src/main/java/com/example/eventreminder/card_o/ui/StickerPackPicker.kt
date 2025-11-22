@@ -1,4 +1,4 @@
-package com.example.eventreminder.card.ui
+package com.example.eventreminder.card_o.ui
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -21,7 +21,7 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
-import com.example.eventreminder.card.model.StickerPackRepository
+import com.example.eventreminder.card_o.model.StickerPackRepository
 import timber.log.Timber
 
 // =============================================================

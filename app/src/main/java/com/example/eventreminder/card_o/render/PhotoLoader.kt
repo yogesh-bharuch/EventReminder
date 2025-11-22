@@ -1,4 +1,4 @@
-package com.example.eventreminder.card.render
+package com.example.eventreminder.card_o.render
 
 // region Imports
 import android.content.Context

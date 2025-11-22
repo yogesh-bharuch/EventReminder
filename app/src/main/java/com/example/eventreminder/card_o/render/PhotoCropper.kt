@@ -1,9 +1,9 @@
-package com.example.eventreminder.card.render
+package com.example.eventreminder.card_o.render
 
 // region Imports
 import android.graphics.*
 import timber.log.Timber
-import com.example.eventreminder.card.model.CardPhotoLayer
+import com.example.eventreminder.card_o.model.CardPhotoLayer
 // endregion
 
 // region Constants

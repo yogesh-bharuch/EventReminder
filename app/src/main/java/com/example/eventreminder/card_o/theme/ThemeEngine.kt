@@ -1,10 +1,10 @@
-package com.example.eventreminder.card.theme
+package com.example.eventreminder.card_o.theme
 
 // region Imports
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TileMode
-import com.example.eventreminder.card.model.CardTheme
+import com.example.eventreminder.card_o.model.CardTheme
 import timber.log.Timber
 // endregion
 

@@ -1,6 +1,5 @@
-package com.example.eventreminder.card.model
+package com.example.eventreminder.card_o.model
 
-import timber.log.Timber
 import com.example.eventreminder.R
 
 // =============================================================

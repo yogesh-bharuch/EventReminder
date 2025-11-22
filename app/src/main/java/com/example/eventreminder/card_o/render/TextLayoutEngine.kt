@@ -1,4 +1,4 @@
-package com.example.eventreminder.card.render
+package com.example.eventreminder.card_o.render
 
 // =============================================================
 // Imports
@@ -10,7 +10,7 @@ import android.text.StaticLayout
 import android.text.TextPaint
 import android.text.TextUtils
 import timber.log.Timber
-import com.example.eventreminder.card.model.TextAlignment
+import com.example.eventreminder.card_o.model.TextAlignment
 
 // =============================================================
 // Constants

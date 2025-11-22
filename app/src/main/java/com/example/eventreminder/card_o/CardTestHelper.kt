@@ -1,4 +1,4 @@
-package com.example.eventreminder.card
+package com.example.eventreminder.card_o
 
 import android.content.ContentValues
 import android.content.Context
@@ -8,7 +8,6 @@ import android.graphics.Paint
 import android.graphics.RectF
 import android.os.Build
 import android.provider.MediaStore
-import android.util.Log
 import timber.log.Timber
 import java.io.IOException
 
