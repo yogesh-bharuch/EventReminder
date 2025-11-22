@@ -151,7 +151,7 @@ fun CardScreen(
                                 Surface(
                                     modifier = Modifier
                                         .width(360.dp)
-                                        .height(340.dp)
+                                        .height(240.dp)
                                         .shadow(8.dp, RoundedCornerShape(16.dp))
                                         .clip(RoundedCornerShape(16.dp)),
                                     color = if (bgBmp == null)
@@ -167,7 +167,7 @@ fun CardScreen(
                                         contentDescription = "background",
                                         modifier = Modifier
                                             .width(360.dp)
-                                            .height(340.dp)
+                                            .height(240.dp)
                                             .clip(RoundedCornerShape(16.dp)),
                                         contentScale = ContentScale.Crop
                                     )

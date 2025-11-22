@@ -172,7 +172,7 @@ private fun BirthdayCard(cardData: CardData, modifier: Modifier, vm: CardViewMod
                     Text(text = cardData.ageOrYearsLabel ?: "-", style = MaterialTheme.typography.headlineSmall)
                 }
 
-                Spacer(Modifier.height(134.dp))
+                Spacer(Modifier.height(64.dp))
 
                 Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(text = "BirthDate: ${cardData.originalDateLabel}", style = MaterialTheme.typography.labelSmall)

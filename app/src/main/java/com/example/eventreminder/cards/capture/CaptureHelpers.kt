@@ -34,8 +34,8 @@ class CaptureController_n {
  * replace with your working implementation from the project.
  */
 @Composable
-fun CaptureBox(
-    controller: CaptureController,
+fun CaptureBox_o(
+    //controller: CaptureController,
     onCaptured: (Bitmap) -> Unit,
     content: @Composable () -> Unit
 ) {
