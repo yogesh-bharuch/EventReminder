@@ -12,7 +12,8 @@ object StickerPacks {
             StickerItem("cake2", R.drawable.ic_cake),    // optional extra
             StickerItem("balloons", R.drawable.ic_baloon1),
             StickerItem("party_hat", R.drawable.ic_cake2),
-            StickerItem("confetti", R.drawable.ic_star)
+            StickerItem("confetti", R.drawable.ic_star),
+            StickerItem("confetti", R.drawable.ic_birthday)
         )
     )
 

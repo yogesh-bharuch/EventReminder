@@ -3,6 +3,11 @@ package com.example.eventreminder.cards.ui
 // =============================================================
 // Imports
 // =============================================================
+import android.graphics.Bitmap
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -24,6 +29,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
@@ -41,7 +47,8 @@ import timber.log.Timber
 private const val TAG = "CardPreview"
 
 // =============================================================
-// PUBLIC API — CardPreview with avatar support
+// PUBLIC API — CardPreview with background-photo picker support
+// — now uses ViewModel persisted background state (B1: auto-fit)
 // =============================================================
 @Composable
 fun CardPreview(
@@ -56,16 +63,111 @@ fun CardPreview(
         cardData.reminderId
     )
 
-    when (cardData.eventKind) {
+    val context = LocalContext.current
 
-        EventKind.BIRTHDAY ->
-            BirthdayCard(cardData, modifier, vm, onAvatarClick)
+    // Use ViewModel persisted background
+    val bgBitmap by vm.backgroundBitmap.collectAsState()
 
-        EventKind.ANNIVERSARY ->
-            AnniversaryCard(cardData, modifier, vm, onAvatarClick)
+    // Background picker launcher (calls VM to persist)
+    val bgPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            Timber.tag(TAG).d("Background picked → $uri")
+            vm.onBackgroundImageSelected(context, uri)
+        } else {
+            Timber.tag(TAG).d("No background selected")
+        }
+    }
 
-        else ->
-            GenericCard(cardData, modifier, vm, onAvatarClick)
+    // Small BackgroundBar integrated above card (pick / clear)
+    Column(modifier = modifier) {
+        BackgroundBar(
+            onPick = {
+                bgPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            },
+            onClear = {
+                vm.clearBackground()
+            }
+        )
+
+        // Card rendering area
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp)
+                .heightIn(min = 200.dp),
+            contentAlignment = Alignment.TopCenter
+        ) {
+
+            // Background (auto-fit: ContentScale.Crop semantics approximated by downsample + match size)
+            if (bgBitmap != null) {
+                Image(
+                    bitmap = bgBitmap!!.asImageBitmap(),
+                    contentDescription = "Card background",
+                    modifier = Modifier
+                        .width(360.dp)
+                        .height(240.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                )
+            }
+
+            // Template on top (transparent surfaces to reveal background)
+            when (cardData.eventKind) {
+                EventKind.BIRTHDAY ->
+                    BirthdayCard(cardData = cardData, modifier = Modifier, vm = vm, onAvatarClick = onAvatarClick)
+                EventKind.ANNIVERSARY ->
+                    AnniversaryCard(cardData = cardData, modifier = Modifier, vm = vm, onAvatarClick = onAvatarClick)
+                else ->
+                    GenericCard(cardData = cardData, modifier = Modifier, vm = vm, onAvatarClick = onAvatarClick)
+            }
+        }
+    }
+}
+
+// =============================================================
+// BackgroundBar — small UI to pick/clear photo backgrounds
+// =============================================================
+@Composable
+private fun BackgroundBar(
+    onPick: () -> Unit,
+    onClear: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        // Pick tile
+        Box(
+            modifier = Modifier
+                .size(52.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .pointerInput(Unit) {
+                    detectTapGestures { onPick() }
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            Text("Pick", style = MaterialTheme.typography.labelMedium)
+        }
+
+        // Clear tile
+        Box(
+            modifier = Modifier
+                .size(52.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .pointerInput(Unit) {
+                    detectTapGestures { onClear() }
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            Text("Clear", style = MaterialTheme.typography.labelMedium)
+        }
+
+        Spacer(modifier = Modifier.weight(1f))
     }
 }
 
@@ -163,7 +265,7 @@ private fun BirthdayCard(
             .height(240.dp)
             .shadow(8.dp, RoundedCornerShape(16.dp))
             .clip(RoundedCornerShape(16.dp)),
-        color = MaterialTheme.colorScheme.primaryContainer
+        color = Color.Transparent // keep transparent to show bg under it
     ) {
         Box(Modifier.fillMaxSize()) {
 
@@ -176,14 +278,17 @@ private fun BirthdayCard(
                     .padding(start = 20.dp, top = 20.dp, end = 20.dp)
             ) {
                 Text(
-                    text = "Haapy " + cardData.title,
+                    text = "Happy ${cardData.title}",
                     style = MaterialTheme.typography.headlineSmall.copy(fontSize = 22.sp)
                 )
+
                 cardData.name?.let {
                     Spacer(Modifier.height(6.dp))
                     Text(text = it, style = MaterialTheme.typography.titleMedium)
                 }
+
                 Spacer(Modifier.height(12.dp))
+
                 // YEARS BADGE (glowing circle)
                 Box(
                     modifier = Modifier
@@ -219,15 +324,22 @@ private fun BirthdayCard(
                 }
 
                 Spacer(Modifier.height(55.dp))
-                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(text = "BirthDate: ${cardData.originalDateLabel}", style = MaterialTheme.typography.labelSmall)
-
+                    Text(
+                        text = "BirthDate: ${cardData.originalDateLabel}",
+                        style = MaterialTheme.typography.labelSmall
+                    )
                     Spacer(modifier = Modifier.weight(1f)) // pushes next text to right
-
-                    Text(text = "Yogesh", style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.End)
+                    Text(
+                        text = "Yogesh",
+                        style = MaterialTheme.typography.labelSmall,
+                        textAlign = TextAlign.End
+                    )
                 }
-
             }
 
             RenderStickers(
@@ -257,7 +369,7 @@ private fun AnniversaryCard(
             .height(240.dp)
             .shadow(8.dp, RoundedCornerShape(16.dp))
             .clip(RoundedCornerShape(16.dp)),
-        color = MaterialTheme.colorScheme.secondaryContainer
+        color = Color.Transparent
     ) {
         Box(Modifier.fillMaxSize()) {
 
@@ -309,7 +421,8 @@ private fun GenericCard(
             .height(220.dp)
             .shadow(6.dp, RoundedCornerShape(12.dp))
             .clip(RoundedCornerShape(12.dp)),
-        tonalElevation = 2.dp
+        tonalElevation = 2.dp,
+        color = Color.Transparent
     ) {
         Box(Modifier.fillMaxSize()) {
 
@@ -359,51 +472,65 @@ fun DraggableSticker(
 ) {
     val density = LocalDensity.current
 
+    // Local mutable state for interactive transforms
     var offsetX by remember { mutableStateOf(sticker.x) }
     var offsetY by remember { mutableStateOf(sticker.y) }
     var scale by remember { mutableStateOf(sticker.scale) }
+    var rotation by remember { mutableStateOf(sticker.rotation) }
 
-    LaunchedEffect(offsetX, offsetY, scale) {
+    // Sync local state back to the sticker + notify VM when changed
+    LaunchedEffect(offsetX, offsetY, scale, rotation) {
         sticker.x = offsetX
         sticker.y = offsetY
         sticker.scale = scale
+        sticker.rotation = rotation
         onUpdate(sticker)
     }
 
+    // Gesture modifier: transform gestures (pan/zoom/rotate) + long-press delete
+    // Using two pointerInput blocks is fine; keeps code simple and reliable.
     val gestureModifier = Modifier
         .pointerInput(Unit) {
-            detectTransformGestures { _, pan, zoom, _ ->
+            detectTransformGestures { centroid, pan, zoom, rotate ->
+                // convert pan from pixels -> dp
                 val dx = with(density) { pan.x.toDp().value }
                 val dy = with(density) { pan.y.toDp().value }
+
                 offsetX += dx
                 offsetY += dy
+
+                // apply zoom and rotation clamping
                 scale = (scale * zoom).coerceIn(0.5f, 3.5f)
+                rotation += rotate
             }
         }
         .pointerInput(Unit) {
-            detectTapGestures(onLongPress = { onDelete(sticker) })
+            detectTapGestures(
+                onLongPress = { onDelete(sticker) }
+            )
         }
 
+    // Render image sticker (drawable) or text/emoji sticker
     if (sticker.drawableResId != null) {
         Image(
             painter = painterResource(sticker.drawableResId),
             contentDescription = null,
             modifier = Modifier
-                .offset(offsetX.dp, offsetY.dp)
+                .offset(x = offsetX.dp, y = offsetY.dp)
                 .size((96 * scale).dp)
-                .graphicsLayer { rotationZ = sticker.rotation }
+                .graphicsLayer { rotationZ = rotation }
                 .then(gestureModifier)
         )
         return
     }
 
-    if (sticker.text != null) {
+    if (!sticker.text.isNullOrEmpty()) {
         Text(
             text = sticker.text,
             fontSize = (40 * scale).sp,
             modifier = Modifier
-                .offset(offsetX.dp, offsetY.dp)
-                .graphicsLayer { rotationZ = sticker.rotation }
+                .offset(x = offsetX.dp, y = offsetY.dp)
+                .graphicsLayer { rotationZ = rotation }
                 .then(gestureModifier)
         )
     }

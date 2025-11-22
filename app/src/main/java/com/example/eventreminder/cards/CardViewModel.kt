@@ -1,11 +1,15 @@
 package com.example.eventreminder.cards
 
+// =============================================================
+// Imports
+// =============================================================
 import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.eventreminder.cards.model.CardBackground
 import com.example.eventreminder.cards.model.CardData
 import com.example.eventreminder.cards.model.CardSticker
 import com.example.eventreminder.cards.model.EventKind
@@ -17,12 +21,14 @@ import com.example.eventreminder.data.repo.ReminderRepository
 import com.example.eventreminder.util.NextOccurrenceCalculator
 import com.example.eventreminder.cards.util.ImageUtil
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import timber.log.Timber
+import java.io.File
 import java.time.*
 import java.time.format.DateTimeFormatter
 import javax.inject.Inject
@@ -33,35 +39,43 @@ import javax.inject.Inject
 private const val TAG = "CardViewModel"
 
 // =============================================================
-// ViewModel
+// CardViewModel
+// - Hilt-injected ApplicationContext (option A chosen)
+// - Handles avatar + background pipelines, stickers, and building CardData
 // =============================================================
 @HiltViewModel
 class CardViewModel @Inject constructor(
+    @ApplicationContext private val appContext: Context,
     private val repo: ReminderRepository,
     private val nextCalculator: NextOccurrenceCalculator,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
     // ---------------------------------------------------------
-    // UI State
+    // UI / Domain State
     // ---------------------------------------------------------
     private val _uiState = MutableStateFlow<CardUiState>(CardUiState.Loading)
     val uiState: StateFlow<CardUiState> = _uiState.asStateFlow()
 
-    // Avatar image state (in-memory + cached path)
+    // Avatar state (in-memory bitmap + persisted cache path)
     private val _avatarBitmap = MutableStateFlow<Bitmap?>(null)
     val avatarBitmap: StateFlow<Bitmap?> = _avatarBitmap.asStateFlow()
 
     private val _avatarPath = MutableStateFlow<String?>(null)
     val avatarPath: StateFlow<String?> = _avatarPath.asStateFlow()
 
+    // Background state (persisted to EventReminder.backgroundUri)
+    private val _background = MutableStateFlow<CardBackground?>(null)
+    val background: StateFlow<CardBackground?> = _background
+
+    private val _backgroundBitmap = MutableStateFlow<Bitmap?>(null)
+    val backgroundBitmap: StateFlow<Bitmap?> = _backgroundBitmap.asStateFlow()
+
     // ---------------------------------------------------------
-    // Avatar transform state (so avatar can be moved/scaled like a sticker)
-    // Mode A: only one avatar; transform preserved in VM while editing session.
-    // Values are in dp for x/y offsets and scale as float.
+    // Avatar transform (dp/float values) preserved in VM during editing
     // ---------------------------------------------------------
-    private val _avatarOffsetX = MutableStateFlow(220f)   // default inside-card left padding (dp)
-    private val _avatarOffsetY = MutableStateFlow(24f)   // default top padding (dp)
+    private val _avatarOffsetX = MutableStateFlow(220f)
+    private val _avatarOffsetY = MutableStateFlow(24f)
     private val _avatarScale = MutableStateFlow(1.1f)
     private val _avatarRotation = MutableStateFlow(0f)
 
@@ -70,7 +84,7 @@ class CardViewModel @Inject constructor(
     val avatarScale: StateFlow<Float> = _avatarScale.asStateFlow()
     val avatarRotation: StateFlow<Float> = _avatarRotation.asStateFlow()
 
-    // Typed navigation arg
+    // Navigation argument (typed)
     private val reminderIdArg: Long = savedStateHandle.get<Long>("reminderId") ?: -1L
 
     init {
@@ -82,9 +96,85 @@ class CardViewModel @Inject constructor(
         }
     }
 
-    // ---------------------------------------------------------
-    // Existing sticker APIs (unchanged)
-    // ---------------------------------------------------------
+    // =========================================================
+    // Background helpers (persisted to Reminder.backgroundUri)
+    // =========================================================
+
+    /**
+     * Called when the user picks a background image (URI returned by picker).
+     * Steps:
+     *  - decode with ImageUtil.loadBitmapFromUri()
+     *  - save to cache via ImageUtil.saveBitmapToCache()
+     *  - update in-memory bitmap for immediate UI
+     *  - persist cached path to EventReminder.backgroundUri using repo.update(...)
+     */
+    fun onBackgroundImageSelected(context: Context, imageUri: Uri) {
+        if (reminderIdArg == -1L) return
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                Timber.tag(TAG).d("Loading background image from uri: $imageUri")
+                val bmp = ImageUtil.loadBitmapFromUri(context, imageUri, maxDim = 2000)
+                if (bmp == null) {
+                    Timber.tag(TAG).w("Failed to decode background image")
+                    return@launch
+                }
+
+                // Save to app cache and persist the path string
+                val cachedPath = ImageUtil.saveBitmapToCache(context, bmp, filenamePrefix = "bg_")
+                if (cachedPath == null) {
+                    Timber.tag(TAG).e("Failed to save background to cache")
+                    return@launch
+                }
+
+                // Update in-memory bitmap for immediate UI
+                _backgroundBitmap.value = bmp
+
+                // Persist to DB: load reminder, update backgroundUri, call repo.update(reminder)
+                val reminder = repo.getReminder(reminderIdArg)
+                if (reminder != null) {
+                    val updated = reminder.copy(backgroundUri = cachedPath)
+                    repo.update(updated)
+                    Timber.tag(TAG).d("Persisted backgroundUri to reminder id=${reminder.id} path=$cachedPath")
+                } else {
+                    Timber.tag(TAG).w("Reminder not found when saving background (id=$reminderIdArg)")
+                }
+            } catch (t: Throwable) {
+                Timber.tag(TAG).e(t, "Error in onBackgroundImageSelected")
+            }
+        }
+    }
+
+    /**
+     * Clear the background image from memory + DB.
+     */
+    fun clearBackground() {
+        if (reminderIdArg == -1L) {
+            _backgroundBitmap.value = null
+            return
+        }
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                _backgroundBitmap.value = null
+
+                val reminder = repo.getReminder(reminderIdArg)
+                if (reminder != null) {
+                    val updated = reminder.copy(backgroundUri = null)
+                    repo.update(updated)
+                    Timber.tag(TAG).d("Cleared backgroundUri for reminder id=${reminder.id}")
+                } else {
+                    Timber.tag(TAG).w("Reminder not found when clearing background (id=$reminderIdArg)")
+                }
+            } catch (t: Throwable) {
+                Timber.tag(TAG).e(t, "Failed clearing background")
+            }
+        }
+    }
+
+    // =========================================================
+    // Sticker APIs (unchanged)
+    // =========================================================
     fun addSticker(item: StickerItem) {
         val current = (_uiState.value as? CardUiState.Data)?.cardData ?: return
 
@@ -124,11 +214,12 @@ class CardViewModel @Inject constructor(
         )
     }
 
-    // ---------------------------------------------------------
-    // Image / Avatar pipeline
-    // ---------------------------------------------------------
+    // =========================================================
+    // Avatar / Image pipeline
+    // =========================================================
+
     /**
-     * After user selects an image Uri — load a downsampled bitmap for cropper/preview.
+     * When user selects an image URI for avatar (before crop) — load downsampled preview.
      */
     fun onImageUriSelected(context: Context, uri: Uri) {
         viewModelScope.launch(Dispatchers.IO) {
@@ -147,8 +238,7 @@ class CardViewModel @Inject constructor(
     }
 
     /**
-     * When user confirms crop — convert to circular avatar, save to cache,
-     * replace any existing avatar (Mode A).
+     * After cropping, convert to circular avatar, save to cache and update VM state.
      */
     fun onCroppedSquareBitmapSaved(context: Context, croppedSquare: Bitmap) {
         viewModelScope.launch(Dispatchers.IO) {
@@ -157,7 +247,6 @@ class CardViewModel @Inject constructor(
                 val circ = ImageUtil.toCircularBitmap(square)
                 val path = ImageUtil.saveBitmapToCache(context, circ)
                 if (path != null) {
-                    // Replace existing avatar (Mode A)
                     _avatarPath.value = path
                     _avatarBitmap.value = circ
 
@@ -177,22 +266,15 @@ class CardViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Replace avatar with null (clear). Mode A: keep this private or behind explicit UI.
-     */
     fun clearAvatar() {
         _avatarPath.value = null
         _avatarBitmap.value = null
-        // reset transforms
         _avatarOffsetX.value = 12f
         _avatarOffsetY.value = 12f
         _avatarScale.value = 1f
         _avatarRotation.value = 0f
     }
 
-    // ---------------------------------------------------------
-    // Avatar transform updates (called by AvatarDraggable composable)
-    // ---------------------------------------------------------
     fun updateAvatarTransform(xDp: Float, yDp: Float, scale: Float, rotation: Float = 0f) {
         _avatarOffsetX.value = xDp
         _avatarOffsetY.value = yDp
@@ -200,7 +282,6 @@ class CardViewModel @Inject constructor(
         _avatarRotation.value = rotation
     }
 
-    // Optional individual updates
     fun updateAvatarOffset(xDp: Float, yDp: Float) {
         _avatarOffsetX.value = xDp
         _avatarOffsetY.value = yDp
@@ -210,26 +291,63 @@ class CardViewModel @Inject constructor(
         _avatarScale.value = scale
     }
 
-    // ---------------------------------------------------------
-    // Existing reminder loading + card building code (unchanged)
-    // ---------------------------------------------------------
-    fun refresh() { if (reminderIdArg != -1L) loadReminder(reminderIdArg) }
+    // =========================================================
+    // Reminder loading — loads background bitmap (if saved) and CardData
+    // =========================================================
+    fun refresh() {
+        if (reminderIdArg != -1L) loadReminder(reminderIdArg)
+    }
 
     private fun loadReminder(id: Long) {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             _uiState.value = CardUiState.Loading
+
             try {
                 val reminder = repo.getReminder(id)
                 if (reminder == null) {
                     _uiState.value = CardUiState.Error("Reminder not found.")
                     return@launch
                 }
+
+                // Load background from DB (cached path or content://)
+                val bgUriString = reminder.backgroundUri
+                if (!bgUriString.isNullOrBlank()) {
+                    try {
+                        val bmp = loadBitmapFromPathString(appContext, bgUriString)
+                        _backgroundBitmap.value = bmp
+                        Timber.tag(TAG).d("Loaded background for reminder id=$id from $bgUriString")
+                    } catch (t: Throwable) {
+                        Timber.tag(TAG).w(t, "Failed to load background from path: $bgUriString")
+                        _backgroundBitmap.value = null
+                    }
+                } else {
+                    _backgroundBitmap.value = null
+                }
+
                 val cardData = buildCardData(reminder)
                 _uiState.value = CardUiState.Data(cardData)
+
             } catch (e: Exception) {
                 Timber.tag(TAG).e(e, "Failed to load reminder id=%d", id)
                 _uiState.value = CardUiState.Error("Failed to load reminder.")
             }
+        }
+    }
+
+    /**
+     * Helper: load bitmap from a saved path string (content://, file:// or plain file path)
+     * Returns null on any failure.
+     */
+    private fun loadBitmapFromPathString(context: Context, pathStr: String): Bitmap? {
+        return try {
+            val uri = when {
+                pathStr.startsWith("content://") || pathStr.startsWith("file://") -> Uri.parse(pathStr)
+                else -> Uri.fromFile(File(pathStr))
+            }
+            ImageUtil.loadBitmapFromUri(context, uri, maxDim = 2000)
+        } catch (t: Throwable) {
+            Timber.tag(TAG).e(t, "loadBitmapFromPathString failed for: $pathStr")
+            null
         }
     }
 
@@ -238,9 +356,7 @@ class CardViewModel @Inject constructor(
     // =========================================================
     private fun buildCardData(reminder: EventReminder): CardData {
 
-        // --------------------------
         // Resolve ZoneId safely
-        // --------------------------
         val zone = try {
             ZoneId.of(reminder.timeZone)
         } catch (e: Exception) {
@@ -248,15 +364,11 @@ class CardViewModel @Inject constructor(
             ZoneId.systemDefault()
         }
 
-        // --------------------------
         // Original date
-        // --------------------------
         val originalInstant = Instant.ofEpochMilli(reminder.eventEpochMillis)
         val originalZdt = ZonedDateTime.ofInstant(originalInstant, zone)
 
-        // --------------------------
         // Next occurrence
-        // --------------------------
         val nextEpochMillis = try {
             nextCalculator.nextOccurrence(
                 reminder.eventEpochMillis,
@@ -274,31 +386,23 @@ class CardViewModel @Inject constructor(
             else -> null
         }
 
-        // --------------------------
         // Date labels
-        // --------------------------
         val originalLabel = originalZdt.format(DateTimeFormatter.ofPattern("MMM d, yyyy"))
         val nextLabel = nextInstant?.atZone(zone)
             ?.format(DateTimeFormatter.ofPattern("EEE, MMM d, yyyy"))
             ?: "N/A"
 
-        // --------------------------
-        // Determine event type
-        // --------------------------
+        // Event kind
         val eventKind = mapTitleToEventKind(reminder.title)
 
-        // --------------------------
-        // Age / Years (if needed)
-        // --------------------------
+        // Years / Age label
         val yearsLabel = when (eventKind) {
             EventKind.BIRTHDAY, EventKind.ANNIVERSARY ->
                 computeYearsLabel(originalZdt.toLocalDate(), nextInstant, zone)
             else -> null
         }
 
-        // --------------------------
         // Final CardData
-        // --------------------------
         return CardData(
             reminderId = reminder.id,
             title = reminder.title.ifBlank { "Event" },
@@ -308,7 +412,7 @@ class CardViewModel @Inject constructor(
             originalDateLabel = originalLabel,
             nextDateLabel = nextLabel,
             timezone = zone,
-            stickers = emptyList()   // No default stickers (user adds manually)
+            stickers = emptyList()
         )
     }
 
@@ -328,7 +432,6 @@ class CardViewModel @Inject constructor(
         } catch (_: Exception) {}
 
         val lower = title.lowercase()
-
         return when {
             "birth" in lower -> EventKind.BIRTHDAY
             "anniv" in lower -> EventKind.ANNIVERSARY
@@ -336,15 +439,13 @@ class CardViewModel @Inject constructor(
         }
     }
 
-    private fun computeYearsLabel(originalDate: LocalDate, nextInstant: Instant?, zone: ZoneId): String? {
+    private fun computeYearsLabel(originalDate: java.time.LocalDate, nextInstant: Instant?, zone: ZoneId): String? {
         return try {
             val compareDate = (nextInstant ?: Instant.now()).atZone(zone).toLocalDate()
-
             var years = compareDate.year - originalDate.year
             if (compareDate.isBefore(originalDate.withYear(compareDate.year))) {
                 years--
             }
-
             years.takeIf { it >= 0 }?.toString()
         } catch (e: Exception) {
             Timber.tag(TAG).w(e, "Failed computing years label")

@@ -15,13 +15,10 @@ data class EventReminder(
 
     val title: String,
     val description: String? = null,
-
     val eventEpochMillis: Long,
     val timeZone: String,
-
     val repeatRule: String? = null,
-
     val reminderOffsets: List<Long> = listOf(0L),
-
-    val enabled: Boolean = true
+    val enabled: Boolean = true,
+    val backgroundUri: String? = null   // file path or content URI
 )
