@@ -1,8 +1,5 @@
 package com.example.eventreminder.cards.ui
 
-// =============================================================
-// Imports
-// =============================================================
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -12,7 +9,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -25,10 +22,7 @@ import com.example.eventreminder.cards.model.BackgroundItem
 import com.example.eventreminder.cards.model.StickerItem
 
 /**
- * FINAL — clean, error-free CombinedControls
- * - Background Pick/Clear + Predefined thumbnails
- * - Category chips row
- * - Sticker bar row
+ * FINAL CombinedControls with proper category control
  */
 @Composable
 fun CombinedControls(
@@ -36,10 +30,13 @@ fun CombinedControls(
     onClearBackground: () -> Unit,
     backgroundItems: List<BackgroundItem>,
     onPredefinedBgSelected: (BackgroundItem) -> Unit,
+
+    selectedCategory: Int,
+    onCategorySelected: (Int) -> Unit,
+
     stickerItems: List<StickerItem>,
     onStickerClick: (StickerItem) -> Unit
 ) {
-    var selectedCategory by remember { mutableStateOf(0) }
 
     Column(
         modifier = Modifier
@@ -48,55 +45,22 @@ fun CombinedControls(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
 
-        // -------------------------------------------------------
-        // SECTION LABEL
-        // -------------------------------------------------------
         Text(
             "Customize",
             style = MaterialTheme.typography.titleSmall,
             modifier = Modifier.padding(start = 6.dp)
         )
 
-        // -------------------------------------------------------
-        // ROW 1 → Pick / Clear + Predefined Backgrounds
-        // -------------------------------------------------------
+        // ---- PICK / CLEAR ----
         LazyRow(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             contentPadding = PaddingValues(horizontal = 10.dp)
         ) {
-
-            // Pick
-            item {
-                ControlTile(label = "Pick") { onPickBackground() }
-            }
-
-            // Clear
-            item {
-                ControlTile(label = "Clear") { onClearBackground() }
-            }
-
-            // Predefined backgrounds
-            items(backgroundItems) { bg ->
-                Box(
-                    modifier = Modifier
-                        .size(72.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Color.LightGray.copy(alpha = 0.25f))
-                        .clickable { onPredefinedBgSelected(bg) }
-                ) {
-                    Image(
-                        painter = painterResource(bg.resId),
-                        contentDescription = bg.name,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
-                    )
-                }
-            }
+            item { ControlTile("Pick", onPickBackground) }
+            item { ControlTile("Clear", onClearBackground) }
         }
 
-        // -------------------------------------------------------
-        // ROW 2 → Category Chips
-        // -------------------------------------------------------
+        // ---- CATEGORY CHIPS ----
         val labels = listOf("Images", "Smileys", "Hearts", "Party", "Misc")
 
         LazyRow(
@@ -105,6 +69,7 @@ fun CombinedControls(
         ) {
             items(labels.indices.toList()) { idx ->
                 val selected = idx == selectedCategory
+
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(20.dp))
@@ -112,18 +77,16 @@ fun CombinedControls(
                             if (selected) MaterialTheme.colorScheme.primaryContainer
                             else MaterialTheme.colorScheme.surfaceVariant
                         )
-                        .clickable { selectedCategory = idx }
+                        .clickable { onCategorySelected(idx) }
                         .padding(horizontal = 14.dp, vertical = 10.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(labels[idx], color = MaterialTheme.colorScheme.onSurface)
+                    Text(labels[idx])
                 }
             }
         }
 
-        // -------------------------------------------------------
-        // ROW 3 → Sticker Thumbnails
-        // -------------------------------------------------------
+        // ---- STICKER LIST ----
         LazyRow(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             contentPadding = PaddingValues(horizontal = 10.dp)
@@ -148,10 +111,7 @@ fun CombinedControls(
                             .clickable { onStickerClick(st) },
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = st.text ?: "",
-                            style = MaterialTheme.typography.titleLarge
-                        )
+                        Text(st.text ?: "", style = MaterialTheme.typography.titleLarge)
                     }
                 }
             }
@@ -159,9 +119,6 @@ fun CombinedControls(
     }
 }
 
-/**
- * Small reusable tile for Pick / Clear
- */
 @Composable
 private fun ControlTile(label: String, onClick: () -> Unit) {
     Box(

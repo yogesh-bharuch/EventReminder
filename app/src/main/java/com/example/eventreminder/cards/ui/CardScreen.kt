@@ -31,6 +31,7 @@ import com.example.eventreminder.cards.capture.CaptureController
 import com.example.eventreminder.cards.capture.CardShareHelper
 import com.example.eventreminder.cards.model.BackgroundItem
 import com.example.eventreminder.cards.model.BackgroundPacks
+import com.example.eventreminder.cards.model.EmojiStickerPack
 import com.example.eventreminder.cards.model.StickerItem
 import com.example.eventreminder.cards.model.StickerPacks
 import com.example.eventreminder.cards.state.CardUiState
@@ -67,12 +68,23 @@ fun CardScreen(
 
     val captureController = remember { CaptureController() }
 
+    var selectedCategory by remember { mutableStateOf(0) }
+    val activeStickers: List<StickerItem> = when (selectedCategory) {
+        0 -> StickerPacks.birthdayPack              // OR images pack if you prefer
+        1 -> EmojiStickerPack.smileys
+        2 -> EmojiStickerPack.hearts
+        3 -> EmojiStickerPack.celebration
+        else -> EmojiStickerPack.misc
+    }
+
+
     var latestBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var pendingAction by remember { mutableStateOf(PendingAction.NONE) }
 
     // Cropper states
     var showCropper by remember { mutableStateOf(false) }
     var bitmapForCrop by remember { mutableStateOf<Bitmap?>(null) }
+
 
     // Avatar picker
     val avatarPicker = rememberLauncherForActivityResult(
@@ -211,21 +223,14 @@ fun CardScreen(
                         CombinedControls(
                             onPickBackground = {
                                 backgroundPicker.launch(
-                                    PickVisualMediaRequest(
-                                        ActivityResultContracts.PickVisualMedia.ImageOnly
-                                    )
+                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                                 )
                             },
                             onClearBackground = { viewModel.clearBackground() },
-                            //onPickStickerPack = { /* optional */ },
-
-                            stickerItems = StickerPacks.birthdayPack,
-                            onStickerClick = { viewModel.addSticker(it) },
 
                             backgroundItems = BackgroundPacks.defaultPack,
                             onPredefinedBgSelected = { bgItem ->
 
-                                // IMPORTANT FIX: No LocalContext inside coroutine
                                 val safeContext = appContext
 
                                 coroutineScope.launch {
@@ -234,25 +239,28 @@ fun CardScreen(
                                             safeContext.resources,
                                             bgItem.resId
                                         )
-
                                         val path = ImageUtil.saveBitmapToCache(
                                             safeContext,
                                             bmp,
                                             filenamePrefix = "bg_"
                                         )
-
                                         if (path != null) {
                                             viewModel.onBackgroundImageSelected(
                                                 safeContext,
                                                 Uri.fromFile(File(path))
                                             )
                                         }
-
                                     } catch (t: Throwable) {
                                         Timber.tag(TAG).e(t, "Failed preload BG")
                                     }
                                 }
-                            }
+                            },
+
+                            selectedCategory = selectedCategory,
+                            onCategorySelected = { selectedCategory = it },
+
+                            stickerItems = activeStickers,
+                            onStickerClick = { viewModel.addSticker(it) }
                         )
 
                         Spacer(modifier = Modifier.height(16.dp))
