@@ -220,7 +220,7 @@ fun CardScreen(
 
                         // Stickers
                         StickerBar(
-                            items = StickerPacks.birthdayPack.items,
+                            items = StickerPacks.birthdayPack,
                             onStickerClick = { viewModel.addSticker(it) }
                         )
 
