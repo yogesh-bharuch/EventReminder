@@ -150,21 +150,14 @@ private fun BirthdayCard(cardData: CardData, modifier: Modifier, vm: CardViewMod
             Column(modifier = Modifier.padding(start = 16.dp, top = 14.dp, end = 14.dp)) {
                 // TITLE (with preserved spacing)
                 if (vm.showTitle.collectAsState().value) {
-                    Text(
-                        text = "Happy ${cardData.title}",
-                        style = MaterialTheme.typography.headlineSmall
-                    )
+                    Text(text = "Happy ${cardData.title}", style = MaterialTheme.typography.headlineSmall, color = Color.Red)
                 } else {
                     Spacer(Modifier.height(30.dp))   // same height as title
                 }
-
                 // NAME (with preserved spacing)
                 if (vm.showName.collectAsState().value && cardData.name != null) {
                     Spacer(Modifier.height(6.dp))    // the gap above name
-                    Text(
-                        text = cardData.name!!,
-                        style = MaterialTheme.typography.titleMedium
-                    )
+                    Text(text = cardData.name!!, style = MaterialTheme.typography.titleMedium, color = Color.Red)
                 } else {
                     Spacer(Modifier.height(32.dp))   // 6dp gap + ~22dp name height
                 }
@@ -209,21 +202,14 @@ private fun AnniversaryCard(cardData: CardData, modifier: Modifier, vm: CardView
             Column(modifier = Modifier.padding(start = 16.dp, top = 14.dp, end = 14.dp)) {
                 // TITLE (with preserved spacing)
                 if (vm.showTitle.collectAsState().value) {
-                    Text(
-                        text = "Happy ${cardData.title}",
-                        style = MaterialTheme.typography.headlineSmall
-                    )
+                    Text(text = "Happy ${cardData.title}", style = MaterialTheme.typography.headlineSmall, color = Color.Red)
                 } else {
                     Spacer(Modifier.height(30.dp))   // same height as title
                 }
-
                 // NAME (with preserved spacing)
                 if (vm.showName.collectAsState().value && cardData.name != null) {
                     Spacer(Modifier.height(6.dp))    // the gap above name
-                    Text(
-                        text = cardData.name!!,
-                        style = MaterialTheme.typography.titleMedium
-                    )
+                    Text(text = cardData.name!!, style = MaterialTheme.typography.titleMedium, color = Color.Red)
                 } else {
                     Spacer(Modifier.height(32.dp))   // 6dp gap + ~22dp name height
                 }
@@ -266,10 +252,7 @@ private fun GenericCard(cardData: CardData, modifier: Modifier, vm: CardViewMode
             Column(modifier = Modifier.padding(start = 16.dp, top = 14.dp, end = 14.dp)) {
                 // TITLE (with preserved spacing)
                 if (vm.showTitle.collectAsState().value) {
-                    Text(
-                        text = cardData.title,
-                        style = MaterialTheme.typography.headlineSmall
-                    )
+                    Text(text = cardData.title, style = MaterialTheme.typography.headlineSmall, color = Color.Red)
                 } else {
                     Spacer(Modifier.height(30.dp))   // same height as title
                 }
@@ -277,10 +260,7 @@ private fun GenericCard(cardData: CardData, modifier: Modifier, vm: CardViewMode
                 // NAME (with preserved spacing)
                 if (vm.showName.collectAsState().value && cardData.name != null) {
                     Spacer(Modifier.height(6.dp))    // the gap above name
-                    Text(
-                        text = cardData.name!!,
-                        style = MaterialTheme.typography.titleMedium
-                    )
+                    Text(text = cardData.name!!, style = MaterialTheme.typography.titleMedium, color = Color.Red)
                 } else {
                     Spacer(Modifier.height(32.dp))   // 6dp gap + ~22dp name height
                 }

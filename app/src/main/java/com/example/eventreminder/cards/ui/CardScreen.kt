@@ -10,6 +10,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -17,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -50,6 +52,9 @@ private enum class PendingAction { NONE, SAVE, SHARE }
 // =============================================================
 // MAIN COMPOSABLE — CardScreen
 // =============================================================
+// =============================================================
+// MAIN COMPOSABLE — CardScreen (LazyColumn enabled)
+// =============================================================
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CardScreen(
@@ -67,13 +72,12 @@ fun CardScreen(
 
     var selectedCategory by remember { mutableStateOf(0) }
     val activeStickers: List<StickerItem> = when (selectedCategory) {
-        0 -> StickerPacks.birthdayPack              // OR images pack if you prefer
+        0 -> StickerPacks.birthdayPack
         1 -> EmojiStickerPack.smileys
         2 -> EmojiStickerPack.hearts
         3 -> EmojiStickerPack.celebration
         else -> EmojiStickerPack.misc
     }
-
 
     var latestBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var pendingAction by remember { mutableStateOf(PendingAction.NONE) }
@@ -107,6 +111,7 @@ fun CardScreen(
         }
     }
 
+
     // =========================================================
     // Scaffold
     // =========================================================
@@ -114,31 +119,39 @@ fun CardScreen(
         topBar = { TopAppBar(title = { Text("Event Card") }) }
     ) { paddingValues ->
 
-        Box(modifier = Modifier
+        LazyColumn(
+            modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .padding(16.dp)
+                .padding(horizontal = 16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Top,
+            contentPadding = PaddingValues(bottom = 40.dp)
         ) {
 
-            Column(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.Top,
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
+            item { Spacer(Modifier.height(20.dp)) }
 
-                Spacer(modifier = Modifier.height(20.dp))
+            // =====================================================
+            // CARD AREA
+            // =====================================================
+            when (uiState) {
+                is CardUiState.Loading -> {
+                    item { CircularProgressIndicator() }
+                }
 
-                // =====================================================
-                // CARD AREA
-                // =====================================================
-                when (uiState) {
-                    is CardUiState.Loading -> CircularProgressIndicator()
-                    is CardUiState.Error -> Text((uiState as CardUiState.Error).message)
-                    is CardUiState.Placeholder -> Text("No reminderId provided.")
-                    is CardUiState.Data -> {
+                is CardUiState.Error -> {
+                    item { Text((uiState as CardUiState.Error).message) }
+                }
 
-                        val cardData = (uiState as CardUiState.Data).cardData
+                is CardUiState.Placeholder -> {
+                    item { Text("No reminderId provided.") }
+                }
 
+                is CardUiState.Data -> {
+                    val cardData = (uiState as CardUiState.Data).cardData
+
+                    // ---------- CARD BOX ----------
+                    item {
                         CaptureBox(
                             controller = captureController,
                             onCaptured = { bmp ->
@@ -165,11 +178,10 @@ fun CardScreen(
                                         .clip(RoundedCornerShape(16.dp)),
                                     color = if (bgBmp == null)
                                         MaterialTheme.colorScheme.primary.copy(alpha = 0.06f)
-                                    else
-                                        androidx.compose.ui.graphics.Color.Transparent
+                                    else Color.Transparent
                                 ) {}
 
-                                // Background
+                                // Background image
                                 if (bgBmp != null) {
                                     Image(
                                         bitmap = bgBmp!!.asImageBitmap(),
@@ -181,20 +193,16 @@ fun CardScreen(
                                         contentScale = ContentScale.Crop
                                     )
 
-                                    // Dim overlay
                                     Box(
                                         modifier = Modifier
                                             .width(360.dp)
                                             .height(240.dp)
-                                            .background(
-                                                androidx.compose.ui.graphics.Color.Black
-                                                    .copy(alpha = 0.18f)
-                                            )
+                                            .background(Color.Black.copy(alpha = 0.18f))
                                             .clip(RoundedCornerShape(16.dp))
                                     )
                                 }
 
-                                // Foreground template (CardPreview UI)
+                                // Foreground (card UI)
                                 CardPreview(
                                     cardData = cardData,
                                     modifier = Modifier
@@ -211,16 +219,18 @@ fun CardScreen(
                                 )
                             }
                         }
+                    }
 
-                        Spacer(modifier = Modifier.height(18.dp))
+                    item { Spacer(Modifier.height(18.dp)) }
 
-                        // =====================================================
-                        // COMBINED CONTROLS (background + sticker categories)
-                        // =====================================================
+                    // ---------- CONTROLS ----------
+                    item {
                         CombinedControls(
                             onPickBackground = {
                                 backgroundPicker.launch(
-                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                    PickVisualMediaRequest(
+                                        ActivityResultContracts.PickVisualMedia.ImageOnly
+                                    )
                                 )
                             },
                             onClearBackground = { viewModel.clearBackground() },
@@ -233,13 +243,10 @@ fun CardScreen(
                                 coroutineScope.launch {
                                     try {
                                         val bmp = BitmapFactory.decodeResource(
-                                            safeContext.resources,
-                                            bgItem.resId
+                                            safeContext.resources, bgItem.resId
                                         )
                                         val path = ImageUtil.saveBitmapToCache(
-                                            safeContext,
-                                            bmp,
-                                            filenamePrefix = "bg_"
+                                            safeContext, bmp, filenamePrefix = "bg_"
                                         )
                                         if (path != null) {
                                             viewModel.onBackgroundImageSelected(
@@ -259,12 +266,15 @@ fun CardScreen(
                             stickerItems = activeStickers,
                             onStickerClick = { viewModel.addSticker(it) }
                         )
+                    }
 
-                        Spacer(modifier = Modifier.height(16.dp))
+                    item { Spacer(Modifier.height(16.dp)) }
 
-                        // ---------------------------------------------------------
-                        // TOGGLES: Show/Hide Title + Name
-                        // ---------------------------------------------------------
+                    // ---------- SHOW/HIDE TOGGLES ----------
+                    item {
+                        val showTitle by viewModel.showTitle.collectAsState()
+                        val showName by viewModel.showName.collectAsState()
+
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -272,34 +282,28 @@ fun CardScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(24.dp)
                         ) {
-                            val showTitle by viewModel.showTitle.collectAsState()
-                            val showName by viewModel.showName.collectAsState()
-
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Checkbox(
-                                    checked = showTitle,
-                                    onCheckedChange = { viewModel.toggleShowTitle(it) }
-                                )
+                                Checkbox(checked = showTitle,
+                                    onCheckedChange = { viewModel.toggleShowTitle(it) })
                                 Text("Show Title")
                             }
 
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Checkbox(
-                                    checked = showName,
-                                    onCheckedChange = { viewModel.toggleShowName(it) }
-                                )
+                                Checkbox(checked = showName,
+                                    onCheckedChange = { viewModel.toggleShowName(it) })
                                 Text("Show Name")
                             }
                         }
+                    }
 
-                        // =====================================================
-                        // SAVE / SHARE
-                        // =====================================================
+                    item { Spacer(Modifier.height(16.dp)) }
+
+                    // ---------- SAVE / SHARE ----------
+                    item {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-
                             Button(
                                 modifier = Modifier.weight(1f),
                                 onClick = {
@@ -339,7 +343,7 @@ fun CardScreen(
     }
 
     // =============================================================
-    // AVATAR CROPPER OVERLAY
+    // CROP OVERLAY
     // =============================================================
     if (showCropper && bitmapForCrop != null) {
         CropperOverlay(
