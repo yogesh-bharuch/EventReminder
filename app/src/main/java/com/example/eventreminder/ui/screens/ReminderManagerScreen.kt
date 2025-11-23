@@ -16,7 +16,7 @@ fun ReminderManagerScreen(onBack: () -> Unit) {
         Text("Reminder Manager")
         Spacer(Modifier.height(20.dp))
         Button(onClick = onBack) {
-            Text("Back")
+            Text("Development in progress")
         }
     }
 }

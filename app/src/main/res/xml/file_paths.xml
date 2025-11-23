@@ -1,13 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Allow sharing files stored under: /data/data/<package>/cache/share_cards/ -->
+    <!-- Allow sharing bitmaps stored under: /data/data/<package>/cache/share_cards/ -->
     <cache-path
         name="share_cards"
         path="share_cards/" />
 
-    <!-- Keep external-path if you also save to external files (optional) -->
+    <!-- Allow sharing PDF files saved in: /storage/emulated/0/Documents/ReminderReports/ -->
     <external-path
-        name="external_files"
-        path="." />
+        name="public_reports"
+        path="Documents/ReminderReports/" />
+
 </paths>

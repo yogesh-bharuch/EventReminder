@@ -1,5 +1,8 @@
 package com.example.eventreminder.ui.screens
 
+// =============================================================
+// Imports
+// =============================================================
 import android.app.Activity
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
@@ -14,23 +17,40 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.example.eventreminder.navigation.*
-import com.example.eventreminder.ui.components.*
+import com.example.eventreminder.pdf.PdfViewModel
+import com.example.eventreminder.ui.components.BirthdayEmptyState
+import com.example.eventreminder.ui.components.EventsListGrouped
+import com.example.eventreminder.ui.components.HomeBottomTray
+import com.example.eventreminder.ui.components.HomeScaffold
 import com.example.eventreminder.ui.viewmodels.GroupedEventsViewModel
 import com.example.eventreminder.ui.viewmodels.ReminderViewModel
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import timber.log.Timber
+import android.content.Intent
+import android.net.Uri
 
+
+// =============================================================
+// HomeScreen
+// =============================================================
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     navController: NavController,
-    reminderVm: ReminderViewModel = hiltViewModel()
+    reminderVm: ReminderViewModel = hiltViewModel(),
+    pdfviewModel: PdfViewModel = hiltViewModel()
 ) {
+    val TAG = "HomeScreen"
+    Timber.tag(TAG).d("Rendering HomeScreen")
+
     val context = LocalContext.current
     var backPressedOnce by remember { mutableStateOf(false) }
 
-    // 🔙 Double-tap exit
+    // ---------------------------------------------------------
+    // 🔙 Double-back exit handling
+    // ---------------------------------------------------------
     BackHandler {
         if (backPressedOnce) {
             (context as? Activity)?.finish()
@@ -39,6 +59,7 @@ fun HomeScreen(
             Toast.makeText(context, "Press back again to exit", Toast.LENGTH_SHORT).show()
         }
     }
+
     LaunchedEffect(backPressedOnce) {
         if (backPressedOnce) {
             delay(1000)
@@ -46,68 +67,129 @@ fun HomeScreen(
         }
     }
 
+    // ---------------------------------------------------------
+    // Snackbar + coroutine
+    // ---------------------------------------------------------
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
 
-    // 🔄 ViewModel → grouped list
+    // ---------------------------------------------------------
+    // Grouped ViewModel state
+    // ---------------------------------------------------------
     val groupedVm: GroupedEventsViewModel = hiltViewModel()
     val groupedSections by groupedVm.groupedEvents.collectAsState()
 
+    LaunchedEffect(Unit) {
+        pdfviewModel.openPdfEvent.collect { uriString ->
+            val uri = Uri.parse(uriString)
+            Timber.d("PDF URI → $uriString")
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, "application/pdf")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            try {
+                context.startActivity(intent)
+            } catch (e: Exception) {
+                Timber.tag("HomeScreen").e(e, "Unable to open PDF")
+            }
+        }
+    }
+    // =========================================================
+    // HomeScaffold (WITH correct bottomBar placement)
+    // =========================================================
     HomeScaffold(
         onNewEventClick = { navController.navigate(AddEditReminderRoute()) },
         snackbarHostState = snackbarHostState,
+
         onSignOut = {
             FirebaseAuth.getInstance().signOut()
             navController.navigate(LoginRoute) {
                 popUpTo(HomeRoute) { inclusive = true }
             }
         },
-        onManageRemindersClick = { navController.navigate(ReminderManagerRoute) }
+
+        onManageRemindersClick = { navController.navigate(ReminderManagerRoute) },
+
+        // ---------------------------------------------------------
+        // ⭐ BottomTray goes HERE — correct place
+        // ---------------------------------------------------------
+        bottomBar = {
+            HomeBottomTray(
+                onCleanupClick = {
+                    coroutineScope.launch { reminderVm.cleanupOldReminders() }
+                },
+                onGeneratePdfClick = {
+                    coroutineScope.launch {
+                        pdfviewModel.runTodo3RealReport() }
+                },
+                onExportClick = {
+                    coroutineScope.launch { reminderVm.exportRemindersCsv() }
+                },
+                onSyncClick = {
+                    coroutineScope.launch { reminderVm.syncRemindersWithServer() }
+                }
+            )
+        }
+
     ) { modifier ->
 
+        // =====================================================
+        // MAIN CONTENT
+        // =====================================================
         Column(
             modifier = modifier
                 .fillMaxSize()
                 .padding(8.dp)
         ) {
 
+            // ---------------------------------------------------------
             // Header
+            // ---------------------------------------------------------
             Row(Modifier.padding(bottom = 8.dp)) {
                 Text("Welcome: ", fontSize = 12.sp)
-                Text(FirebaseAuth.getInstance().currentUser?.email ?: "Guest", fontSize = 10.sp)
+                Text(
+                    FirebaseAuth.getInstance().currentUser?.email ?: "Guest",
+                    fontSize = 10.sp
+                )
             }
 
             HorizontalDivider(thickness = 1.dp, color = Color.Gray)
             Spacer(Modifier.height(8.dp))
 
-            // Empty state
+            // ---------------------------------------------------------
+            // Empty State OR Event List
+            // ---------------------------------------------------------
             if (groupedSections.isEmpty()) {
+
                 BirthdayEmptyState()
-                return@Column
-            }
 
-            Button(onClick = {
-                //navController.navigate(DebugRoute)
-                //navController.navigate(CardDebugRoute(reminderId = -1L, eventType = "UNKNOWN"))
-                navController.navigate(CardRoute(reminderId = 26))
-            }) {
-                Text("Developer Tools")
-            }
+            } else {
 
-
-            // ⭐ REPLACED ALL OLD LAZY COLUMN CODE WITH THIS:
-            EventsListGrouped(
-                sections = groupedSections,
-                onClick = { id ->
-                    navController.navigate(AddEditReminderRoute(id.toString()))
-                },
-                onDelete = { id ->
-                    coroutineScope.launch {
-                        reminderVm.deleteEvent(id)
-                        snackbarHostState.showSnackbar("Event deleted")
+                Button(
+                    onClick = {
+                        //navController.navigate(DebugRoute)
+                        navController.navigate(CardRoute(reminderId = 26))
                     }
+                ) {
+                    Text("Developer Tools")
                 }
-            )
+
+                Spacer(Modifier.height(10.dp))
+
+                EventsListGrouped(
+                    sections = groupedSections,
+                    onClick = { id ->
+                        navController.navigate(AddEditReminderRoute(id.toString()))
+                    },
+                    onDelete = { id ->
+                        coroutineScope.launch {
+                            reminderVm.deleteEvent(id)
+                            snackbarHostState.showSnackbar("Event deleted")
+                        }
+                    },
+                    modifier = Modifier.weight(1f)
+                )
+            }
         }
     }
 }

@@ -174,4 +174,21 @@ class ReminderViewModel @Inject constructor(
             _uiState.value = _uiState.value.copy(errorMessage = e.message)
         }
     }
+
+    // ============================================================
+    // Home Screen Bottom Tray
+    // ============================================================
+    fun cleanupOldReminders() = viewModelScope.launch {
+        //repo.cleanupOldOneTimeReminders()
+    }
+    fun generatePdfReport() = viewModelScope.launch {
+        //repo.createPdfReport() // returns file path or uri
+    }
+    fun exportRemindersCsv() = viewModelScope.launch {
+        //repo.createPdfReport() // returns file path or uri
+    }
+    fun syncRemindersWithServer() = viewModelScope.launch {
+        //repo.createPdfReport() // returns file path or uri
+    }
+
 }

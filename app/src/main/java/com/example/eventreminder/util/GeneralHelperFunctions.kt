@@ -28,7 +28,7 @@ fun openPdf(context: Context, realPath: String) {
 
     val uri = FileProvider.getUriForFile(
         context,
-        "com.example.eventreminder.provider",
+        "com.example.eventreminder.fileprovider",
         file
     )
 

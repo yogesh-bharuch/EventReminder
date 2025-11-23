@@ -76,6 +76,7 @@ dependencies {
     // Material Icons (Filled)
     implementation(libs.androidx.material.icons.core)
     implementation(libs.androidx.material.icons.extended)
+    implementation(libs.androidx.compose.material.icons.extended)
 
     implementation(libs.androidx.room.ktx)
 

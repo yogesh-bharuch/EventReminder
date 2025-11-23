@@ -1,5 +1,8 @@
 package com.example.eventreminder.ui.components
 
+// =============================================================
+// Imports
+// =============================================================
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -7,47 +10,16 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.AssistChipDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.SnackbarResult
-import androidx.compose.material3.Surface
-import androidx.compose.material3.SwipeToDismissBox
-import androidx.compose.material3.SwipeToDismissBoxState
-import androidx.compose.material3.SwipeToDismissBoxValue
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.rememberSwipeToDismissBoxState
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.mutableStateMapOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.material3.*
+import androidx.compose.material3.AssistChipDefaults.assistChipColors
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -55,15 +27,20 @@ import androidx.compose.ui.unit.dp
 import com.example.eventreminder.ui.viewmodels.EventReminderUI
 import com.example.eventreminder.ui.viewmodels.GroupedUiSection
 import kotlinx.coroutines.launch
+import timber.log.Timber
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
+// =============================================================
+// Timber TAG
+// =============================================================
+private const val TAG = "HomeComponents"
 
-// -----------------------------------------------------------------------------
-// 🏠 HOME SCAFFOLD — Restored Original Version (with comments)
-// -----------------------------------------------------------------------------
+// =============================================================
+// HOME SCAFFOLD — now supports bottomBar
+// =============================================================
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScaffold(
@@ -71,22 +48,17 @@ fun HomeScaffold(
     snackbarHostState: SnackbarHostState,
     onSignOut: () -> Unit,
     onManageRemindersClick: () -> Unit,
+    bottomBar: @Composable () -> Unit,
     content: @Composable (Modifier) -> Unit
 ) {
     Scaffold(
-
-        // 🟦 Top App Bar
         topBar = {
             TopAppBar(
                 title = { Text("Events") },
                 actions = {
-
-                    // ⚙️ Manage Reminders Button
                     IconButton(onClick = onManageRemindersClick) {
                         Icon(Icons.Default.Settings, contentDescription = "Manage Reminders")
                     }
-
-                    // 🚪 Sign Out Button
                     IconButton(onClick = onSignOut) {
                         Icon(
                             Icons.AutoMirrored.Filled.ExitToApp,
@@ -96,18 +68,14 @@ fun HomeScaffold(
                 }
             )
         },
-
         snackbarHost = { SnackbarHost(snackbarHostState) },
-
-        // ➕ Floating Action Button
         floatingActionButton = {
             FloatingActionButton(onClick = onNewEventClick) {
                 Icon(Icons.Default.Add, contentDescription = "Add")
             }
-        }
+        },
+        bottomBar = { bottomBar() }
     ) { padding ->
-
-        // Content slot
         content(
             Modifier
                 .padding(padding)
@@ -116,16 +84,13 @@ fun HomeScaffold(
     }
 }
 
-
-
-// -----------------------------------------------------------------------------
-// 📭 EMPTY STATE — Restored Original Version (with comments)
-// -----------------------------------------------------------------------------
+// =============================================================
+// EMPTY STATE
+// =============================================================
 @Composable
 fun BirthdayEmptyState() {
     Box(
-        modifier = Modifier
-            .fillMaxSize(),
+        modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
         Text(
@@ -135,48 +100,49 @@ fun BirthdayEmptyState() {
     }
 }
 
-// -----------------------------------------------------------------------------
-// 🗂 SORT + SWIPE DELETE EVENTS LIST (Updated + Fixed)
-// -----------------------------------------------------------------------------
+// =============================================================
+// EVENTS LIST GROUPED — updated + fixed
+// =============================================================
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EventsListGrouped(
     sections: List<GroupedUiSection>,
     onClick: (Long) -> Unit,
     onDelete: (Long) -> Unit,
-    modifier: Modifier
+    modifier: Modifier = Modifier
 ) {
+    Timber.tag(TAG).d("Rendering EventsListGrouped")
+
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutine = rememberCoroutineScope()
 
-    // Track which groups are collapsed
     val collapsed = remember { mutableStateMapOf<String, Boolean>() }
+
+    // initialize collapse state
     sections.forEach { section ->
-        if (!collapsed.containsKey(section.header))
-            collapsed[section.header] = false  // default expanded
+        if (!collapsed.containsKey(section.header)) collapsed[section.header] = false
     }
 
-    Box(Modifier.fillMaxSize()) {
+    Box(modifier.fillMaxSize()) {
 
-        LazyColumn(
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
 
             sections.forEach { section ->
 
-                // ⭐ STICKY HEADER
+                // HEADER
                 stickyHeader {
                     Surface(
                         color = MaterialTheme.colorScheme.background,
+                        tonalElevation = 1.dp,
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable {
                                 collapsed[section.header] =
-                                    !(collapsed[section.header]!!)
+                                    !(collapsed[section.header] ?: false)
                             }
                     ) {
                         Column(
-                            Modifier
+                            modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(vertical = 6.dp, horizontal = 10.dp)
                         ) {
@@ -184,24 +150,31 @@ fun EventsListGrouped(
                                 Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Text(section.header, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
-                                Text(if (collapsed[section.header] == true) "+" else "–", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
+                                Text(
+                                    section.header,
+                                    style = MaterialTheme.typography.titleLarge,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+
+                                Text(
+                                    if (collapsed[section.header] == true) "+" else "–",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
                             }
                             HorizontalDivider()
                         }
                     }
                 }
 
-                // ⭐ COLLAPSIBLE CONTENT
+                // COLLAPSIBLE CONTENT
                 item {
                     AnimatedVisibility(
                         visible = collapsed[section.header] == false,
                         enter = fadeIn() + expandVertically(),
                         exit = fadeOut() + shrinkVertically()
                     ) {
-
                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-
                             section.events.forEach { ui ->
 
                                 val dismissState = rememberSwipeToDismissBoxState(
@@ -209,28 +182,26 @@ fun EventsListGrouped(
                                         if (value == SwipeToDismissBoxValue.EndToStart ||
                                             value == SwipeToDismissBoxValue.StartToEnd
                                         ) {
-
                                             coroutine.launch {
                                                 onDelete(ui.id)
 
-                                                val result = snackbarHostState.showSnackbar(message = "Event deleted", actionLabel = "Undo")
+                                                val result = snackbarHostState.showSnackbar(
+                                                    message = "Event deleted",
+                                                    actionLabel = "Undo"
+                                                )
 
                                                 if (result == SnackbarResult.ActionPerformed) {
-                                                    // TODO undo if needed
+                                                    // Implement undo if needed
                                                 }
                                             }
-
                                             true
-                                        }
-                                        false
+                                        } else false
                                     }
                                 )
 
                                 SwipeToDismissBox(
                                     state = dismissState,
-                                    backgroundContent = {
-                                        SwipeBackgroundM3(dismissState)
-                                    },
+                                    backgroundContent = { SwipeBackgroundM3(dismissState) },
                                     content = {
                                         EventCard(
                                             ui = ui,
@@ -251,6 +222,7 @@ fun EventsListGrouped(
             }
         }
 
+        // SNACKBAR
         SnackbarHost(
             snackbarHostState,
             modifier = Modifier
@@ -260,11 +232,9 @@ fun EventsListGrouped(
     }
 }
 
-
-
-// -----------------------------------------------------------------------------
-// 🟥 SWIPE DELETE BACKGROUND (Material3)
-// -----------------------------------------------------------------------------
+// =============================================================
+// SWIPE DELETE BACKGROUND
+// =============================================================
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SwipeBackgroundM3(state: SwipeToDismissBoxState) {
@@ -272,6 +242,7 @@ fun SwipeBackgroundM3(state: SwipeToDismissBoxState) {
         SwipeToDismissBoxValue.StartToEnd,
         SwipeToDismissBoxValue.EndToStart ->
             Color.Red.copy(alpha = 0.85f)
+
         else -> Color.Transparent
     }
 
@@ -292,11 +263,9 @@ fun SwipeBackgroundM3(state: SwipeToDismissBoxState) {
     }
 }
 
-
-
-// -----------------------------------------------------------------------------
-// 🎴 EVENT CARD
-// -----------------------------------------------------------------------------
+// =============================================================
+// EVENT CARD
+// =============================================================
 @Composable
 fun EventCard(
     ui: EventReminderUI,
@@ -309,7 +278,7 @@ fun EventCard(
         "weekly" -> "Weekly"
         "monthly" -> "Monthly"
         "yearly" -> "Yearly"
-        else -> null   // one-time → no chip
+        else -> null
     }
 
     Card(
@@ -328,34 +297,31 @@ fun EventCard(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
 
-            // LEFT CONTENT
             Column(modifier = Modifier.weight(1f)) {
 
-                // 🔹 TITLE and description if not null
                 Text(text = ui.title, style = MaterialTheme.typography.titleSmall)
-                ui.description?.let { Text(text = it, style = MaterialTheme.typography.bodyMedium) }
 
-                Spacer(modifier = Modifier.height(2.dp))
+                ui.description?.let {
+                    Text(text = it, style = MaterialTheme.typography.bodyMedium)
+                }
 
-                // 🔹 DATE (line 1)
+                Spacer(Modifier.height(2.dp))
+
                 Text(
                     text = ui.formattedDateLabel,
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
-                Spacer(modifier = Modifier.height(2.dp))
+                Spacer(Modifier.height(2.dp))
 
-                // 🔹 REPEAT + REMAINING (line 2)
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+
                     repeatLabel?.let {
                         AssistChip(
                             onClick = {},
                             label = { Text(it) },
-                            colors = AssistChipDefaults.assistChipColors(
+                            colors = assistChipColors(
                                 containerColor = MaterialTheme.colorScheme.secondaryContainer
                             ),
                             modifier = Modifier.padding(top = 1.dp)
@@ -370,7 +336,6 @@ fun EventCard(
                 }
             }
 
-            // 🔹 DELETE BUTTON
             IconButton(
                 onClick = onDelete,
                 modifier = Modifier.size(36.dp)
@@ -385,19 +350,17 @@ fun EventCard(
     }
 }
 
-
-// -----------------------------------------------------------------------------
-// ⏳ TIME REMAINING FORMATTER
-// -----------------------------------------------------------------------------
+// =============================================================
+// REMAINING TIME FORMATTER
+// =============================================================
 fun formatTimeRemaining(eventEpoch: Long): String {
     val now = Instant.now()
     val eventInstant = Instant.ofEpochMilli(eventEpoch)
     val duration = Duration.between(now, eventInstant)
 
     val seconds = duration.seconds
-
     return when {
-        seconds < 0 -> "Ellapsed"
+        seconds < 0 -> "Elapsed"
         seconds < 60 -> "In a few seconds"
         seconds < 3600 -> "In ${seconds / 60} minutes"
         seconds < 86_400 -> "In ${seconds / 3600} hours"

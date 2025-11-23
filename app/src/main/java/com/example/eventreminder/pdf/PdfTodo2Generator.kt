@@ -81,9 +81,45 @@ class PdfTodo2Generator @Inject constructor(
     )
 
     // =============================================================
-    // Public - generate report
+    // Public - generate report (saves in PUBLIC Documents folder)
     // =============================================================
     fun generateReportPdf(report: ActiveAlarmReport): Result<String> {
+        return try {
+
+            // 1️⃣ Public Documents folder
+            val publicDocs = Environment.getExternalStoragePublicDirectory(
+                Environment.DIRECTORY_DOCUMENTS
+            )
+
+            // 2️⃣ Our subfolder
+            val folder = File(publicDocs, "ReminderReports")
+            if (!folder.exists()) folder.mkdirs()
+
+            // 3️⃣ Output file
+            val file = File(folder, "report_todo2_${System.currentTimeMillis()}.pdf")
+
+            val pdf = PdfDocument()
+
+            // simulate pages to compute totalPages for footer
+            val (groupedPagesCount, flatPagesCount) = simulatePageCounts(report)
+            val totalPages = groupedPagesCount + flatPagesCount
+
+            var pageNumber = 1
+            pageNumber = renderGroupedPages(pdf, report, pageNumber, groupedPagesCount, totalPages)
+            pageNumber = renderFlatPages(pdf, report, pageNumber, flatPagesCount, totalPages)
+
+            // 4️⃣ Write PDF
+            FileOutputStream(file).use { pdf.writeTo(it) }
+            pdf.close()
+
+            Result.success(file.absolutePath)
+
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /*fun generateReportPdf(report: ActiveAlarmReport): Result<String> {
         return try {
             val docs = context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS)
             val folder = File(docs, "ReminderReports")
@@ -107,7 +143,7 @@ class PdfTodo2Generator @Inject constructor(
         } catch (e: Exception) {
             Result.failure(e)
         }
-    }
+    }*/
 
     // =============================================================
     // Simulation (how many pages needed)
