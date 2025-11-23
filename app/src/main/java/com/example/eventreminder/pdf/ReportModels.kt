@@ -41,7 +41,7 @@ data class TitleSection(
 )
 
 /**
- * The complete report passed into PdfTodo2Generator
+ * The complete report passed into PdfGenerator
  */
 data class ActiveAlarmReport(
     val groupedByTitle: List<TitleSection>,

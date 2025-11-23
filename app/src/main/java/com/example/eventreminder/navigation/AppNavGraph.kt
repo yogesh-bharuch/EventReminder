@@ -7,7 +7,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.toRoute
 import com.example.eventreminder.cards.ui.CardScreen
 import com.example.eventreminder.ui.debug.CardDebugScreen
-import com.example.eventreminder.ui.debug.DebugScreen
 import com.example.firebaseloginmodule.FirebaseLoginEntry
 import com.example.eventreminder.ui.screens.HomeScreen
 import com.example.eventreminder.ui.screens.AddEditReminderScreen
@@ -42,11 +41,6 @@ fun AppNavGraph(
         // ⏰ Reminder manager
         composable<ReminderManagerRoute> {
             ReminderManagerScreen(onBack = { navController.popBackStack() })
-        }
-
-        // 🧪 Debug / Developer Tools
-        composable<DebugRoute> {
-            DebugScreen()
         }
 
         // 🧪 Card Debug / Developer Tools

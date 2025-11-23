@@ -14,6 +14,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.util.Log
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.example.eventreminder.navigation.*
@@ -80,9 +81,8 @@ fun HomeScreen(
     val groupedSections by groupedVm.groupedEvents.collectAsState()
 
     LaunchedEffect(Unit) {
-        pdfviewModel.openPdfEvent.collect { uriString ->
-            val uri = Uri.parse(uriString)
-            Timber.d("PDF URI → $uriString")
+        pdfviewModel.openPdfEvent.collect { uri ->
+            Timber.d("PDF URI → $uri")
             val intent = Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(uri, "application/pdf")
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -119,6 +119,7 @@ fun HomeScreen(
                     coroutineScope.launch { reminderVm.cleanupOldReminders() }
                 },
                 onGeneratePdfClick = {
+                    Log.d("PDF URI", "pdf reportclickrd")
                     coroutineScope.launch {
                         pdfviewModel.runTodo3RealReport() }
                 },

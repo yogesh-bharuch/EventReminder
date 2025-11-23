@@ -1,5 +1,7 @@
 package com.example.eventreminder.pdf
 
+import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -9,108 +11,45 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import android.util.Log
+import dagger.hilt.android.qualifiers.ApplicationContext
 
-/**
- * =============================================================
- * PdfViewModel
- *
- * Supports:
- *  - TODO-0  → Blank PDF
- *  - TODO-1  → Fake-data PDF
- *  - TODO-2  → Modern styled PDF (fake data)
- *  - TODO-3  → REAL DB-based PDF report
- *
- * Auto-open works for all PDF generations.
- * =============================================================
- */
+
 @HiltViewModel
 class PdfViewModel @Inject constructor(
-    private val pdfTestGenerator: PdfTestGenerator,
-    private val todo1Generator: PdfTodo1Generator,
-    private val todo2Generator: PdfTodo2Generator,
-    private val realReportBuilder: RealReportBuilder         // ⭐ REQUIRED FOR TODO-3
+    @ApplicationContext private val appContext: Context,
+    private val pdfGenerator: PdfGenerator,
+    private val realReportBuilder: RealReportBuilder
 ) : ViewModel() {
 
     // ---------------------------------------------------------
-    // TODO-0: Blank PDF
+    // StateFlows for each PDF
     // ---------------------------------------------------------
-    private val _pdfUri = MutableStateFlow<String?>(null)
+    private val _pdfUri = MutableStateFlow<Uri?>(null)
     val pdfUri = _pdfUri.asStateFlow()
 
-    // ---------------------------------------------------------
-    // TODO-1: Fake-data PDF
-    // ---------------------------------------------------------
-    private val _todo1PdfUri = MutableStateFlow<String?>(null)
-    val todo1PdfUri = _todo1PdfUri.asStateFlow()
-
-    // ---------------------------------------------------------
-    // TODO-2: Styled PDF (fake data)
-    // ---------------------------------------------------------
-    private val _todo2PdfUri = MutableStateFlow<String?>(null)
-    val todo2PdfUri = _todo2PdfUri.asStateFlow()
-
-    // ---------------------------------------------------------
-    // TODO-3: REAL DB Report
-    // ---------------------------------------------------------
-    private val _todo3PdfUri = MutableStateFlow<String?>(null)
+    private val _todo3PdfUri = MutableStateFlow<Uri?>(null)
     val todo3PdfUri = _todo3PdfUri.asStateFlow()
 
     // ---------------------------------------------------------
     // Auto-open one-time event
     // ---------------------------------------------------------
-    private val _openPdfEvent = Channel<String>(Channel.BUFFERED)
+    private val _openPdfEvent = Channel<Uri>(Channel.BUFFERED)
     val openPdfEvent = _openPdfEvent.receiveAsFlow()
-
-
-    // =========================================================
-    // TODO-0: Blank PDF
-    // =========================================================
-    fun runBlankPdfTest() {
-        viewModelScope.launch {
-            val uri = pdfTestGenerator.createBlankPdfTest().getOrNull()
-            _pdfUri.value = uri
-            if (uri != null) _openPdfEvent.send(uri)
-        }
-    }
-
-    // =========================================================
-    // TODO-1: Fake Data PDF
-    // =========================================================
-    fun runTodo1Test() {
-        viewModelScope.launch {
-            val report = ReportFakeData.generateFakeReport()
-            val uri = todo1Generator.generateTestReport(report).getOrNull()
-            _todo1PdfUri.value = uri
-            if (uri != null) _openPdfEvent.send(uri)
-        }
-    }
-
-    // =========================================================
-    // TODO-2: Modern Styled PDF (Fake Data)
-    // =========================================================
-    fun runTodo2Test() {
-        viewModelScope.launch {
-            val report = ReportFakeData.generateFakeReport()
-            val uri = todo2Generator.generateReportPdf(report).getOrNull()
-            _todo2PdfUri.value = uri
-            if (uri != null) _openPdfEvent.send(uri)
-        }
-    }
 
     // =========================================================
     // TODO-3: REAL DB DATA → PDF REPORT
     // =========================================================
     fun runTodo3RealReport() {
         viewModelScope.launch {
-
-            // Build REAL report (DB + calculator)
             val report = realReportBuilder.buildReport()
-
-            // Use styled PDF engine (TODO-2 generator) for final output
-            val uri = todo2Generator.generateReportPdf(report).getOrNull()
-
+            val uri = pdfGenerator.generateReportPdf(appContext, report).getOrNull()
             _todo3PdfUri.value = uri
-            if (uri != null) _openPdfEvent.send(uri)
+            if (uri != null) {
+                _openPdfEvent.send(uri)
+                Log.d("PDF URI", "Pdf file: $uri")
+            }
         }
     }
+
 }

@@ -2,26 +2,22 @@ package com.example.eventreminder.pdf
 
 import android.content.Context
 import android.graphics.*
-import android.util.Log
 import android.graphics.pdf.PdfDocument
 import android.os.Environment
 import android.text.TextPaint
 import android.text.TextUtils
 import dagger.hilt.android.qualifiers.ApplicationContext
-import java.io.File
 import android.net.Uri
-import java.io.FileOutputStream
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 import kotlin.math.max
 import android.content.ContentValues
 import android.provider.MediaStore
-import java.io.IOException
 
 /**
  * =============================================================
- * PdfTodo2Generator — FINAL with Description column
+ * PdfGenerator — FINAL with Description column
  *
  * - Page-1 columns: Event Date & Time | Description / Name | Trigger Time | Offset
  * - Page-2 columns: Event (icon + title) | Description / Name | Event Date & Time | Trigger Time | Offset
@@ -30,7 +26,7 @@ import java.io.IOException
  * - Pagination automatic; summary only on final page
  * =============================================================
  */
-class PdfTodo2Generator @Inject constructor(
+class PdfGenerator @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
 
@@ -119,80 +115,6 @@ class PdfTodo2Generator @Inject constructor(
             Result.failure(e)
         }
     }
-    /*fun generateReportPdf(report: ActiveAlarmReport): Result<String> {
-        return try {
-
-            // 1️⃣ Public Documents folder
-            val resolver = context.contentResolver
-            val relativePath = Environment.DIRECTORY_DOCUMENTS
-            val fileName = "report_todo2_${System.currentTimeMillis()}.pdf" // just a String
-            val collection = MediaStore.Files.getContentUri("external")
-
-            val targetUri = resolver.insert(collection, ContentValues().apply {
-                put(MediaStore.MediaColumns.DISPLAY_NAME, fileName) // filename only
-                put(MediaStore.MediaColumns.MIME_TYPE, "application/pdf")
-                put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath) // folder path
-            })
-
-            Log.d("PDF URI", "from generateReportPdf file: $targetUri")
-
-            val publicDocs = Environment.getExternalStoragePublicDirectory(
-                Environment.DIRECTORY_DOCUMENTS
-            )
-
-            // 2️⃣ Our subfolder
-            val folder = File(publicDocs, "ReminderReports")
-            if (!folder.exists()) folder.mkdirs()
-
-            // 3️⃣ Output file
-            val file = File(folder, "report_todo2_${System.currentTimeMillis()}.pdf")
-            Log.d("PDF URI", "from generateReportPdf file: $file")
-            val pdf = PdfDocument()
-
-            // simulate pages to compute totalPages for footer
-            val (groupedPagesCount, flatPagesCount) = simulatePageCounts(report)
-            val totalPages = groupedPagesCount + flatPagesCount
-
-            var pageNumber = 1
-            pageNumber = renderGroupedPages(pdf, report, pageNumber, groupedPagesCount, totalPages)
-            pageNumber = renderFlatPages(pdf, report, pageNumber, flatPagesCount, totalPages)
-
-            // 4️⃣ Write PDF
-            FileOutputStream(file).use { pdf.writeTo(it) }
-            pdf.close()
-
-            Result.success(file.absolutePath)
-
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }*/
-
-    /*fun generateReportPdf(report: ActiveAlarmReport): Result<String> {
-        return try {
-            val docs = context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS)
-            val folder = File(docs, "ReminderReports")
-            if (!folder.exists()) folder.mkdirs()
-
-            val file = File(folder, "report_todo2_${System.currentTimeMillis()}.pdf")
-            val pdf = PdfDocument()
-
-            // simulate pages to compute totalPages for footer
-            val (groupedPagesCount, flatPagesCount) = simulatePageCounts(report)
-            val totalPages = groupedPagesCount + flatPagesCount
-
-            var pageNumber = 1
-            pageNumber = renderGroupedPages(pdf, report, pageNumber, groupedPagesCount, totalPages)
-            pageNumber = renderFlatPages(pdf, report, pageNumber, flatPagesCount, totalPages)
-
-            FileOutputStream(file).use { pdf.writeTo(it) }
-            pdf.close()
-
-            Result.success(file.absolutePath)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }*/
 
     // =============================================================
     // Simulation (how many pages needed)
