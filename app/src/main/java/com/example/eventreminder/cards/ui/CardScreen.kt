@@ -1,8 +1,5 @@
 package com.example.eventreminder.cards.ui
 
-// =============================================================
-// Imports
-// =============================================================
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
@@ -164,7 +161,7 @@ fun CardScreen(
                                     modifier = Modifier
                                         .width(360.dp)
                                         .height(240.dp)
-                                        .shadow(8.dp, RoundedCornerShape(16.dp))
+                                        .shadow(4.dp, RoundedCornerShape(16.dp))
                                         .clip(RoundedCornerShape(16.dp)),
                                     color = if (bgBmp == null)
                                         MaterialTheme.colorScheme.primary.copy(alpha = 0.06f)

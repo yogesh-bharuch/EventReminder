@@ -1,8 +1,5 @@
 package com.example.eventreminder.cards.util
 
-// =============================================================
-// Imports
-// =============================================================
 import android.content.ContentResolver
 import android.content.Context
 import android.graphics.Bitmap

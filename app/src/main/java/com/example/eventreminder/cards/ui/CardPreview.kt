@@ -152,6 +152,52 @@ private fun BirthdayCard(cardData: CardData, modifier: Modifier, vm: CardViewMod
             AvatarDraggable(avatarBitmap = avatarBmp, vm = vm, onClick = onAvatarClick)
 
             Column(modifier = Modifier.padding(start = 16.dp, top = 14.dp, end = 14.dp)) {
+                //Text(text = "", style = MaterialTheme.typography.headlineSmall)
+                Text(text = "Happy ${cardData.title}", style = MaterialTheme.typography.headlineSmall)
+                cardData.name?.let {
+                    Spacer(Modifier.height(6.dp))
+                    //Text(text = "", style = MaterialTheme.typography.titleMedium)
+                    Text(text = it, style = MaterialTheme.typography.titleMedium)
+                }
+
+                Spacer(Modifier.height(8.dp))
+
+                // Age circle left-center
+                Box(
+                    modifier = Modifier
+                        .size(64.dp)
+                        .clip(RoundedCornerShape(40.dp))
+                        .background(brush = Brush.radialGradient(colors = listOf(MaterialTheme.colorScheme.primary.copy(alpha = 0.25f), MaterialTheme.colorScheme.primary.copy(alpha = 0.05f))))
+                        .padding(6.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(text = cardData.ageOrYearsLabel ?: "-", style = MaterialTheme.typography.headlineSmall)
+                }
+
+                Spacer(Modifier.height(60.dp))
+                //Spacer(Modifier.height(55.dp))
+
+                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(text = cardData.originalDateLabel, style = MaterialTheme.typography.labelSmall)
+                    Spacer(Modifier.weight(1f))
+                    Text("Yogesh", style = MaterialTheme.typography.labelSmall, textAlign = androidx.compose.ui.text.style.TextAlign.End)
+                }
+            }
+
+            // Render stickers (z-ordered above)
+            RenderStickers(stickers = cardData.stickers, onDelete = { vm.removeSticker(it) }, onUpdate = { vm.updateSticker(it) })
+        }
+    }
+}
+
+@Composable
+private fun AnniversaryCard(cardData: CardData, modifier: Modifier, vm: CardViewModel, onAvatarClick: () -> Unit) {
+    val avatarBmp by vm.avatarBitmap.collectAsState()
+    Surface(modifier = modifier.width(360.dp).height(240.dp).clip(RoundedCornerShape(16.dp)), color = Color.Transparent) {
+        Box(Modifier.fillMaxSize()) {
+            AvatarDraggable(avatarBmp, vm, onAvatarClick)
+
+            Column(modifier = Modifier.padding(start = 16.dp, top = 14.dp, end = 14.dp)) {
                 Text(text = "Happy ${cardData.title}", style = MaterialTheme.typography.headlineSmall)
                 cardData.name?.let {
                     Spacer(Modifier.height(6.dp))
@@ -172,37 +218,12 @@ private fun BirthdayCard(cardData: CardData, modifier: Modifier, vm: CardViewMod
                     Text(text = cardData.ageOrYearsLabel ?: "-", style = MaterialTheme.typography.headlineSmall)
                 }
 
-                Spacer(Modifier.height(64.dp))
+                Spacer(Modifier.height(34.dp))
 
                 Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(text = "BirthDate: ${cardData.originalDateLabel}", style = MaterialTheme.typography.labelSmall)
+                    Text(text = cardData.originalDateLabel, style = MaterialTheme.typography.labelSmall)
                     Spacer(Modifier.weight(1f))
-                    Text(text = cardData.name ?: "", style = MaterialTheme.typography.labelSmall, textAlign = androidx.compose.ui.text.style.TextAlign.End)
-                }
-            }
-
-            // Render stickers (z-ordered above)
-            RenderStickers(stickers = cardData.stickers, onDelete = { vm.removeSticker(it) }, onUpdate = { vm.updateSticker(it) })
-        }
-    }
-}
-
-@Composable
-private fun AnniversaryCard(cardData: CardData, modifier: Modifier, vm: CardViewModel, onAvatarClick: () -> Unit) {
-    val avatarBmp by vm.avatarBitmap.collectAsState()
-    Surface(modifier = modifier.width(360.dp).height(240.dp).clip(RoundedCornerShape(16.dp)), color = Color.Transparent) {
-        Box(Modifier.fillMaxSize()) {
-            AvatarDraggable(avatarBmp, vm, onAvatarClick)
-
-            Column(modifier = Modifier.padding(start = 20.dp, top = 20.dp, end = 20.dp)) {
-                Text(cardData.title, style = MaterialTheme.typography.headlineSmall)
-                Spacer(Modifier.height(8.dp))
-                Text(cardData.ageOrYearsLabel ?: "-", style = MaterialTheme.typography.headlineMedium)
-                Spacer(Modifier.height(12.dp))
-                Row {
-                    Text("Original: ${cardData.originalDateLabel}", style = MaterialTheme.typography.bodySmall)
-                    Spacer(Modifier.weight(1f))
-                    Text("Next: ${cardData.nextDateLabel}", style = MaterialTheme.typography.bodySmall, textAlign = androidx.compose.ui.text.style.TextAlign.End)
+                    Text("Yogesh", style = MaterialTheme.typography.labelSmall, textAlign = androidx.compose.ui.text.style.TextAlign.End)
                 }
             }
 
@@ -214,15 +235,38 @@ private fun AnniversaryCard(cardData: CardData, modifier: Modifier, vm: CardView
 @Composable
 private fun GenericCard(cardData: CardData, modifier: Modifier, vm: CardViewModel, onAvatarClick: () -> Unit) {
     val avatarBmp by vm.avatarBitmap.collectAsState()
-    Surface(modifier = modifier.width(360.dp).height(220.dp).clip(RoundedCornerShape(12.dp)), color = Color.Transparent) {
+    Surface(modifier = modifier.width(360.dp).height(240.dp).clip(RoundedCornerShape(12.dp)), color = Color.Transparent) {
         Box(Modifier.fillMaxSize()) {
             AvatarDraggable(avatarBmp, vm, onAvatarClick)
 
-            Column(modifier = Modifier.padding(start = 100.dp, top = 20.dp, end = 20.dp)) {
-                Text(cardData.title, style = MaterialTheme.typography.titleLarge)
-                Spacer(Modifier.height(6.dp))
-                Text(cardData.originalDateLabel, style = MaterialTheme.typography.bodySmall)
-                Text(cardData.nextDateLabel, style = MaterialTheme.typography.bodySmall)
+            Column(modifier = Modifier.padding(start = 16.dp, top = 14.dp, end = 14.dp)) {
+                Text(text = cardData.title, style = MaterialTheme.typography.headlineSmall)
+                cardData.name?.let {
+                    Spacer(Modifier.height(6.dp))
+                    Text(text = it, style = MaterialTheme.typography.titleMedium)
+                }
+
+                Spacer(Modifier.height(8.dp))
+
+                // Age circle left-center
+                /*Box(
+                    modifier = Modifier
+                        .size(64.dp)
+                        .clip(RoundedCornerShape(40.dp))
+                        .background(brush = Brush.radialGradient(colors = listOf(MaterialTheme.colorScheme.primary.copy(alpha = 0.25f), MaterialTheme.colorScheme.primary.copy(alpha = 0.05f))))
+                        .padding(6.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(text = cardData.ageOrYearsLabel ?: "-", style = MaterialTheme.typography.headlineSmall)
+                }*/
+
+                Spacer(Modifier.height(104.dp))
+
+                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(text = cardData.originalDateLabel, style = MaterialTheme.typography.labelSmall)
+                    Spacer(Modifier.weight(1f))
+                    Text("Yogesh", style = MaterialTheme.typography.labelSmall, textAlign = androidx.compose.ui.text.style.TextAlign.End)
+                }
             }
 
             RenderStickers(stickers = cardData.stickers, onDelete = { vm.removeSticker(it) }, onUpdate = { vm.updateSticker(it) })
