@@ -143,7 +143,8 @@ fun BirthdayEmptyState() {
 fun EventsListGrouped(
     sections: List<GroupedUiSection>,
     onClick: (Long) -> Unit,
-    onDelete: (Long) -> Unit
+    onDelete: (Long) -> Unit,
+    modifier: Modifier
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutine = rememberCoroutineScope()
