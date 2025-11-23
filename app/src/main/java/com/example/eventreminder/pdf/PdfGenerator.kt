@@ -2,17 +2,22 @@ package com.example.eventreminder.pdf
 
 import android.content.Context
 import android.graphics.*
+import android.util.Log
 import android.graphics.pdf.PdfDocument
 import android.os.Environment
 import android.text.TextPaint
 import android.text.TextUtils
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
+import android.net.Uri
 import java.io.FileOutputStream
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 import kotlin.math.max
+import android.content.ContentValues
+import android.provider.MediaStore
+import java.io.IOException
 
 /**
  * =============================================================
@@ -83,10 +88,54 @@ class PdfTodo2Generator @Inject constructor(
     // =============================================================
     // Public - generate report (saves in PUBLIC Documents folder)
     // =============================================================
-    fun generateReportPdf(report: ActiveAlarmReport): Result<String> {
+    fun generateReportPdf(context: Context, report: ActiveAlarmReport): Result<Uri> {
+        return try {
+            val resolver = context.contentResolver
+            val relativePath = Environment.DIRECTORY_DOCUMENTS
+            val fileName = "report_todo2_${System.currentTimeMillis()}.pdf"
+            val collection = MediaStore.Files.getContentUri("external")
+
+            val targetUri = resolver.insert(collection, ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                put(MediaStore.MediaColumns.MIME_TYPE, "application/pdf")
+                put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
+            }) ?: return Result.failure(IllegalStateException("Failed to create MediaStore entry"))
+
+            val pdf = PdfDocument()
+            val (groupedPagesCount, flatPagesCount) = simulatePageCounts(report)
+            val totalPages = groupedPagesCount + flatPagesCount
+
+            var pageNumber = 1
+            pageNumber = renderGroupedPages(pdf, report, pageNumber, groupedPagesCount, totalPages)
+            pageNumber = renderFlatPages(pdf, report, pageNumber, flatPagesCount, totalPages)
+
+            resolver.openOutputStream(targetUri, "w")?.use { outputStream ->
+                pdf.writeTo(outputStream)
+            }
+            pdf.close()
+
+            Result.success(targetUri)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+    /*fun generateReportPdf(report: ActiveAlarmReport): Result<String> {
         return try {
 
             // 1️⃣ Public Documents folder
+            val resolver = context.contentResolver
+            val relativePath = Environment.DIRECTORY_DOCUMENTS
+            val fileName = "report_todo2_${System.currentTimeMillis()}.pdf" // just a String
+            val collection = MediaStore.Files.getContentUri("external")
+
+            val targetUri = resolver.insert(collection, ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, fileName) // filename only
+                put(MediaStore.MediaColumns.MIME_TYPE, "application/pdf")
+                put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath) // folder path
+            })
+
+            Log.d("PDF URI", "from generateReportPdf file: $targetUri")
+
             val publicDocs = Environment.getExternalStoragePublicDirectory(
                 Environment.DIRECTORY_DOCUMENTS
             )
@@ -97,7 +146,7 @@ class PdfTodo2Generator @Inject constructor(
 
             // 3️⃣ Output file
             val file = File(folder, "report_todo2_${System.currentTimeMillis()}.pdf")
-
+            Log.d("PDF URI", "from generateReportPdf file: $file")
             val pdf = PdfDocument()
 
             // simulate pages to compute totalPages for footer
@@ -117,7 +166,7 @@ class PdfTodo2Generator @Inject constructor(
         } catch (e: Exception) {
             Result.failure(e)
         }
-    }
+    }*/
 
     /*fun generateReportPdf(report: ActiveAlarmReport): Result<String> {
         return try {
