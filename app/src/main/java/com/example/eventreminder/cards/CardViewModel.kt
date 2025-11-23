@@ -67,6 +67,7 @@ class CardViewModel @Inject constructor(
     private val _backgroundBitmap = MutableStateFlow<Bitmap?>(null)
     val backgroundBitmap: StateFlow<Bitmap?> = _backgroundBitmap.asStateFlow()
 
+
     // avatar transform state (dp & floats)
     private val _avatarOffsetX = MutableStateFlow(220f)
     private val _avatarOffsetY = MutableStateFlow(24f)
@@ -80,6 +81,8 @@ class CardViewModel @Inject constructor(
 
     private val reminderIdArg: Long = savedStateHandle.get<Long>("reminderId") ?: -1L
 
+
+
     init {
         Timber.tag(TAG).d("init reminderId=%d", reminderIdArg)
         if (reminderIdArg == -1L) {
@@ -88,6 +91,21 @@ class CardViewModel @Inject constructor(
             loadReminder(reminderIdArg)
         }
     }
+
+    // -------------------------
+    // Show/Hide title in card preview
+    // -------------------------
+    val showTitle = MutableStateFlow(true)
+    val showName = MutableStateFlow(true)
+
+    fun toggleShowTitle(value: Boolean) {
+        showTitle.value = value
+    }
+
+    fun toggleShowName(value: Boolean) {
+        showName.value = value
+    }
+
 
     // -------------------------
     // Background helpers

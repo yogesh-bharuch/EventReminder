@@ -262,6 +262,36 @@ fun CardScreen(
 
                         Spacer(modifier = Modifier.height(16.dp))
 
+                        // ---------------------------------------------------------
+                        // TOGGLES: Show/Hide Title + Name
+                        // ---------------------------------------------------------
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(24.dp)
+                        ) {
+                            val showTitle by viewModel.showTitle.collectAsState()
+                            val showName by viewModel.showName.collectAsState()
+
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(
+                                    checked = showTitle,
+                                    onCheckedChange = { viewModel.toggleShowTitle(it) }
+                                )
+                                Text("Show Title")
+                            }
+
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(
+                                    checked = showName,
+                                    onCheckedChange = { viewModel.toggleShowName(it) }
+                                )
+                                Text("Show Name")
+                            }
+                        }
+
                         // =====================================================
                         // SAVE / SHARE
                         // =====================================================
