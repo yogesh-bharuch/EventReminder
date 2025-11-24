@@ -1,13 +1,6 @@
 package com.example.eventreminder.cards.ui
 
-// =============================================================
-// Imports
-// =============================================================
-import android.graphics.Bitmap
-import android.net.Uri
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
-import androidx.activity.result.contract.ActivityResultContracts
+
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -152,17 +145,17 @@ private fun BirthdayCard(cardData: CardData, modifier: Modifier, vm: CardViewMod
                 if (vm.showTitle.collectAsState().value) {
                     Text(text = "Happy ${cardData.title}", style = MaterialTheme.typography.headlineSmall, color = Color.Red)
                 } else {
-                    Spacer(Modifier.height(30.dp))   // same height as title
+                    Spacer(Modifier.height(42.dp))   // same height as title
                 }
                 // NAME (with preserved spacing)
                 if (vm.showName.collectAsState().value && cardData.name != null) {
                     Spacer(Modifier.height(6.dp))    // the gap above name
                     Text(text = cardData.name!!, style = MaterialTheme.typography.titleMedium, color = Color.Red)
                 } else {
-                    Spacer(Modifier.height(32.dp))   // 6dp gap + ~22dp name height
+                    Spacer(Modifier.height(44.dp))   // 6dp gap + ~22dp name height
                 }
 
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(10.dp))
 
                 // Age circle left-center
                 Box(
@@ -176,7 +169,7 @@ private fun BirthdayCard(cardData: CardData, modifier: Modifier, vm: CardViewMod
                     Text(text = cardData.ageOrYearsLabel ?: "-", style = MaterialTheme.typography.headlineSmall)
                 }
 
-                Spacer(Modifier.height(60.dp))
+                Spacer(Modifier.height(40.dp))
                 //Spacer(Modifier.height(55.dp))
 
                 Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -204,17 +197,17 @@ private fun AnniversaryCard(cardData: CardData, modifier: Modifier, vm: CardView
                 if (vm.showTitle.collectAsState().value) {
                     Text(text = "Happy ${cardData.title}", style = MaterialTheme.typography.headlineSmall, color = Color.Red)
                 } else {
-                    Spacer(Modifier.height(30.dp))   // same height as title
+                    Spacer(Modifier.height(42.dp))   // same height as title
                 }
                 // NAME (with preserved spacing)
                 if (vm.showName.collectAsState().value && cardData.name != null) {
                     Spacer(Modifier.height(6.dp))    // the gap above name
                     Text(text = cardData.name!!, style = MaterialTheme.typography.titleMedium, color = Color.Red)
                 } else {
-                    Spacer(Modifier.height(32.dp))   // 6dp gap + ~22dp name height
+                    Spacer(Modifier.height(44.dp))   // 6dp gap + ~22dp name height
                 }
 
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(10.dp))
 
                 // Age circle left-center
                 Box(
@@ -228,7 +221,7 @@ private fun AnniversaryCard(cardData: CardData, modifier: Modifier, vm: CardView
                     Text(text = cardData.ageOrYearsLabel ?: "-", style = MaterialTheme.typography.headlineSmall)
                 }
 
-                Spacer(Modifier.height(60.dp))
+                Spacer(Modifier.height(40.dp))
 
                 Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(text = cardData.originalDateLabel, style = MaterialTheme.typography.labelSmall)
@@ -254,7 +247,7 @@ private fun GenericCard(cardData: CardData, modifier: Modifier, vm: CardViewMode
                 if (vm.showTitle.collectAsState().value) {
                     Text(text = cardData.title, style = MaterialTheme.typography.headlineSmall, color = Color.Red)
                 } else {
-                    Spacer(Modifier.height(30.dp))   // same height as title
+                    Spacer(Modifier.height(42.dp))   // same height as title
                 }
 
                 // NAME (with preserved spacing)
@@ -262,12 +255,11 @@ private fun GenericCard(cardData: CardData, modifier: Modifier, vm: CardViewMode
                     Spacer(Modifier.height(6.dp))    // the gap above name
                     Text(text = cardData.name!!, style = MaterialTheme.typography.titleMedium, color = Color.Red)
                 } else {
-                    Spacer(Modifier.height(32.dp))   // 6dp gap + ~22dp name height
+                    Spacer(Modifier.height(42.dp))   // 6dp gap + ~22dp name height
                 }
 
-                Spacer(Modifier.height(16.dp))
-
                 // Age circle left-center
+                //Spacer(Modifier.height(30.dp))
                 /*Box(
                     modifier = Modifier
                         .size(64.dp)
@@ -279,7 +271,7 @@ private fun GenericCard(cardData: CardData, modifier: Modifier, vm: CardViewMode
                     Text(text = cardData.ageOrYearsLabel ?: "-", style = MaterialTheme.typography.headlineSmall)
                 }*/
 
-                Spacer(Modifier.height(124.dp))
+                Spacer(Modifier.height(115.dp))
 
                 Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(text = cardData.originalDateLabel, style = MaterialTheme.typography.labelSmall)
