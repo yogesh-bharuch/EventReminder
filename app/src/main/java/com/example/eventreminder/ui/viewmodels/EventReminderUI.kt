@@ -4,6 +4,8 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
+// //👉 In short: it converts raw event data into a user‑friendly reminder object with readable date and remaining time labels for display in the UI.
+// UI model for event reminders. used in ui event card
 data class EventReminderUI(
     val id: Long,
     val title: String,
@@ -13,7 +15,7 @@ data class EventReminderUI(
     val timeRemainingLabel: String,
     val formattedDateLabel: String
 ) {
-
+    //- from(...): factory method that builds an EventReminderUI from raw values.
     companion object {
 
         private val dateFormatter =
@@ -47,7 +49,7 @@ data class EventReminderUI(
                 timeRemainingLabel = remaining
             )
         }
-
+        // - formatRemaining(...): helper that compares event time with Instant.now() and returns a relative label based on the difference.
         private fun formatRemaining(eventMillis: Long): String {
             val now = Instant.now().toEpochMilli()
             val diff = eventMillis - now

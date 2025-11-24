@@ -119,7 +119,7 @@ fun HomeScreen(
                     coroutineScope.launch { reminderVm.cleanupOldReminders() }
                 },
                 onGeneratePdfClick = {
-                    Log.d("PDF URI", "pdf reportclickrd")
+                    Timber.tag("PDF URI").d("pdf reportclickrd")
                     coroutineScope.launch {
                         pdfviewModel.runTodo3RealReport() }
                 },
@@ -165,10 +165,9 @@ fun HomeScreen(
                 BirthdayEmptyState()
 
             } else {
-
+                // navigate to (Debug)
                 Button(
                     onClick = {
-                        //navController.navigate(DebugRoute)
                         navController.navigate(CardRoute(reminderId = 26))
                     }
                 ) {
@@ -181,7 +180,7 @@ fun HomeScreen(
                     sections = groupedSections,
                     onClick = { id ->
                         navController.navigate(AddEditReminderRoute(id.toString()))
-                    },
+                    }, // navigate to edit reminder
                     onDelete = { id ->
                         coroutineScope.launch {
                             reminderVm.deleteEvent(id)

@@ -120,7 +120,7 @@ fun EventsListGrouped(
 
     // initialize collapse state
     sections.forEach { section ->
-        if (!collapsed.containsKey(section.header)) collapsed[section.header] = false
+        if (!collapsed.containsKey(section.header)) collapsed[section.header] = true
     }
 
     Box(modifier.fillMaxSize()) {
@@ -129,7 +129,7 @@ fun EventsListGrouped(
 
             sections.forEach { section ->
 
-                // HEADER
+                // STICKY HEADER. section header row section name    + or -
                 stickyHeader {
                     Surface(
                         color = MaterialTheme.colorScheme.background,
@@ -146,22 +146,13 @@ fun EventsListGrouped(
                                 .fillMaxWidth()
                                 .padding(vertical = 6.dp, horizontal = 10.dp)
                         ) {
-                            Row(
-                                Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(
-                                    section.header,
-                                    style = MaterialTheme.typography.titleLarge,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween)
+                            {
+                                Text(section.header, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
 
-                                Text(
-                                    if (collapsed[section.header] == true) "+" else "–",
-                                    style = MaterialTheme.typography.titleLarge,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
+                                Text(if (collapsed[section.header] == true) "+" else "–", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
+                            } // section header row section name    + or -
+
                             HorizontalDivider()
                         }
                     }
@@ -179,17 +170,14 @@ fun EventsListGrouped(
 
                                 val dismissState = rememberSwipeToDismissBoxState(
                                     confirmValueChange = { value ->
-                                        if (value == SwipeToDismissBoxValue.EndToStart ||
-                                            value == SwipeToDismissBoxValue.StartToEnd
+                                        if (value == SwipeToDismissBoxValue.EndToStart || value == SwipeToDismissBoxValue.StartToEnd
                                         ) {
                                             coroutine.launch {
                                                 onDelete(ui.id)
-
                                                 val result = snackbarHostState.showSnackbar(
                                                     message = "Event deleted",
                                                     actionLabel = "Undo"
                                                 )
-
                                                 if (result == SnackbarResult.ActionPerformed) {
                                                     // Implement undo if needed
                                                 }
@@ -272,6 +260,7 @@ fun EventCard(
     onClick: () -> Unit,
     onDelete: () -> Unit
 ) {
+    // Converts repeat rule into a human‑readable chip.
     val repeatLabel = when (ui.repeatRule) {
         "every_minute" -> "Every Minute"
         "daily" -> "Daily"
@@ -281,13 +270,11 @@ fun EventCard(
         else -> null
     }
 
+    // Clickable card with surface color and slight elevation.
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
+        modifier = Modifier.fillMaxWidth()
             .clickable { onClick() },
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        ),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
         Row(
@@ -296,25 +283,20 @@ fun EventCard(
                 .padding(6.dp),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-
+            // Left side (Column): title, description if not empty, Row(repeat chip & ⏳ timeRemainingLabel) .
             Column(modifier = Modifier.weight(1f)) {
-
+                // title
                 Text(text = ui.title, style = MaterialTheme.typography.titleSmall)
-
-                ui.description?.let {
-                    Text(text = it, style = MaterialTheme.typography.bodyMedium)
-                }
+                // name -> description
+                ui.description?.let { Text(text = it, style = MaterialTheme.typography.bodyMedium) }
 
                 Spacer(Modifier.height(2.dp))
 
-                Text(
-                    text = ui.formattedDateLabel,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                // formated date label
+                Text(text = ui.formattedDateLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
                 Spacer(Modifier.height(2.dp))
-
+                // date label &  (⏳ timeRemainingLabel).
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
 
                     repeatLabel?.let {
@@ -327,7 +309,6 @@ fun EventCard(
                             modifier = Modifier.padding(top = 1.dp)
                         )
                     }
-
                     Text(
                         text = "⏳ ${ui.timeRemainingLabel}",
                         style = MaterialTheme.typography.bodySmall,
@@ -336,6 +317,7 @@ fun EventCard(
                 }
             }
 
+            // Right side of row: A delete IconButton with a trash icon, calling onDelete.
             IconButton(
                 onClick = onDelete,
                 modifier = Modifier.size(36.dp)
