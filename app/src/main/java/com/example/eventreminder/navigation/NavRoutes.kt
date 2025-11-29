@@ -27,6 +27,10 @@ data class CardRoute(
     val reminderId: Long
 )
 
+@Serializable
+data object PixelPreviewRoute
+
+
 /*
 package com.example.eventreminder.navigation
 

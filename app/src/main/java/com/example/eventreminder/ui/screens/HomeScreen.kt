@@ -31,6 +31,7 @@ import kotlinx.coroutines.launch
 import timber.log.Timber
 import android.content.Intent
 import android.net.Uri
+import com.example.eventreminder.cards.ui.pixel.PixelCardPreviewScreen
 
 
 // =============================================================
@@ -168,7 +169,8 @@ fun HomeScreen(
                 // navigate to (Debug)
                 Button(
                     onClick = {
-                        navController.navigate(CardRoute(reminderId = 26))
+                        navController.navigate(PixelPreviewRoute)
+                        //navController.navigate(CardRoute(reminderId = 54))
                     }
                 ) {
                     Text("Developer Tools")

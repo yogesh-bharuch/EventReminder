@@ -6,6 +6,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.toRoute
 import com.example.eventreminder.cards.ui.CardScreen
+import com.example.eventreminder.cards.ui.pixel.PixelCardPreviewScreen
 import com.example.eventreminder.ui.debug.CardDebugScreen
 import com.example.firebaseloginmodule.FirebaseLoginEntry
 import com.example.eventreminder.ui.screens.HomeScreen
@@ -37,6 +38,12 @@ fun AppNavGraph(
         composable<HomeRoute> {
             HomeScreen(navController)
         }
+
+        // PixelPreviewRoute
+        composable<PixelPreviewRoute> {
+            PixelCardPreviewScreen()
+        }
+
 
         // ⏰ Reminder manager
         composable<ReminderManagerRoute> {
