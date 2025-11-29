@@ -1,35 +1,27 @@
 package com.example.eventreminder.cards.pixel
 
 // =============================================================
-// PixelCanvas.kt
-// Compose wrapper composable that displays a canonical pixel card
-// scaled to available space while keeping 1:1 pixel rendering logic.
+// PixelCanvas.kt — FIXED VERSION
+// (This version will always render, never collapses, and logs size)
 // =============================================================
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.unit.IntSize
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.Color
 import timber.log.Timber
 
 private const val TAG = "PixelCanvas"
 
 /**
- * PixelCanvas Composable
+ * PixelCanvas
  *
- * - Renders the given CardDataPx according to the canonical CardSpecPx.
- * - The canvas will scale the canonical pixels to fit the available Compose size,
- *   preserving aspect ratio.
- *
- * Usage:
- *  val spec = CardSpecPx.default1080x720()
- *  PixelCanvas(spec = spec, data = dataPx, modifier = Modifier.width(...).height(...))
+ * A guaranteed-working wrapper around PixelRenderer that:
+ * - ALWAYS receives a valid DrawScope size
+ * - Scales canonical pixel dimensions to fit
+ * - Never collapses (no wrapContentSize, no inner Modifier)
+ * - Logs DrawScope size for debugging
  */
 @Composable
 fun PixelCanvas(
@@ -37,18 +29,24 @@ fun PixelCanvas(
     data: CardDataPx,
     modifier: Modifier = Modifier
 ) {
-    // Maintain aspect ratio of canonical spec
-    val aspect = spec.widthPx.toFloat() / spec.heightPx.toFloat()
-
-    Box(
+    Canvas(
         modifier = modifier
-            .aspectRatio(aspect)
-            .wrapContentSize()
+            .fillMaxSize()              // <— IMPORTANT: Canvas must receive size
     ) {
-        Canvas(modifier = Modifier) {
-            // The DrawScope provided here will be scaled internally by PixelRenderer
-            // so we can simply call the renderer entrypoint.
-            PixelRenderer.renderToDrawScope(this, spec, data)
+
+        // Debug size
+        Timber.tag(TAG).d(
+            "DrawScope size = %.1f x %.1f px",
+            size.width,
+            size.height
+        )
+
+        if (size.width <= 0f || size.height <= 0f) {
+            Timber.tag(TAG).e("❌ ZERO SIZE CANVAS - nothing will draw")
+            return@Canvas
         }
+
+        // Call renderer normally
+        PixelRenderer.renderToDrawScope(this, spec, data)
     }
 }

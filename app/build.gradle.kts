@@ -89,6 +89,7 @@ dependencies {
     // Room
     implementation(libs.androidx.room.ktx)
     implementation(libs.androidx.compose.runtime.saveable)
+    implementation(libs.androidx.junit.ktx)
     kapt(libs.androidx.room.compiler)
 
     // ✅ Hilt DI
@@ -127,5 +128,22 @@ dependencies {
     debugImplementation(libs.androidx.ui.test.manifest)
 
     implementation(libs.timber)
+    implementation(kotlin("test"))
+
+    // ----------- Unit Tests (Robolectric / JVM) -----------
+    testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
+
+// ----------- Android Instrumented Tests -----------
+    androidTestImplementation(libs.androidx.junit.v115)
+    androidTestImplementation(libs.androidx.espresso.core.v351)
+
+// Required for Canvas & Bitmap tests in instrumented mode
+    androidTestImplementation(libs.androidx.core)
+
+    // DataStore Preferences
+    implementation(libs.androidx.datastore.preferences)
+    implementation(libs.androidx.documentfile)
+
 
 }

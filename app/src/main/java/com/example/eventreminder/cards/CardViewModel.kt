@@ -343,4 +343,164 @@ class CardViewModel @Inject constructor(
             null
         }
     }
+
+
+    // =============================================================
+    // PIXEL AVATAR SYSTEM (STEP-2)
+    // - New, parallel pipeline for PixelRenderer canvas
+    // - Keeps normalized transform so PixelRenderer.drawAvatar() works
+    // - Does NOT affect any old DP-based avatar UI
+    // =============================================================
+
+    // --------------------------------------
+    // Pixel Avatar Bitmap
+    // --------------------------------------
+    private val _pixelAvatarBitmap = MutableStateFlow<Bitmap?>(null)
+    val pixelAvatarBitmap: StateFlow<Bitmap?> = _pixelAvatarBitmap.asStateFlow()
+
+    // --------------------------------------
+    // Normalized Transform (0–1 for X/Y)
+    // scale = multiplier
+    // rotationDeg = degrees
+    // --------------------------------------
+    private val _pixelAvatarXNorm = MutableStateFlow(0.5f)
+    private val _pixelAvatarYNorm = MutableStateFlow(0.5f)
+    private val _pixelAvatarScale = MutableStateFlow(1f)
+    private val _pixelAvatarRotationDeg = MutableStateFlow(0f)
+
+    val pixelAvatarXNorm: StateFlow<Float> = _pixelAvatarXNorm.asStateFlow()
+    val pixelAvatarYNorm: StateFlow<Float> = _pixelAvatarYNorm.asStateFlow()
+    val pixelAvatarScale: StateFlow<Float> = _pixelAvatarScale.asStateFlow()
+    val pixelAvatarRotationDeg: StateFlow<Float> = _pixelAvatarRotationDeg.asStateFlow()
+
+    // =============================================================
+    // Pixel Avatar API (called by PixelCanvas gestures or UI buttons)
+    // =============================================================
+
+    /**
+     * Set avatar bitmap exclusively for PixelRenderer pipeline.
+     * Old DP-avatar pipeline remains untouched.
+     */
+    fun setPixelAvatar(bitmap: Bitmap) {
+        Timber.tag(TAG).d("setPixelAvatar() new bitmap")
+        _pixelAvatarBitmap.value = bitmap
+
+        // Reset transform for new avatar
+        _pixelAvatarXNorm.value = 0.5f
+        _pixelAvatarYNorm.value = 0.5f
+        _pixelAvatarScale.value = 1f
+        _pixelAvatarRotationDeg.value = 0f
+    }
+
+    /**
+     * Clear PixelRenderer avatar.
+     */
+    fun clearPixelAvatar() {
+        Timber.tag(TAG).d("clearPixelAvatar()")
+        _pixelAvatarBitmap.value = null
+        _pixelAvatarXNorm.value = 0.5f
+        _pixelAvatarYNorm.value = 0.5f
+        _pixelAvatarScale.value = 1f
+        _pixelAvatarRotationDeg.value = 0f
+    }
+
+    /**
+     * Move avatar in normalized space.
+     * Called by drag gesture.
+     */
+    fun updatePixelAvatarPosition(deltaXNorm: Float, deltaYNorm: Float) {
+        val newX = (_pixelAvatarXNorm.value + deltaXNorm).coerceIn(0f, 1f)
+        val newY = (_pixelAvatarYNorm.value + deltaYNorm).coerceIn(0f, 1f)
+
+        Timber.tag(TAG).d(
+            "updatePixelAvatarPosition dx=%.3f dy=%.3f → x=%.3f y=%.3f",
+            deltaXNorm, deltaYNorm, newX, newY
+        )
+
+        _pixelAvatarXNorm.value = newX
+        _pixelAvatarYNorm.value = newY
+    }
+
+    /**
+     * Pinch-zoom scale update.
+     * Multiplicative scale factor.
+     */
+    fun updatePixelAvatarScale(scaleFactor: Float) {
+        val newScale = (_pixelAvatarScale.value * scaleFactor).coerceIn(0.3f, 6f)
+
+        Timber.tag(TAG).d(
+            "updatePixelAvatarScale factor=%.3f → scale=%.3f",
+            scaleFactor, newScale
+        )
+
+        _pixelAvatarScale.value = newScale
+    }
+
+    /**
+     * Rotation update from 2-finger gesture.
+     */
+    fun updatePixelAvatarRotation(deltaDeg: Float) {
+        var newDeg = _pixelAvatarRotationDeg.value + deltaDeg
+
+        if (newDeg < 0f) newDeg += 360f
+        if (newDeg >= 360f) newDeg -= 360f
+
+        Timber.tag(TAG).d(
+            "updatePixelAvatarRotation delta=%.2f → rot=%.2f",
+            deltaDeg, newDeg
+        )
+
+        _pixelAvatarRotationDeg.value = newDeg
+    }
+
+    // =============================================================
+    // Pixel Avatar Combined Transform Data Class
+    // - Helper for PixelRenderer.drawAvatar()
+    // - No interference with old avatar pipeline
+    // =============================================================
+    data class PixelAvatarTransform(
+        val xNorm: Float,
+        val yNorm: Float,
+        val scale: Float,
+        val rotationDeg: Float
+    )
+
+    val pixelAvatarTransform: PixelAvatarTransform
+        get() = PixelAvatarTransform(
+            xNorm = _pixelAvatarXNorm.value,
+            yNorm = _pixelAvatarYNorm.value,
+            scale = _pixelAvatarScale.value,
+            rotationDeg = _pixelAvatarRotationDeg.value
+        )
+
+    // =============================================================
+    // Placeholder Avatar (for testing PixelRenderer pipeline)
+    // =============================================================
+    fun loadPixelAvatarPlaceholder() {
+        Timber.tag(TAG).d("loadPixelAvatarPlaceholder()")
+
+        try {
+            val size = 400
+            val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+            val canvas = android.graphics.Canvas(bmp)
+
+            val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                color = android.graphics.Color.MAGENTA
+            }
+
+            canvas.drawCircle(
+                size / 2f,
+                size / 2f,
+                size * 0.45f,
+                paint
+            )
+
+            setPixelAvatar(bmp)
+
+        } catch (t: Throwable) {
+            Timber.tag(TAG).e(t, "Failed to generate placeholder avatar")
+        }
+    }
+
 }
+
