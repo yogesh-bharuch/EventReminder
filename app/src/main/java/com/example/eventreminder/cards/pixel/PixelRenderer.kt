@@ -13,6 +13,7 @@ import android.graphics.*
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.nativeCanvas
 import timber.log.Timber
+import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 
@@ -225,41 +226,57 @@ object PixelRenderer {
     // ---------------------------------------------------------
     // AVATAR (FREE TRANSFORM LAYER)  ⭐⭐
     // ---------------------------------------------------------
-    private fun drawAvatarFree(c: Canvas, spec: CardSpecPx, data: CardDataPx) {
+    fun drawAvatarFree(c: Canvas, spec: CardSpecPx, data: CardDataPx) {
         val bmp = data.avatarBitmap
-        if (bmp == null) {
-            drawCameraPlaceholder(c, spec)
-            return
-        }
 
-        // Center of avatar in card px
+        // Compute avatar center and transform
         val cx = spec.widthPx * data.avatarTransform.xNorm
         val cy = spec.heightPx * data.avatarTransform.yNorm
-
         val s = data.avatarTransform.scale.coerceIn(0.1f, 8f)
         val rot = data.avatarTransform.rotationDeg
 
-        // Build matrix: translate → scale → rotate → final translate
-        val m = Matrix()
-        m.postTranslate(-bmp.width / 2f, -bmp.height / 2f)  // center origin
-        m.postScale(s, s)
-        m.postRotate(rot)
-        m.postTranslate(cx, cy) // move to card position
+        // Default avatar size (base set from bitmap or placeholder)
+        val baseSize = bmp?.width ?: (spec.widthPx * 0.20f).toInt()
+        val avatarSize = baseSize * s
+        val radius = avatarSize / 2f
+
+        // -------------------------------------------------------
+        // CASE A — NO PHOTO → draw circular camera placeholder
+        // -------------------------------------------------------
+        if (bmp == null) {
+            drawCameraPlaceholderStatic(c, spec)
+            return
+        }
+
+        // -------------------------------------------------------
+        // CASE B — REAL PHOTO → circular masked free-moving image
+        // -------------------------------------------------------
+        val shader = BitmapShader(bmp, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
+
+        val mat = Matrix().apply {
+            // Center bitmap origin
+            postTranslate(-bmp.width / 2f, -bmp.height / 2f)
+
+            // Scale at center
+            postScale(s, s)
+
+            // Rotate at center
+            postRotate(rot)
+
+            // Move to card position
+            postTranslate(cx, cy)
+        }
+
+        shader.setLocalMatrix(mat)
+
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            this.shader = shader
+        }
 
         c.save()
-        try {
-            c.drawBitmap(bmp, m, p())
-        } catch (t: Throwable) {
-            Timber.tag(TAG).e(t, "Avatar draw failed; fallback")
-            val fb = Matrix().apply {
-                postScale(s, s)
-                postTranslate(cx - bmp.width * s / 2f, cy - bmp.height * s / 2f)
-            }
-            c.drawBitmap(bmp, fb, p())
-        } finally {
-            c.restore()
-        }
-        }
+        c.drawCircle(cx, cy, radius, paint)
+        c.restore()
+    }
 
 
     // ---------------------------------------------------------
@@ -309,38 +326,65 @@ object PixelRenderer {
         return ell
     }
 
-    fun isTouchInsideAvatar(
-        touchX: Float,
-        touchY: Float,
-        spec: CardSpecPx,
-        data: CardDataPx
-    ): Boolean {
-        val bmp = data.avatarBitmap ?: return false
+    fun isTouchInsideAvatar(touchX: Float, touchY: Float, spec: CardSpecPx, data: CardDataPx): Boolean {
+
+        val baseSize = (data.avatarBitmap?.width?.toFloat() ?: (spec.widthPx.toFloat() * 0.20f))
+        val s = data.avatarTransform.scale.coerceIn(0.1f, 8f)
 
         val cx = spec.widthPx * data.avatarTransform.xNorm
         val cy = spec.heightPx * data.avatarTransform.yNorm
-        val s = data.avatarTransform.scale
-        val rot = data.avatarTransform.rotationDeg
 
-        // Build same matrix used for drawing
-        val m = Matrix()
-        m.postTranslate(-bmp.width / 2f, -bmp.height / 2f)
-        m.postScale(s, s)
-        m.postRotate(rot)
-        m.postTranslate(cx, cy)
+        val radius = (baseSize * s) / 2f
 
-        // Inverse matrix to map touch → bitmap space
-        val inv = Matrix()
-        if (!m.invert(inv)) return false
+        val dx = touchX - cx
+        val dy = touchY - cy
 
-        val pts = floatArrayOf(touchX, touchY)
-        inv.mapPoints(pts)
+        return dx * dx + dy * dy <= radius * radius
+    }
 
-        val bx = pts[0]
-        val by = pts[1]
+    private fun drawCameraPlaceholderStatic(c: Canvas, spec: CardSpecPx) {
 
-        return (bx >= 0 && bx <= bmp.width &&
-                by >= 0 && by <= bmp.height)
+        val radius = spec.widthPx * 0.18f
+        val cx = spec.widthPx / 2f
+        val cy = spec.heightPx * 0.50f
+
+        // White circle
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.WHITE
+            style = Paint.Style.FILL
+        }
+        c.drawCircle(cx, cy, radius, paint)
+
+        // Gray border
+        val border = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.parseColor("#888888")
+            style = Paint.Style.STROKE
+            strokeWidth = radius * 0.08f
+        }
+        c.drawCircle(cx, cy, radius, border)
+
+        // Camera icon (simple)
+        val iconPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.parseColor("#666666")
+            style = Paint.Style.STROKE
+            strokeWidth = radius * 0.12f
+        }
+
+        // Lens
+        c.drawCircle(cx, cy, radius * 0.35f, iconPaint)
+
+        // Top bar
+        val barW = radius * 1.0f
+        val barH = radius * 0.35f
+        c.drawRoundRect(
+            cx - barW / 2f,
+            cy - radius * 1.1f,
+            cx + barW / 2f,
+            cy - radius * 1.1f + barH,
+            radius * 0.15f,
+            radius * 0.15f,
+            iconPaint
+        )
     }
 
 
