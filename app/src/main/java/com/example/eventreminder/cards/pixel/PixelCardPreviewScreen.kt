@@ -81,21 +81,28 @@ fun PixelCardPreviewScreen() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val viewModel: CardViewModel = hiltViewModel()
+    //var isAvatarGestureActive by remember { mutableStateOf(false) }
 
     // Ensure placeholder avatar loaded into VM once
     val vmAvatarBitmap by viewModel.pixelAvatarBitmap.collectAsState()
 
-    LaunchedEffect(viewModel) {
-        // small delay gives Compose time to attach collectors
-        delay(50)
-        Timber.tag("TESTPH").d("Triggering placeholder load after delay")
-        viewModel.loadPixelAvatarPlaceholder()
-    }
+    // Load placeholder ONLY if no avatar has been set yet
+    /*LaunchedEffect(vmAvatarBitmap) {
+        if (vmAvatarBitmap == null) {
+            delay(50)
+            Timber.tag("TESTPH").d("No avatar present → loading placeholder")
+            viewModel.loadPixelAvatarPlaceholder()
+        } else {
+            Timber.tag("TESTPH").d("Avatar exists → skipping placeholder load")
+        }
+    }*/
+
+
 
     // Debug: confirm bitmap observed
-    LaunchedEffect(vmAvatarBitmap) {
+    /*LaunchedEffect(vmAvatarBitmap) {
         Timber.tag("TESTPH").d("vmAvatarBitmap present? = ${vmAvatarBitmap != null}")
-    }
+    }*/
 
     // Canonical spec (1080x1200)
     val spec = remember { CardSpecPx.default1080x1200() }
@@ -284,42 +291,60 @@ fun PixelCardPreviewScreen() {
     // -------------------------
     var boxSize by remember { mutableStateOf(IntSize.Zero) }
 
+    var isAvatarGestureActive by remember { mutableStateOf(false) }
+
     val gestureModifier = Modifier.pointerInput(spec, boxSize) {
         awaitPointerEventScope {
-
             while (true) {
 
+                // Wait for first press
                 var event = awaitPointerEvent()
+                val firstDown = event.changes.firstOrNull { it.pressed } ?: continue
 
-                if (event.changes.none { it.pressed }) continue
+                val touchX = firstDown.position.x
+                val touchY = firstDown.position.y
 
+                // --------------------------------------------
+                // ⭐ Accurate matrix-based hit-testing
+                // --------------------------------------------
+                isAvatarGestureActive = PixelRenderer.isTouchInsideAvatar(
+                    touchX = touchX,
+                    touchY = touchY,
+                    spec = spec,
+                    data = cardData
+                )
+
+                // If touch is NOT inside avatar → ignore gesture
+                if (!isAvatarGestureActive) {
+                    // Wait until all fingers released
+                    while (event.changes.any { it.pressed }) {
+                        event = awaitPointerEvent()
+                    }
+                    continue
+                }
+
+                // --------------------------------------------
+                // ⭐ AVATAR GESTURES (pan/zoom/rotate)
+                // --------------------------------------------
                 while (event.changes.any { it.pressed }) {
 
                     val pan = event.calculatePan()
                     val zoom = event.calculateZoom()
                     val rotation = event.calculateRotation()
 
-                    Timber.tag("GESTURE").e("🔥 pan=$pan zoom=$zoom rot=$rotation")
-
-                    // --- FIXED NORMALIZATION (IMPORTANT) ---
                     val dxNorm = pan.x / boxSize.width.toFloat()
                     val dyNorm = pan.y / boxSize.height.toFloat()
-                    // ---------------------------------------
 
-                    // Update ViewModel normalized transforms
                     viewModel.updatePixelAvatarPosition(dxNorm, dyNorm)
                     viewModel.updatePixelAvatarScale(zoom)
                     viewModel.updatePixelAvatarRotation(rotation)
 
                     event.changes.forEach { it.consume() }
-
                     event = awaitPointerEvent()
                 }
             }
         }
     }
-
-
 
 
     // -------------------------
@@ -359,7 +384,7 @@ fun PixelCardPreviewScreen() {
                 PixelCanvas(spec = spec, data = cardData, modifier = Modifier.fillMaxSize())
             }
 
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(10.dp))
 
             // Background controls
             Row(
@@ -377,7 +402,7 @@ fun PixelCardPreviewScreen() {
                 }
             }
 
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(10.dp))
 
             Row(
                 modifier = Modifier
@@ -389,7 +414,43 @@ fun PixelCardPreviewScreen() {
                 Button(onClick = { onShareClicked() }) { Text("Share PNG") }
             }
 
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(10.dp))
+
+            // -------------------------
+            // Avatar controls (Pixel Avatar)
+            // -------------------------
+
+            // SAF/PhotoPicker for Pixel Avatar
+            val avatarPicker = rememberLauncherForActivityResult(
+                ActivityResultContracts.PickVisualMedia()
+            ) { uri: Uri? ->
+                if (uri == null) return@rememberLauncherForActivityResult
+
+                Timber.tag(TAG).d("Avatar picked: $uri")
+                viewModel.onPixelAvatarImageSelected(context, uri)
+            }
+
+            Spacer(Modifier.height(10.dp))
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                Button(
+                    onClick = {
+                        avatarPicker.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                        )
+                    }
+                ) { Text("Pick Photo") }
+
+                Button(onClick = { viewModel.clearPixelAvatar() }) {
+                    Text("Clear Photo")
+                }
+            }
+
         }
     }
 }

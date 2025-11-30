@@ -1,45 +1,69 @@
 package com.example.eventreminder.cards.pixel
 
 // =============================================================
-// PixelRenderer.kt  (UPDATED)
-// - safer avatar handling: clamps, scale limits, robust bitmap scaling
-// - kept draw order: clip -> background -> overlay -> foreground (title/name/stickers/dates/avatar inside clip)
-// - debug logging included
+// PixelRenderer.kt — Free Avatar Layer (Sticker-like)
+// - Avatar = free movable/zoomable/rotatable layer
+// - NO circle mask, NO cropping, NO radius
+// - Placeholder = camera icon (style C)
+// - Uses Matrix for full control
+// - Clips only the CARD SHAPE, not the avatar
 // =============================================================
 
-import android.graphics.Bitmap
-import android.graphics.BitmapShader
-import android.graphics.Canvas
-import android.graphics.LinearGradient
-import android.graphics.Paint
-import android.graphics.Path
-import android.graphics.Rect
-import android.graphics.Shader
+import android.graphics.*
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.nativeCanvas
 import timber.log.Timber
+import kotlin.math.min
 import kotlin.math.roundToInt
 
 private const val TAG = "PixelRenderer"
 
 object PixelRenderer {
 
-    // Background gradient colors (android.graphics.Color is used via parseColor)
-    private val defaultBgTopColor = android.graphics.Color.parseColor("#FFFDE7")
-    private val defaultBgBottomColor = android.graphics.Color.parseColor("#FFF0F4")
+    // Gradient colors
+    private val bgTop = android.graphics.Color.parseColor("#FFFDE7")
+    private val bgBottom = android.graphics.Color.parseColor("#FFF0F4")
 
-    private fun makePaint(): Paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private fun p() = Paint(Paint.ANTI_ALIAS_FLAG)
 
     // ---------------------------------------------------------
-    //  ANDROID CANVAS RENDERER
+    // PUBLIC ENTRY — Compose DrawScope
     // ---------------------------------------------------------
+    fun renderToDrawScope(ds: DrawScope, spec: CardSpecPx, data: CardDataPx) {
+        val canvas = ds.drawContext.canvas.nativeCanvas
+        val sx = ds.size.width / spec.widthPx.toFloat()
+        val sy = ds.size.height / spec.heightPx.toFloat()
+        val scale = min(sx, sy)
+
+        canvas.save()
+        canvas.scale(scale, scale)
+        try {
+            renderToAndroidCanvas(canvas, spec, data)
+        } finally {
+            canvas.restore()
+        }
+        }
+
+
+    /**
+     * Main renderer entry.
+     * Draw order:
+     *   1. Clip to rounded card
+     *   2. Background (bitmap or gradient)
+     *   3. Subtle overlay
+     *   4. Foreground text + stickers
+     *   5. FREE-AVATAR (photo moves freely, not circular)
+     */
     fun renderToAndroidCanvas(canvas: Canvas, spec: CardSpecPx, data: CardDataPx) {
-        Timber.tag("DRAWFLOW").d("renderToAndroidCanvas CALLED")
 
-        // 1) Clip card shape
+        Timber.tag(TAG).d("renderToAndroidCanvas START")
+
+        // ---------------------------------------------------------
+        // 1) Clip to card rounded rectangle
+        // ---------------------------------------------------------
         canvas.save()
         val rectF = spec.backgroundLayer.toRectF()
-        val path = Path().apply {
+        val clipPath = Path().apply {
             addRoundRect(
                 rectF,
                 spec.cornerRadiusPx.toFloat(),
@@ -47,228 +71,277 @@ object PixelRenderer {
                 Path.Direction.CW
             )
         }
-        canvas.clipPath(path)
+        canvas.clipPath(clipPath)
 
-        // 2) Background: bitmap -> fallback gradient
-        if (data.backgroundBitmap != null) {
+        // ---------------------------------------------------------
+        // 2) Background (bitmap or fallback gradient)
+        // ---------------------------------------------------------
+        val bg = data.backgroundBitmap
+        if (bg != null) {
             try {
-                val dest = Rect(0, 0, spec.widthPx, spec.heightPx)
-                canvas.drawBitmap(data.backgroundBitmap!!, null, dest, makePaint())
+                canvas.drawBitmap(
+                    bg,
+                    null,
+                    Rect(0, 0, spec.widthPx, spec.heightPx),
+                    p()
+                )
             } catch (t: Throwable) {
-                Timber.tag(TAG).w(t, "BG draw failed -> fallback gradient")
-                drawGradientBackground(canvas, spec)
+                Timber.tag(TAG).e(t, "BG draw failed → fallback gradient")
+                drawGradient(canvas, spec)
             }
         } else {
-            drawGradientBackground(canvas, spec)
+            drawGradient(canvas, spec)
         }
 
-        // subtle overlay for uniform look
-        val overlay = makePaint().apply {
-            color = android.graphics.Color.argb(18, 0, 0, 0)
-            style = Paint.Style.FILL
-        }
-        canvas.drawRect(0f, 0f, spec.widthPx.toFloat(), spec.heightPx.toFloat(), overlay)
+        // ---------------------------------------------------------
+        // 3) Subtle overlay tint (for consistent appearance)
+        // ---------------------------------------------------------
+        canvas.drawRect(
+            0f, 0f, spec.widthPx.toFloat(), spec.heightPx.toFloat(),
+            p().apply { color = android.graphics.Color.argb(18, 0, 0, 0) }
+        )
 
-        // 3) Draw foreground inside clip
+        // ---------------------------------------------------------
+        // 4) Foreground text layers
+        // ---------------------------------------------------------
         drawTitle(canvas, spec, data)
         drawName(canvas, spec, data)
+
+        // Stickers (independent free-floating objects)
         drawStickers(canvas, spec, data)
+
+        // Date row
         drawDateRow(canvas, spec, data)
 
-        // 4) Avatar drawn inside clip (will be clamped to visible area)
-        data.avatarBitmap?.let { drawAvatar(canvas, spec, data) }
+        // ---------------------------------------------------------
+        // 5) FREE-AVATAR LAYER (NEW)
+        // No circular mask.
+        // Photo is rendered just like a free-move sticker:
+        // - Pan anywhere
+        // - Zoom freely
+        // - Rotate
+        // - Position can move outside clip bounds
+        // ---------------------------------------------------------
+        drawAvatarFree(canvas, spec, data)
 
+        // ---------------------------------------------------------
+        // Restore canvas clipping
+        // ---------------------------------------------------------
         canvas.restore()
+
+        Timber.tag(TAG).d("renderToAndroidCanvas DONE")
     }
 
-    private fun drawGradientBackground(canvas: Canvas, spec: CardSpecPx) {
+
+    // ---------------------------------------------------------
+    // Gradient Background
+    // ---------------------------------------------------------
+    private fun drawGradient(canvas: Canvas, spec: CardSpecPx) {
         val shader = LinearGradient(
-            0f, 0f, 0f, spec.heightPx.toFloat(),
-            intArrayOf(defaultBgTopColor, defaultBgBottomColor),
+            0f, 0f,
+            0f, spec.heightPx.toFloat(),
+            intArrayOf(bgTop, bgBottom),
             floatArrayOf(0f, 1f),
             Shader.TileMode.CLAMP
         )
-        val p = makePaint().apply { this.shader = shader; style = Paint.Style.FILL }
-        canvas.drawRect(0f, 0f, spec.widthPx.toFloat(), spec.heightPx.toFloat(), p)
+        canvas.drawRect(
+            0f, 0f,
+            spec.widthPx.toFloat(), spec.heightPx.toFloat(),
+            p().apply { this.shader = shader }
+        )
     }
 
-    // ---------------------------------------------------------
-    // COMPOSE ENTRY
-    // ---------------------------------------------------------
-    fun renderToDrawScope(drawScope: DrawScope, spec: CardSpecPx, data: CardDataPx) {
-        val native = drawScope.drawContext.canvas.nativeCanvas
-        val scaleX = drawScope.size.width / spec.widthPx.toFloat()
-        val scaleY = drawScope.size.height / spec.heightPx.toFloat()
-        val scale = minOf(scaleX, scaleY)
-
-        native.save()
-        native.scale(scale, scale)
-        try {
-            renderToAndroidCanvas(native, spec, data)
-        } finally {
-            native.restore()
-        }
-    }
 
     // ---------------------------------------------------------
-    // FOREGROUND: TITLE / NAME
+    // Title
     // ---------------------------------------------------------
-    private fun drawTitle(canvas: Canvas, spec: CardSpecPx, data: CardDataPx) {
+    private fun drawTitle(c: Canvas, spec: CardSpecPx, data: CardDataPx) {
         val box = spec.titleBox
-        val p = makePaint().apply {
+        val paint = p().apply {
             color = android.graphics.Color.parseColor("#222222")
             textSize = 72f
             isFakeBoldText = true
         }
-        val txt = ellipsize(p, data.titleText, box.width.toFloat())
-        val x = box.x.toFloat()
-        val y = box.y + p.textSize - 12f
-        canvas.drawText(txt, x, y, p)
+        val t = ellipsize(paint, data.titleText, box.width.toFloat())
+        c.drawText(t, box.x.toFloat(), box.y + paint.textSize - 12f, paint)
     }
 
-    private fun drawName(canvas: Canvas, spec: CardSpecPx, data: CardDataPx) {
+    private fun drawName(c: Canvas, spec: CardSpecPx, data: CardDataPx) {
         val box = spec.nameBox
-        val p = makePaint().apply {
+        val paint = p().apply {
             color = android.graphics.Color.parseColor("#444444")
             textSize = 48f
         }
-        val txt = ellipsize(p, data.nameText ?: "", box.width.toFloat())
-        val x = box.x.toFloat()
-        val y = box.y + p.textSize - 6f
-        canvas.drawText(txt, x, y, p)
+        val t = ellipsize(paint, data.nameText ?: "", box.width.toFloat())
+        c.drawText(t, box.x.toFloat(), box.y + paint.textSize - 6f, paint)
     }
 
-    // ---------------------------------------------------------
-    // AVATAR DRAWER (safe, clamped, supports scale & rotation)
-    // ---------------------------------------------------------
-    private fun drawAvatar(canvas: Canvas, spec: CardSpecPx, data: CardDataPx) {
-
-        val bmp = data.avatarBitmap ?: run {
-            Timber.tag("AVATAR_DRAW").e("drawAvatar: bitmap NULL")
-            return
-        }
-
-        // ---- 1) Sanitize transform values ----
-        val xNorm = data.avatarTransform.xNorm.coerceIn(0f, 1f)
-        val yNorm = data.avatarTransform.yNorm.coerceIn(0f, 1f)
-        val scaleNorm = data.avatarTransform.scale.coerceIn(0.3f, 6f)
-        val rotationDeg = data.avatarTransform.rotationDeg
-
-        // ---- 2) Compute center px ----
-        // No clamping here — clamp AFTER computing radius
-        val cxRaw = (spec.widthPx * xNorm)
-        val cyRaw = (spec.heightPx * yNorm)
-
-        // ---- 3) Compute avatar final size ----
-        // 0.22f = best balanced size (not huge, not tiny)
-        val baseSize = (spec.widthPx * 0.45f).toInt()
-        val finalSize = (baseSize * scaleNorm).toInt().coerceAtLeast(24)
-        val radius = finalSize / 2f
-
-        // ---- 4) Clamp center to keep avatar visible ----
-        /*val cx = cxRaw.roundToInt().coerceIn(radius.toInt(), spec.widthPx - radius.toInt())
-        val cy = cyRaw.roundToInt().coerceIn(radius.toInt(), spec.heightPx - radius.toInt())*/
-        val cx = cxRaw.roundToInt()
-        val cy = cyRaw.roundToInt()
-
-        Timber.tag("AVATAR_DRAW").d(
-            "drawAvatar: xNorm=%.3f yNorm=%.3f  -> cx=%d cy=%d  size=%d  scale=%.3f rot=%.1f",
-            xNorm, yNorm, cx, cy, finalSize, scaleNorm, rotationDeg
-        )
-
-
-        // ---- 5) Safely scale bitmap ----
-        val scaled = try {
-            Bitmap.createScaledBitmap(bmp, finalSize, finalSize, true)
-        } catch (t: Throwable) {
-            Timber.tag("AVATAR_DRAW").w(t, "Scaling failed — using original bmp")
-            bmp
-        }
-        Timber.tag("AVATAR_DRAW").d("scaled placeholder = ${scaled.width} x ${scaled.height}, finalSize=$finalSize")
-
-        canvas.save()
-
-        // ---- 6) Apply rotation around the avatar center ----
-        if (rotationDeg != 0f) {
-            canvas.rotate(rotationDeg, cx.toFloat(), cy.toFloat())
-        }
-
-        // ---- 7) Circular mask shader ----
-        val shader = BitmapShader(scaled, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            this.shader = shader
-            isFilterBitmap = true
-        }
-
-        // ---- 8) Draw avatar circle ----
-        canvas.drawCircle(cx.toFloat(), cy.toFloat(), radius, paint)
-
-        canvas.restore()
-
-        Timber.tag("AVATAR_DRAW").d("drawAvatar DONE at ($cx,$cy) radius=%.1f", radius)
-    }
 
     // ---------------------------------------------------------
     // STICKERS
     // ---------------------------------------------------------
-    private fun drawStickers(canvas: Canvas, spec: CardSpecPx, data: CardDataPx) {
+    private fun drawStickers(c: Canvas, spec: CardSpecPx, data: CardDataPx) {
         data.stickers.forEach { s ->
-            val cx = (s.xNorm * spec.widthPx).roundToInt()
-            val cy = (s.yNorm * spec.heightPx).roundToInt()
-
+            val cx = (s.xNorm * spec.widthPx)
+            val cy = (s.yNorm * spec.heightPx)
             val base = (spec.widthPx * 0.12f).toInt()
             val size = (base * s.scale).toInt().coerceAtLeast(8)
             val half = size / 2
 
-            canvas.save()
-            canvas.translate(cx.toFloat(), cy.toFloat())
-            if (s.rotationDeg != 0f) canvas.rotate(s.rotationDeg)
+            c.save()
+            c.translate(cx, cy)
+            if (s.rotationDeg != 0f) c.rotate(s.rotationDeg)
 
             if (s.bitmap != null) {
-                val bmp = Bitmap.createScaledBitmap(s.bitmap, size, size, true)
-                canvas.drawBitmap(bmp, -half.toFloat(), -half.toFloat(), null)
+                val scaled = Bitmap.createScaledBitmap(s.bitmap, size, size, true)
+                c.drawBitmap(scaled, -half.toFloat(), -half.toFloat(), null)
             } else {
-                val p = makePaint().apply {
-                    color = android.graphics.Color.parseColor("#222222")
-                    textSize = 28f
-                }
-                val txt = s.text ?: "◻"
-                canvas.drawText(txt, -half + 8f, 8f, p)
+                val paint = p().apply { color = android.graphics.Color.parseColor("#222222"); textSize = 28f }
+                c.drawText(s.text ?: "◻", -half + 8f, 8f, paint)
             }
-            canvas.restore()
+
+            c.restore()
         }
     }
+
 
     // ---------------------------------------------------------
     // DATE ROW
     // ---------------------------------------------------------
-    private fun drawDateRow(canvas: Canvas, spec: CardSpecPx, data: CardDataPx) {
+    private fun drawDateRow(c: Canvas, spec: CardSpecPx, data: CardDataPx) {
         val box = spec.dateBox
-        val p = makePaint().apply {
-            color = android.graphics.Color.parseColor("#666666")
-            textSize = 40f
-        }
-        val y = box.y + p.textSize
-        val leftText = ellipsize(p, data.originalDateLabel, box.width * 0.6f)
-        canvas.drawText(leftText, box.x.toFloat(), y, p)
+        val paint = p().apply { color = android.graphics.Color.parseColor("#666666"); textSize = 40f }
+        val y = box.y + paint.textSize
 
-        val rightText = ellipsize(p, data.nextDateLabel, box.width * 0.4f)
-        val wRight = p.measureText(rightText)
-        canvas.drawText(rightText, (box.x + box.width - wRight).toFloat(), y, p)
+        val left = ellipsize(paint, data.originalDateLabel, box.width * 0.6f)
+        c.drawText(left, box.x.toFloat(), y, paint)
+
+        val right = ellipsize(paint, data.nextDateLabel, box.width * 0.4f)
+        val wr = paint.measureText(right)
+        c.drawText(right, (box.x + box.width - wr).toFloat(), y, paint)
     }
+
+
+    // ---------------------------------------------------------
+    // AVATAR (FREE TRANSFORM LAYER)  ⭐⭐
+    // ---------------------------------------------------------
+    private fun drawAvatarFree(c: Canvas, spec: CardSpecPx, data: CardDataPx) {
+        val bmp = data.avatarBitmap
+        if (bmp == null) {
+            drawCameraPlaceholder(c, spec)
+            return
+        }
+
+        // Center of avatar in card px
+        val cx = spec.widthPx * data.avatarTransform.xNorm
+        val cy = spec.heightPx * data.avatarTransform.yNorm
+
+        val s = data.avatarTransform.scale.coerceIn(0.1f, 8f)
+        val rot = data.avatarTransform.rotationDeg
+
+        // Build matrix: translate → scale → rotate → final translate
+        val m = Matrix()
+        m.postTranslate(-bmp.width / 2f, -bmp.height / 2f)  // center origin
+        m.postScale(s, s)
+        m.postRotate(rot)
+        m.postTranslate(cx, cy) // move to card position
+
+        c.save()
+        try {
+            c.drawBitmap(bmp, m, p())
+        } catch (t: Throwable) {
+            Timber.tag(TAG).e(t, "Avatar draw failed; fallback")
+            val fb = Matrix().apply {
+                postScale(s, s)
+                postTranslate(cx - bmp.width * s / 2f, cy - bmp.height * s / 2f)
+            }
+            c.drawBitmap(bmp, fb, p())
+        } finally {
+            c.restore()
+        }
+        }
+
+
+    // ---------------------------------------------------------
+    // PLACEHOLDER (Camera Icon, style C)
+    // ---------------------------------------------------------
+    private fun drawCameraPlaceholder(c: Canvas, spec: CardSpecPx) {
+        val cx = spec.widthPx / 2f
+        val cy = spec.heightPx / 2f
+        val size = min(spec.widthPx, spec.heightPx) * 0.25f
+        val half = size / 2f
+
+        // Box
+        val bg = p().apply { color = android.graphics.Color.parseColor("#F0F0F0"); style = Paint.Style.FILL }
+        val stroke = p().apply {
+            color = android.graphics.Color.parseColor("#CCCCCC")
+            style = Paint.Style.STROKE
+            strokeWidth = size * 0.05f
+        }
+
+        val rect = RectF(cx - half, cy - half, cx + half, cy + half)
+        c.drawRoundRect(rect, 16f, 16f, bg)
+        c.drawRoundRect(rect, 16f, 16f, stroke)
+
+        // Lens
+        c.drawCircle(cx, cy, size * 0.18f, p().apply { color = android.graphics.Color.parseColor("#999999") })
+
+        // Flash
+        val fw = size * 0.28f
+        val fh = size * 0.12f
+        val fr = RectF(cx - fw / 2f, cy - half + size * 0.06f, cx + fw / 2f, cy - half + size * 0.06f + fh)
+        c.drawRoundRect(fr, 8f, 8f, p().apply { color = android.graphics.Color.parseColor("#999999") })
+    }
+
 
     // ---------------------------------------------------------
     // TEXT UTILITY
     // ---------------------------------------------------------
-    private fun ellipsize(p: Paint, text: String, maxWidth: Float): String {
-        if (p.measureText(text) <= maxWidth) return text
+    private fun ellipsize(paint: Paint, text: String, maxWidth: Float): String {
+        if (paint.measureText(text) <= maxWidth) return text
         val ell = "…"
         var end = text.length
         while (end > 0) {
             val sub = text.substring(0, end) + ell
-            if (p.measureText(sub) <= maxWidth) return sub
+            if (paint.measureText(sub) <= maxWidth) return sub
             end--
         }
         return ell
     }
+
+    fun isTouchInsideAvatar(
+        touchX: Float,
+        touchY: Float,
+        spec: CardSpecPx,
+        data: CardDataPx
+    ): Boolean {
+        val bmp = data.avatarBitmap ?: return false
+
+        val cx = spec.widthPx * data.avatarTransform.xNorm
+        val cy = spec.heightPx * data.avatarTransform.yNorm
+        val s = data.avatarTransform.scale
+        val rot = data.avatarTransform.rotationDeg
+
+        // Build same matrix used for drawing
+        val m = Matrix()
+        m.postTranslate(-bmp.width / 2f, -bmp.height / 2f)
+        m.postScale(s, s)
+        m.postRotate(rot)
+        m.postTranslate(cx, cy)
+
+        // Inverse matrix to map touch → bitmap space
+        val inv = Matrix()
+        if (!m.invert(inv)) return false
+
+        val pts = floatArrayOf(touchX, touchY)
+        inv.mapPoints(pts)
+
+        val bx = pts[0]
+        val by = pts[1]
+
+        return (bx >= 0 && bx <= bmp.width &&
+                by >= 0 && by <= bmp.height)
+    }
+
+
 }

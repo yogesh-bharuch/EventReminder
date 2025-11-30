@@ -35,11 +35,13 @@ data class StickerPx(
  * These defaults place the avatar in a safe, visible area.
  */
 data class AvatarTransformPx(
-    val xNorm: Float = 0.5f,    // centered horizontally
-    val yNorm: Float = 0.54f,   // upper-middle of card
-    val scale: Float = 1.0f,
-    val rotationDeg: Float = 0f,
+    val xNorm: Float = 0.5f,      // center of bitmap in 0..1 space
+    val yNorm: Float = 0.5f,
+    val scale: Float = 1f,        // multiply bitmap
+    val rotationDeg: Float = 0f   // rotate around center
 )
+
+
 
 /**
  * CardDataPx – the authoritative data model used by PixelRenderer.
