@@ -371,7 +371,7 @@ class CardViewModel @Inject constructor(
     val pixelAvatarYNorm: StateFlow<Float> = _pixelAvatarYNorm.asStateFlow()
 
     // Scale (multiplier) and rotation (degrees)
-    private val _pixelAvatarScale = MutableStateFlow(1f)
+    private val _pixelAvatarScale = MutableStateFlow(1.35f)
     private val _pixelAvatarRotationDeg = MutableStateFlow(0f)
     val pixelAvatarScale: StateFlow<Float> = _pixelAvatarScale.asStateFlow()
     val pixelAvatarRotationDeg: StateFlow<Float> = _pixelAvatarRotationDeg.asStateFlow()
@@ -414,7 +414,7 @@ class CardViewModel @Inject constructor(
                 // Reset transforms to sensible defaults (center + 1x + 0deg)
                 _pixelAvatarXNorm.value = 0.5f
                 _pixelAvatarYNorm.value = 0.5f
-                _pixelAvatarScale.value = 1f
+                _pixelAvatarScale.value = 1.35f
                 _pixelAvatarRotationDeg.value = 0f
                 _pixelAvatarQuality.value = 1
 
@@ -435,7 +435,7 @@ class CardViewModel @Inject constructor(
         // Reset to sensible defaults
         _pixelAvatarXNorm.value = 0.5f
         _pixelAvatarYNorm.value = 0.5f
-        _pixelAvatarScale.value = 1f
+        _pixelAvatarScale.value = 1.35f
         _pixelAvatarRotationDeg.value = 0f
     }
 

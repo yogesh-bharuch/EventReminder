@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Scaffold
@@ -351,108 +352,118 @@ fun PixelCardPreviewScreen() {
     // UI
     // -------------------------
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Pixel Renderer – SAF Save") }) }
+        topBar = { TopAppBar(title = { Text("Pixel Renderer") }) }
     ) { padding ->
-        Column(
+
+        LazyColumn(
             modifier = Modifier
                 .padding(padding)
                 .fillMaxSize()
                 .background(Color(0xFFF5F5F5)),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(Modifier.height(12.dp))
 
-            Text(text = "Below is the PixelRenderer output (scaled).", color = Color.DarkGray)
-
-            Spacer(Modifier.height(16.dp))
-
-            // Container for the PixelCanvas. pointerInput is applied LAST so it receives gestures.
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp)
-                    .aspectRatio(1080f / 1200f)
-                    .background(Color.LightGray)
-                    .onGloballyPositioned { coords ->
-                        boxSize = IntSize(coords.size.width, coords.size.height)
-                        Timber.tag(TAG).d("Box size = ${boxSize.width} x ${boxSize.height}")
-                    }
-                    // pointerInput must be last so it intercepts touches on top of PixelCanvas
-                    .then(gestureModifier)
-            ) {
-                // PixelCanvas uses drawIntoCanvas and will redraw when 'cardData' changes
-                PixelCanvas(spec = spec, data = cardData, modifier = Modifier.fillMaxSize())
+            item {
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    text = "Design your card pick BG, add Photo, stickers etc..",
+                    color = Color.DarkGray
+                )
+                Spacer(Modifier.height(16.dp))
             }
 
-            Spacer(Modifier.height(10.dp))
-
-            // Background controls
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                Button(onClick = {
-                    backgroundPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                }) { Text("Pick Bg") }
-
-                Button(onClick = { cardData = cardData.copy(backgroundBitmap = null) }) {
-                    Text("Clear Bg")
+            // ---------- CARD CANVAS ITEM ----------
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp)
+                        .aspectRatio(1080f / 1200f)
+                        .background(Color.LightGray)
+                        .onGloballyPositioned { coords ->
+                            boxSize = IntSize(coords.size.width, coords.size.height)
+                            Timber.tag(TAG)
+                                .d("Box size = ${boxSize.width} x ${boxSize.height}")
+                        }
+                        .then(gestureModifier)
+                ) {
+                    PixelCanvas(
+                        spec = spec,
+                        data = cardData,
+                        modifier = Modifier.fillMaxSize()
+                    )
                 }
+                Spacer(Modifier.height(46.dp))
             }
 
-            Spacer(Modifier.height(10.dp))
+            // ---------- Background Buttons ----------
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    Button(onClick = {
+                        backgroundPicker.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                        )
+                    }) { Text("Pick Bg") }
 
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                Button(onClick = { onSaveClicked() }) { Text("Save PNG") }
-                Button(onClick = { onShareClicked() }) { Text("Share PNG") }
+                    Button(onClick = {
+                        cardData = cardData.copy(backgroundBitmap = null)
+                    }) { Text("Clear Bg") }
+                }
+                Spacer(Modifier.height(46.dp))
             }
 
-            Spacer(Modifier.height(10.dp))
-
-            // -------------------------
-            // Avatar controls (Pixel Avatar)
-            // -------------------------
-
-            // SAF/PhotoPicker for Pixel Avatar
-            val avatarPicker = rememberLauncherForActivityResult(
-                ActivityResultContracts.PickVisualMedia()
-            ) { uri: Uri? ->
-                if (uri == null) return@rememberLauncherForActivityResult
-
-                Timber.tag(TAG).d("Avatar picked: $uri")
-                viewModel.onPixelAvatarImageSelected(context, uri)
+            // ---------- SAVE / SHARE ----------
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    Button(onClick = { onSaveClicked() }) { Text("Save PNG") }
+                    Button(onClick = { onShareClicked() }) { Text("Share PNG") }
+                }
+                Spacer(Modifier.height(16.dp))
             }
 
-            Spacer(Modifier.height(10.dp))
+            // ---------- Avatar Controls ----------
+            item {
+                val avatarPicker = rememberLauncherForActivityResult(
+                    ActivityResultContracts.PickVisualMedia()
+                ) { uri ->
+                    if (uri != null) {
+                        Timber.tag(TAG).d("Avatar picked: $uri")
+                        viewModel.onPixelAvatarImageSelected(context, uri)
+                    }
+                }
 
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                Button(
-                    onClick = {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    Button(onClick = {
                         avatarPicker.launch(
                             PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                         )
+                    }) { Text("Pick Photo") }
+
+                    Button(onClick = { viewModel.clearPixelAvatar() }) {
+                        Text("Clear Photo")
                     }
-                ) { Text("Pick Photo") }
-
-                Button(onClick = { viewModel.clearPixelAvatar() }) {
-                    Text("Clear Photo")
                 }
-            }
 
+                Spacer(Modifier.height(100.dp)) // extra space bottom
+            }
         }
     }
+
 }
 
 /* --------------------------
