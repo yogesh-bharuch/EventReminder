@@ -1,40 +1,67 @@
 package com.example.eventreminder.cards.pixel
 
 // =============================================================
-// PixelCardPreviewScreen.kt (SAF Save -> remember Documents tree)
-// - First Save: ask user to pick a folder (OpenDocumentTree)
-// - Persist tree URI into DataStore (SafStorageHelper)
-// - Create Documents/EventReminderCards inside chosen tree (if missing)
-// - Save PNG via SAF OutputStream (guaranteed visible on device)
-// - Share through private temp copy (FileProvider) to avoid FileProvider issues with public files
+// PixelCardPreviewScreen.kt
+// - Preview UI for PixelRenderer output (scaled in Compose).
+// - Loads placeholder avatar into the ViewModel pipeline.
+// - Gesture handling (pan/zoom/rotate) forwards normalized deltas to VM.
+// - SAF save/share preserved.
+// - Gesture modifier is placed last in the Box modifier chain so it sits
+//   above the rendered canvas and receives pointer events.
 // =============================================================
 
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.net.Uri
-import android.provider.DocumentsContract
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
+import kotlinx.coroutines.delay
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateRotation
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.Button
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.documentfile.provider.DocumentFile
+import androidx.hilt.navigation.compose.hiltViewModel
+import com.example.eventreminder.cards.CardViewModel
 import com.example.eventreminder.cards.util.ImageUtil
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -42,25 +69,59 @@ import timber.log.Timber
 import java.io.File
 import java.io.FileOutputStream
 import java.io.OutputStream
+import kotlin.math.min
 
 private const val TAG = "PixelCardPreviewScreen"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PixelCardPreviewScreen() {
-    Timber.tag(TAG).d("PixelCardPreviewScreen (SAF) loaded")
+    Timber.tag(TAG).d("PixelCardPreviewScreen Loaded")
 
     val context = LocalContext.current
-    val coroutineScope = rememberCoroutineScope()
+    val scope = rememberCoroutineScope()
+    val viewModel: CardViewModel = hiltViewModel()
 
-    // ----------------------------------------------------------------
+    // Ensure placeholder avatar loaded into VM once
+    val vmAvatarBitmap by viewModel.pixelAvatarBitmap.collectAsState()
+
+    LaunchedEffect(viewModel) {
+        // small delay gives Compose time to attach collectors
+        delay(50)
+        Timber.tag("TESTPH").d("Triggering placeholder load after delay")
+        viewModel.loadPixelAvatarPlaceholder()
+    }
+
+    // Debug: confirm bitmap observed
+    LaunchedEffect(vmAvatarBitmap) {
+        Timber.tag("TESTPH").d("vmAvatarBitmap present? = ${vmAvatarBitmap != null}")
+    }
+
     // Canonical spec (1080x1200)
-    // ----------------------------------------------------------------
     val spec = remember { CardSpecPx.default1080x1200() }
 
-    // ----------------------------------------------------------------
-    // CardData state
-    // ----------------------------------------------------------------
+    // Observe VM pixel avatar bitmap
+    //val vmAvatarBitmap by viewModel.pixelAvatarBitmap.collectAsState()
+    LaunchedEffect(vmAvatarBitmap) {
+        Timber.tag(TAG).d("VM avatar bitmap present? = ${vmAvatarBitmap != null}")
+    }
+
+    // Observe 4 transform values directly from VM
+    val xNorm by viewModel.pixelAvatarXNorm.collectAsState()
+    val yNorm by viewModel.pixelAvatarYNorm.collectAsState()
+    val scale by viewModel.pixelAvatarScale.collectAsState()
+    val rotation by viewModel.pixelAvatarRotationDeg.collectAsState()
+
+    // Build transform for CardDataPx
+    val vmTransform = AvatarTransformPx(
+        xNorm = xNorm,
+        yNorm = yNorm,
+        scale = scale,
+        rotationDeg = rotation
+    )
+
+
+    // Local CardDataPx used by PixelCanvas; keep in sync with VM
     var cardData by remember {
         mutableStateOf(
             CardDataPx(
@@ -70,6 +131,7 @@ fun PixelCardPreviewScreen() {
                 showTitle = true,
                 showName = true,
                 avatarBitmap = null,
+                avatarTransform = AvatarTransformPx(),
                 backgroundBitmap = null,
                 stickers = emptyList(),
                 originalDateLabel = "Jan 1, 1990",
@@ -79,24 +141,32 @@ fun PixelCardPreviewScreen() {
         )
     }
 
-    // ----------------------------------------------------------------
-    // Background picker (image)
-    // ----------------------------------------------------------------
+    // Mirror VM avatar bitmap + transform into cardData (triggers recomposition & PixelCanvas redraw)
+    LaunchedEffect(vmAvatarBitmap, vmTransform) {
+        cardData = cardData.copy(
+            avatarBitmap = vmAvatarBitmap,
+            avatarTransform = vmTransform
+        )
+        Timber.tag(TAG).d("cardData updated — avatarBitmap null? = ${vmAvatarBitmap == null}")
+    }
+
+    // Background image picker
     val backgroundPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia()
     ) { uri: Uri? ->
-        if (uri != null) {
-            Timber.tag(TAG).d("BG picked: $uri")
-            val bmp = ImageUtil.loadBitmapFromUri(context, uri, 2000)
-            if (bmp != null) {
-                cardData = cardData.copy(backgroundBitmap = bmp)
-            }
+        if (uri == null) return@rememberLauncherForActivityResult
+        Timber.tag(TAG).d("BG picked: $uri")
+        val bmp = try {
+            ImageUtil.loadBitmapFromUri(context, uri, maxDim = 2000)
+        } catch (t: Throwable) {
+            Timber.tag(TAG).e(t, "BG decode failed")
+            null
         }
+        if (bmp != null) cardData = cardData.copy(backgroundBitmap = bmp)
+        else Toast.makeText(context, "Failed to load image", Toast.LENGTH_SHORT).show()
     }
 
-    // ----------------------------------------------------------------
-    // OpenDocumentTree launcher (SAF) — used only on first save to pick Documents folder
-    // ----------------------------------------------------------------
+    // SAF folder launcher to store tree URI (persistable)
     val openTreeLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocumentTree()
     ) { treeUri: Uri? ->
@@ -104,21 +174,13 @@ fun PixelCardPreviewScreen() {
             Timber.tag(TAG).d("User cancelled tree selection")
             return@rememberLauncherForActivityResult
         }
-
-        // Persist permissions and store URI to DataStore for future saves
         try {
-            // ask for persistable permissions
-            val flags = (Intent.FLAG_GRANT_READ_URI_PERMISSION
-                    or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+            val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
             context.contentResolver.takePersistableUriPermission(treeUri, flags)
-
-            // save treeUri into DataStore
-            coroutineScope.launch(Dispatchers.IO) {
+            scope.launch(Dispatchers.IO) {
                 SafStorageHelper.saveTreeUri(context, treeUri.toString())
                 Timber.tag(TAG).d("Saved SAF tree URI to DataStore: $treeUri")
-                // After saving, perform the pending save operation that triggered the picker
             }
-
             Toast.makeText(context, "Folder selected. Ready to save.", Toast.LENGTH_SHORT).show()
         } catch (t: Throwable) {
             Timber.tag(TAG).e(t, "Failed to persist tree URI")
@@ -126,148 +188,83 @@ fun PixelCardPreviewScreen() {
         }
     }
 
-    LaunchedEffect(Unit) {
-        // Load placeholder avatar only once on entry
-        viewModel.loadPixelAvatarPlaceholder()
-    }
-
-    // ----------------------------------------------------------------
-    // Helper: create (or find) EventReminderCards folder inside the chosen tree
-    // Returns a DocumentFile reference for the folder or null on failure
-    // ----------------------------------------------------------------
+    // Helper to ensure a subfolder exists inside the saved tree
     suspend fun ensureEventFolder(treeUri: Uri): DocumentFile? {
         return try {
-            val treeDoc = DocumentFile.fromTreeUri(context, treeUri)
-            if (treeDoc == null) {
+            val treeDoc = DocumentFile.fromTreeUri(context, treeUri) ?: run {
                 Timber.tag(TAG).w("DocumentFile.fromTreeUri returned null")
                 return null
             }
-
-            // Try to find existing folder
             val existing = treeDoc.findFile("EventReminderCards")
-            if (existing != null && existing.isDirectory) {
-                return existing
+            if (existing != null && existing.isDirectory) return existing
+            treeDoc.createDirectory("EventReminderCards").also {
+                Timber.tag(TAG).d("Created EventReminderCards folder: $it")
             }
-
-            // Create folder
-            val created = treeDoc.createDirectory("EventReminderCards")
-            if (created == null) {
-                Timber.tag(TAG).w("Failed to create EventReminderCards folder")
-            } else {
-                Timber.tag(TAG).d("Created EventReminderCards folder")
-            }
-            created
         } catch (t: Throwable) {
             Timber.tag(TAG).e(t, "ensureEventFolder failed")
             null
         }
     }
 
-    // ----------------------------------------------------------------
-    // Save PNG into the persisted SAF tree under EventReminderCards
-    // - If no tree saved, returns null (caller should launch openTreeLauncher)
-    // - Uses SAF OutputStream, guaranteed visible on device
-    // ----------------------------------------------------------------
+    // Save function using saved tree URI
     suspend fun savePngViaSaf(): Uri? {
-        try {
-            // read saved treeUri from DataStore (suspending)
-            val treeUri = SafStorageHelper.getTreeUriFlow(context).first()
-            if (treeUri == null) {
+        return try {
+            val savedUri: Uri? = SafStorageHelper.getTreeUriFlow(context).first()
+            if (savedUri == null) {
                 Timber.tag(TAG).d("No saved tree URI")
                 return null
             }
-
-            // ensure EventReminderCards inside the tree
-            val folder = ensureEventFolder(treeUri) ?: return null
-
-            // produce filename and create new file inside folder
+            val folder = ensureEventFolder(savedUri) ?: return null
             val filename = "Card_${System.currentTimeMillis()}.png"
-            val mime = "image/png"
-
-            // createFile returns DocumentFile representing the newly created file
-            val newFile = folder.createFile(mime, filename)
-            if (newFile == null) {
+            val newFile = folder.createFile("image/png", filename) ?: run {
                 Timber.tag(TAG).e("createFile returned null")
                 return null
             }
-
-            // write PNG bytes into newFile via contentResolver
             val out: OutputStream? = context.contentResolver.openOutputStream(newFile.uri)
             if (out == null) {
                 Timber.tag(TAG).e("openOutputStream returned null")
                 return null
             }
-
-            // Render bitmap into an in-memory bitmap and write
             val bmp = Bitmap.createBitmap(spec.widthPx, spec.heightPx, Bitmap.Config.ARGB_8888)
             val canvas = Canvas(bmp)
             PixelRenderer.renderToAndroidCanvas(canvas, spec, cardData)
             bmp.compress(Bitmap.CompressFormat.PNG, 100, out)
             out.flush()
             out.close()
-
             Timber.tag(TAG).d("Saved via SAF to: ${newFile.uri}")
-            return newFile.uri
-
+            newFile.uri
         } catch (t: Throwable) {
             Timber.tag(TAG).e(t, "savePngViaSaf failed")
-            return null
+            null
         }
     }
 
-    // ----------------------------------------------------------------
-    // Public wrapper for Save button: tries SAF fast path (uses saved tree),
-    // otherwise launches the folder picker and informs the user.
-    // ----------------------------------------------------------------
+    // Save button wrapper
     fun onSaveClicked() {
-        coroutineScope.launch {
-            // If we have a persisted tree URI, attempt to save directly
-            val treeUri = SafStorageHelper.getTreeUriFlow(context).first()
-            if (treeUri != null) {
-                Timber.tag(TAG).d("Found saved tree URI — saving directly")
+        scope.launch {
+            val savedUri: Uri? = SafStorageHelper.getTreeUriFlow(context).first()
+            if (savedUri != null) {
                 val uri = savePngViaSaf()
-                if (uri != null) {
-                    Toast.makeText(context, "Saved to Documents/EventReminderCards", Toast.LENGTH_LONG).show()
-                } else {
-                    Toast.makeText(context, "Save failed; try selecting folder again.", Toast.LENGTH_LONG).show()
-                }
+                if (uri != null) Toast.makeText(context, "Saved to Documents/EventReminderCards", Toast.LENGTH_LONG).show()
+                else Toast.makeText(context, "Save failed; try selecting folder again.", Toast.LENGTH_LONG).show()
                 return@launch
             }
-
-            // No saved tree — ask user to select Documents (or any folder)
             Toast.makeText(context, "Please choose the Documents folder (select base folder).", Toast.LENGTH_LONG).show()
-
-            // Launch folder picker (the result handler will persist the permission and tree URI)
             openTreeLauncher.launch(null)
         }
     }
 
-    // ----------------------------------------------------------------
-    // SHARE: create a private app copy and share via FileProvider (stable)
-    // ----------------------------------------------------------------
+    // Share wrapper (cache + FileProvider)
     fun onShareClicked() {
-        coroutineScope.launch(Dispatchers.IO) {
+        scope.launch(Dispatchers.IO) {
             try {
-                // Render bitmap in memory
                 val bmp = Bitmap.createBitmap(spec.widthPx, spec.heightPx, Bitmap.Config.ARGB_8888)
                 val canvas = Canvas(bmp)
                 PixelRenderer.renderToAndroidCanvas(canvas, spec, cardData)
-
-                // temp file in cacheDir
                 val cacheFile = File(context.cacheDir, "share_${System.currentTimeMillis()}.png")
-                FileOutputStream(cacheFile).use { out ->
-                    bmp.compress(Bitmap.CompressFormat.PNG, 100, out)
-                }
-
-                // FileProvider to get secure URI
-                val uri = FileProvider.getUriForFile(
-                    context,
-                    "com.example.eventreminder.fileprovider",
-                    cacheFile
-                )
-
-                // Share on main thread
-                coroutineScope.launch(Dispatchers.Main) {
+                FileOutputStream(cacheFile).use { out -> bmp.compress(Bitmap.CompressFormat.PNG, 100, out) }
+                val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", cacheFile)
+                scope.launch {
                     val shareIntent = Intent(Intent.ACTION_SEND).apply {
                         type = "image/png"
                         putExtra(Intent.EXTRA_STREAM, uri)
@@ -275,19 +272,59 @@ fun PixelCardPreviewScreen() {
                     }
                     context.startActivity(Intent.createChooser(shareIntent, "Share Card PNG"))
                 }
-
             } catch (t: Throwable) {
                 Timber.tag(TAG).e(t, "onShareClicked failed")
-                coroutineScope.launch(Dispatchers.Main) {
-                    Toast.makeText(context, "Share failed: ${t.message}", Toast.LENGTH_LONG).show()
+                scope.launch { Toast.makeText(context, "Share failed: ${t.message}", Toast.LENGTH_LONG).show() }
+            }
+        }
+    }
+
+    // -------------------------
+    // Gesture layer (FINAL, FIXED)
+    // -------------------------
+    var boxSize by remember { mutableStateOf(IntSize.Zero) }
+
+    val gestureModifier = Modifier.pointerInput(spec, boxSize) {
+        awaitPointerEventScope {
+
+            while (true) {
+
+                var event = awaitPointerEvent()
+
+                if (event.changes.none { it.pressed }) continue
+
+                while (event.changes.any { it.pressed }) {
+
+                    val pan = event.calculatePan()
+                    val zoom = event.calculateZoom()
+                    val rotation = event.calculateRotation()
+
+                    Timber.tag("GESTURE").e("🔥 pan=$pan zoom=$zoom rot=$rotation")
+
+                    // --- FIXED NORMALIZATION (IMPORTANT) ---
+                    val dxNorm = pan.x / boxSize.width.toFloat()
+                    val dyNorm = pan.y / boxSize.height.toFloat()
+                    // ---------------------------------------
+
+                    // Update ViewModel normalized transforms
+                    viewModel.updatePixelAvatarPosition(dxNorm, dyNorm)
+                    viewModel.updatePixelAvatarScale(zoom)
+                    viewModel.updatePixelAvatarRotation(rotation)
+
+                    event.changes.forEach { it.consume() }
+
+                    event = awaitPointerEvent()
                 }
             }
         }
     }
 
-    // ----------------------------------------------------------------
-    // UI: Compose layout — PixelCanvas + controls
-    // ----------------------------------------------------------------
+
+
+
+    // -------------------------
+    // UI
+    // -------------------------
     Scaffold(
         topBar = { TopAppBar(title = { Text("Pixel Renderer – SAF Save") }) }
     ) { padding ->
@@ -296,32 +333,35 @@ fun PixelCardPreviewScreen() {
                 .padding(padding)
                 .fillMaxSize()
                 .background(Color(0xFFF5F5F5)),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Top
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Spacer(Modifier.height(12.dp))
 
-            Text(
-                text = "Below is the PixelRenderer output (scaled).",
-                color = Color.DarkGray
-            )
+            Text(text = "Below is the PixelRenderer output (scaled).", color = Color.DarkGray)
 
             Spacer(Modifier.height(16.dp))
 
-            // PixelCanvas preview
+            // Container for the PixelCanvas. pointerInput is applied LAST so it receives gestures.
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 12.dp)
                     .aspectRatio(1080f / 1200f)
                     .background(Color.LightGray)
+                    .onGloballyPositioned { coords ->
+                        boxSize = IntSize(coords.size.width, coords.size.height)
+                        Timber.tag(TAG).d("Box size = ${boxSize.width} x ${boxSize.height}")
+                    }
+                    // pointerInput must be last so it intercepts touches on top of PixelCanvas
+                    .then(gestureModifier)
             ) {
+                // PixelCanvas uses drawIntoCanvas and will redraw when 'cardData' changes
                 PixelCanvas(spec = spec, data = cardData, modifier = Modifier.fillMaxSize())
             }
 
             Spacer(Modifier.height(20.dp))
 
-            // BG controls
+            // Background controls
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -329,11 +369,7 @@ fun PixelCardPreviewScreen() {
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
                 Button(onClick = {
-                    backgroundPicker.launch(
-                        ActivityResultContracts.PickVisualMedia.ImageOnly.let { t ->
-                            androidx.activity.result.PickVisualMediaRequest(t)
-                        }
-                    )
+                    backgroundPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                 }) { Text("Pick Bg") }
 
                 Button(onClick = { cardData = cardData.copy(backgroundBitmap = null) }) {
@@ -343,23 +379,28 @@ fun PixelCardPreviewScreen() {
 
             Spacer(Modifier.height(20.dp))
 
-            // SAVE + SHARE
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                Button(onClick = { onSaveClicked() }) {
-                    Text("Save PNG")
-                }
-
-                Button(onClick = { onShareClicked() }) {
-                    Text("Share PNG")
-                }
+                Button(onClick = { onSaveClicked() }) { Text("Save PNG") }
+                Button(onClick = { onShareClicked() }) { Text("Share PNG") }
             }
 
             Spacer(Modifier.height(20.dp))
         }
     }
 }
+
+/* --------------------------
+   Small helpers
+   -------------------------- */
+
+// Extension to coerce zoom to finite value (avoid NaN/infinity)
+private fun Float.coerceFinite(): Float =
+    if (this.isFinite()) this else 1f
+
+// Format helper for logs
+private fun Float.format(digits: Int): String = "%.${digits}f".format(this)

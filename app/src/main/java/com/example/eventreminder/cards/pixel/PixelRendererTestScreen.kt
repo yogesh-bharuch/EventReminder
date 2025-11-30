@@ -1,5 +1,6 @@
 package com.example.eventreminder.cards.ui.pixel
 
+/*
 // =============================================================
 // PixelRendererTestScreen.kt (updated for 1080x1200)
 // Advanced test screen with actions and tall preview
@@ -123,3 +124,4 @@ fun PixelRendererTestScreen() {
         }
     }
 }
+*/

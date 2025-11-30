@@ -25,13 +25,15 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import android.graphics.Paint
 import timber.log.Timber
-import java.io.File
 import java.time.Instant
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import javax.inject.Inject
+import android.graphics.Canvas
+
 
 // =============================================================
 // TAG
@@ -364,7 +366,7 @@ class CardViewModel @Inject constructor(
     // rotationDeg = degrees
     // --------------------------------------
     private val _pixelAvatarXNorm = MutableStateFlow(0.5f)
-    private val _pixelAvatarYNorm = MutableStateFlow(0.5f)
+    private val _pixelAvatarYNorm = MutableStateFlow(0.6f)
     private val _pixelAvatarScale = MutableStateFlow(1f)
     private val _pixelAvatarRotationDeg = MutableStateFlow(0f)
 
@@ -372,6 +374,7 @@ class CardViewModel @Inject constructor(
     val pixelAvatarYNorm: StateFlow<Float> = _pixelAvatarYNorm.asStateFlow()
     val pixelAvatarScale: StateFlow<Float> = _pixelAvatarScale.asStateFlow()
     val pixelAvatarRotationDeg: StateFlow<Float> = _pixelAvatarRotationDeg.asStateFlow()
+
 
     // =============================================================
     // Pixel Avatar API (called by PixelCanvas gestures or UI buttons)
@@ -382,16 +385,18 @@ class CardViewModel @Inject constructor(
      * Old DP-avatar pipeline remains untouched.
      */
     fun setPixelAvatar(bitmap: Bitmap) {
-        Timber.tag(TAG).d("setPixelAvatar() new bitmap")
+        Timber.tag(TAG).d("setPixelAvatar() new bitmap — size=%dx%d, config=%s", bitmap.width, bitmap.height, bitmap.config)
         _pixelAvatarBitmap.value = bitmap
 
         // Reset transform for new avatar
         _pixelAvatarXNorm.value = 0.5f
-        _pixelAvatarYNorm.value = 0.5f
+        _pixelAvatarYNorm.value = 0.54f
         _pixelAvatarScale.value = 1f
         _pixelAvatarRotationDeg.value = 0f
-    }
 
+        // confirm emission
+        Timber.tag(TAG).d("pixelAvatarBitmap emitted non-null? = ${_pixelAvatarBitmap.value != null}")
+    }
     /**
      * Clear PixelRenderer avatar.
      */
@@ -408,17 +413,18 @@ class CardViewModel @Inject constructor(
      * Move avatar in normalized space.
      * Called by drag gesture.
      */
-    fun updatePixelAvatarPosition(deltaXNorm: Float, deltaYNorm: Float) {
-        val newX = (_pixelAvatarXNorm.value + deltaXNorm).coerceIn(0f, 1f)
-        val newY = (_pixelAvatarYNorm.value + deltaYNorm).coerceIn(0f, 1f)
+    // ---------------------------------------------------------
+// AVATAR TRANSFORM UPDATES (FINAL WORKING VERSION)
+// ---------------------------------------------------------
 
-        Timber.tag(TAG).d(
-            "updatePixelAvatarPosition dx=%.3f dy=%.3f → x=%.3f y=%.3f",
-            deltaXNorm, deltaYNorm, newX, newY
-        )
+    fun updatePixelAvatarPosition(dxNorm: Float, dyNorm: Float) {
+        val newX = (_pixelAvatarXNorm.value + dxNorm).coerceIn(0f, 1f)
+        val newY = (_pixelAvatarYNorm.value + dyNorm).coerceIn(0f, 1f)
 
         _pixelAvatarXNorm.value = newX
         _pixelAvatarYNorm.value = newY
+
+        Timber.tag("VM_AVATAR").e("Move → x=%.3f  y=%.3f", newX, newY)
     }
 
     /**
@@ -426,31 +432,24 @@ class CardViewModel @Inject constructor(
      * Multiplicative scale factor.
      */
     fun updatePixelAvatarScale(scaleFactor: Float) {
-        val newScale = (_pixelAvatarScale.value * scaleFactor).coerceIn(0.3f, 6f)
-
-        Timber.tag(TAG).d(
-            "updatePixelAvatarScale factor=%.3f → scale=%.3f",
-            scaleFactor, newScale
-        )
+        val newScale = (_pixelAvatarScale.value * scaleFactor)
+            .coerceIn(0.3f, 6f)
 
         _pixelAvatarScale.value = newScale
+
+        Timber.tag("VM_AVATAR").e("Scale → %.3f", newScale)
     }
+
 
     /**
      * Rotation update from 2-finger gesture.
      */
     fun updatePixelAvatarRotation(deltaDeg: Float) {
-        var newDeg = _pixelAvatarRotationDeg.value + deltaDeg
+        val newRot = (_pixelAvatarRotationDeg.value + deltaDeg).mod(360f)
 
-        if (newDeg < 0f) newDeg += 360f
-        if (newDeg >= 360f) newDeg -= 360f
+        _pixelAvatarRotationDeg.value = newRot
 
-        Timber.tag(TAG).d(
-            "updatePixelAvatarRotation delta=%.2f → rot=%.2f",
-            deltaDeg, newDeg
-        )
-
-        _pixelAvatarRotationDeg.value = newDeg
+        Timber.tag("VM_AVATAR").e("Rotate → %.1f°", newRot)
     }
 
     // =============================================================
@@ -476,31 +475,41 @@ class CardViewModel @Inject constructor(
     // =============================================================
     // Placeholder Avatar (for testing PixelRenderer pipeline)
     // =============================================================
+    /**
+     * Generate a large, visually obvious placeholder avatar bitmap used by the PixelRenderer
+     * pipeline. The placeholder contains:
+     *  - a large filled magenta circle
+     *  - a visible cyan stroke ring
+     *  - a black crosshair at the center
+     *  - a green rotation indicator line
+     *
+     * The produced bitmap is passed to setPixelAvatar(...) which resets the pixels avatar state.
+     */
     fun loadPixelAvatarPlaceholder() {
         Timber.tag(TAG).d("loadPixelAvatarPlaceholder()")
 
         try {
-            val size = 400
+            val size = 600
             val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-            val canvas = android.graphics.Canvas(bmp)
+            val canvas = Canvas(bmp)
 
-            val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-                color = android.graphics.Color.MAGENTA
+            // Fill entire bitmap with solid gray
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = android.graphics.Color.LTGRAY
+                style = Paint.Style.FILL
             }
+            canvas.drawRect(0f, 0f, size.toFloat(), size.toFloat(), paint)
 
-            canvas.drawCircle(
-                size / 2f,
-                size / 2f,
-                size * 0.45f,
-                paint
-            )
+            Timber.tag(TAG).d("Placeholder created: ${bmp.width}x${bmp.height}")
 
+            // Pass to pixel avatar pipeline
             setPixelAvatar(bmp)
 
         } catch (t: Throwable) {
             Timber.tag(TAG).e(t, "Failed to generate placeholder avatar")
         }
     }
+
 
 }
 
