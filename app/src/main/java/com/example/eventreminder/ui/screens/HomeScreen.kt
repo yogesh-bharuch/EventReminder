@@ -184,7 +184,8 @@ fun HomeScreen(
                 Row {
                     Button(
                         onClick = {
-                            navController.navigate(PixelPreviewRoute)
+                            navController.navigate(PixelPreviewRoute(reminderId = 54))
+                            //navController.navigate(PixelPreviewRoute)
                             //navController.navigate(CardRoute(reminderId = 54))
                         }
                     ) {

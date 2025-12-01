@@ -41,11 +41,19 @@ fun AppNavGraph(
         }
 
         // PixelPreviewRoute
-        composable<PixelPreviewRoute> {
+        composable<PixelPreviewRoute> {entry ->
+            val args = entry.toRoute<PixelPreviewRoute>()
             //PixelRendererSimpleTestScreen()
-            PixelCardPreviewScreen()
+            PixelCardPreviewScreen(reminderId = args.reminderId)
         }
+        // 🎨 FINAL USER CARD SCREEN
+        composable<CardRoute> { entry ->
+            val args = entry.toRoute<CardRoute>()
 
+            CardScreen(
+                reminderId = args.reminderId
+            )
+        }
 
         // ⏰ Reminder manager
         composable<ReminderManagerRoute> {
@@ -74,13 +82,6 @@ fun AppNavGraph(
             )
         }
 
-        // 🎨 FINAL USER CARD SCREEN
-        composable<CardRoute> { entry ->
-            val args = entry.toRoute<CardRoute>()
 
-            CardScreen(
-                reminderId = args.reminderId
-            )
-        }
     }
 }

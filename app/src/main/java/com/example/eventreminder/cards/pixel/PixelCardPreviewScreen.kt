@@ -34,7 +34,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.IntOffset
+import com.example.eventreminder.cards.state.CardUiState
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
@@ -61,7 +61,7 @@ private const val TAG = "PixelCardPreviewScreen"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PixelCardPreviewScreen() {
+fun PixelCardPreviewScreen(reminderId: Long) {
 
     Timber.tag(TAG).d("PixelCardPreviewScreen Loaded")
 
@@ -69,6 +69,12 @@ fun PixelCardPreviewScreen() {
     val scope = rememberCoroutineScope()
 
     val viewModel: CardViewModel = hiltViewModel()
+    val uiState by viewModel.uiState.collectAsState()
+
+    // NEW → load reminder based on parameter
+    LaunchedEffect(reminderId) {
+        viewModel.forceLoadReminder(reminderId)
+    }
 
     // Stickers from VM (LIVE!)
     val vmStickers by viewModel.pixelStickers.collectAsState()
@@ -89,24 +95,12 @@ fun PixelCardPreviewScreen() {
     val vmTransform = AvatarTransformPx(xNorm, yNorm, scale, rotation)
 
     // -------------------------------
-    // CardDataPx (canvas input)
+    // CardDataPx (canvas input) default assigns
+    // name, title, age... will be reassigned in launcheffects
     // -------------------------------
     var cardData by remember {
         mutableStateOf(
-            CardDataPx(
-                reminderId = 1L,
-                titleText = "Happy Birthday",
-                nameText = "Yogesh",
-                showTitle = true,
-                showName = true,
-                avatarBitmap = null,
-                avatarTransform = AvatarTransformPx(),
-                backgroundBitmap = null,
-                stickers = emptyList(),
-                originalDateLabel = "Jan 1, 1990",
-                nextDateLabel = "Fri, Jan 1, 2026",
-                ageOrYearsLabel = "34"
-            )
+            CardDataPx(reminderId = 1L, titleText = "Happy Birthday dear", nameText = "Yogesh Vyas", showTitle = true, showName = true, avatarBitmap = null, avatarTransform = AvatarTransformPx(), backgroundBitmap = null, stickers = emptyList(), originalDateLabel = "Jan 1, 1990", nextDateLabel = "Yogesh", ageOrYearsLabel = "34")
         )
     }
 
@@ -114,9 +108,10 @@ fun PixelCardPreviewScreen() {
     // Sync VM -> CardDataPx
     // -------------------------------
 
-    LaunchedEffect(vmAvatarBitmap, vmTransform, vmStickers, activeStickerId) {
+    LaunchedEffect(vmAvatarBitmap, vmTransform, vmStickers, activeStickerId, uiState)
+    {
 
-        val mappedStickers = vmStickers.map { s ->
+    val mappedStickers = vmStickers.map { s ->
             StickerPx(
                 id = s.id,
                 drawableResId = s.drawableResId,
@@ -126,6 +121,21 @@ fun PixelCardPreviewScreen() {
                 yNorm = s.yNorm,
                 scale = s.scale,
                 rotationDeg = s.rotationDeg
+            )
+        }
+
+        // ------------------------------------------------------
+        // NEW: Bind uiState.cardData → cardData (title/name/dates only)
+        // ------------------------------------------------------
+        if (uiState is CardUiState.Data) {
+            val cd = (uiState as CardUiState.Data).cardData
+            cardData = cardData.copy(
+                reminderId = cd.reminderId,
+                titleText = cd.title,
+                nameText = cd.name,
+                originalDateLabel = cd.originalDateLabel,
+                nextDateLabel = "Yogesh", //cd.nextDateLabel,
+                ageOrYearsLabel = cd.ageOrYearsLabel
             )
         }
 
@@ -376,7 +386,9 @@ fun PixelCardPreviewScreen() {
                 Spacer(Modifier.height(16.dp))
             }
 
-            // Canvas + Sticker DELETE BUTTON
+            /* Canvas + Sticker DELETE BUTTON
+            // calls PixelCanvas.kt draws title, name, age, date passes carddata
+            // which finally calls PixelRenderer.renderToAndroidCanvas */
             item {
                 Box(
                     modifier = Modifier

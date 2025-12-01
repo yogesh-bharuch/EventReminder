@@ -49,20 +49,23 @@ object PixelRenderer {
 
 
     /**
+     * is the core pixel renderer of your entire card system.
+     * is responsible for producing the final exported 1080×1200 PNG that includes:
+     * Background, Title, Name, Age circle, Stickers, Dates, Avatar, Shadows, gradients, clipping
      * Main renderer entry.
      * Draw order:
      *   1. Clip to rounded card
      *   2. Background (bitmap or gradient)
      *   3. Subtle overlay
      *   4. Foreground text + stickers
-     *   5. FREE-AVATAR (photo moves freely, not circular)
+     *   5. FREE-AVATAR (photo moves freely, circular)
      */
     fun renderToAndroidCanvas(canvas: Canvas, spec: CardSpecPx, data: CardDataPx) {
 
         Timber.tag(TAG).d("renderToAndroidCanvas START")
 
         // ---------------------------------------------------------
-        // 1) Clip to card rounded rectangle
+        // 1) Clips all drawing inside the card rounded rectangle
         // ---------------------------------------------------------
         canvas.save()
         val rectF = spec.backgroundLayer.toRectF()
@@ -97,7 +100,8 @@ object PixelRenderer {
         }
 
         // ---------------------------------------------------------
-        // 3) Subtle overlay tint
+        // 3) Subtle overlay tint. Adds a soft dark tint over the entire card.
+        // improve readability of text, contrast for stickers. professional look
         // ---------------------------------------------------------
         canvas.drawRect(
             0f, 0f, spec.widthPx.toFloat(), spec.heightPx.toFloat(),
@@ -109,6 +113,8 @@ object PixelRenderer {
         // ---------------------------------------------------------
         drawTitle(canvas, spec, data)
         drawName(canvas, spec, data)
+        // 4.5) AGE CIRCLE (NEW)
+        drawAgeCircle(canvas, spec, data)
 
         // ---------------------------------------------------------
         // 5) Stickers (NEW FINAL)
@@ -153,7 +159,7 @@ object PixelRenderer {
 
 
     // ---------------------------------------------------------
-    // Title
+    // Title, name, age
     // ---------------------------------------------------------
     private fun drawTitle(c: Canvas, spec: CardSpecPx, data: CardDataPx) {
         val box = spec.titleBox
@@ -162,7 +168,7 @@ object PixelRenderer {
             textSize = 72f
             isFakeBoldText = true
         }
-        val t = ellipsize(paint, data.titleText, box.width.toFloat())
+        val t = ellipsize(paint, "Happy " + data.titleText, box.width.toFloat())
         c.drawText(t, box.x.toFloat(), box.y + paint.textSize - 12f, paint)
     }
 
@@ -170,11 +176,85 @@ object PixelRenderer {
         val box = spec.nameBox
         val paint = p().apply {
             color = android.graphics.Color.parseColor("#444444")
-            textSize = 48f
+            textSize = 72f
         }
-        val t = ellipsize(paint, data.nameText ?: "", box.width.toFloat())
+        val name = data.nameText
+        val t = if (name.isNullOrBlank()) "" else ellipsize(paint, "Dear $name", box.width.toFloat())
+
         c.drawText(t, box.x.toFloat(), box.y + paint.textSize - 6f, paint)
     }
+
+    private fun drawAgeCircle(canvas: Canvas, spec: CardSpecPx, data: CardDataPx) {
+        val box = spec.ageBox
+
+        // If value missing → skip
+        val age = data.ageOrYearsLabel ?: return
+        if (age.isBlank()) return
+
+        // -------------------------------------------
+        // 1) Circle background paint
+        // -------------------------------------------
+        val circlePaint = p().apply {
+            color = android.graphics.Color.WHITE
+            isAntiAlias = true
+            setShadowLayer(12f, 0f, 6f, android.graphics.Color.argb(120, 0, 0, 0))
+        }
+
+        // -------------------------------------------
+        // 2) Draw Gradient age circle
+        // -------------------------------------------
+        val radius = box.width / 2f
+
+        val sweepPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            shader = SweepGradient(
+                box.x + radius,
+                box.y + radius,
+                intArrayOf(
+                    Color.parseColor("#FFF8B8"),  // light gold
+                    Color.parseColor("#E6C200"),  // rich gold
+                    Color.parseColor("#D6A100"),  // darker gold
+                    Color.parseColor("#FFF8B8")   // smooth loop
+                ),
+                floatArrayOf(0f, 0.3f, 0.7f, 1f)
+            )
+            isDither = true
+            setShadowLayer(22f, 0f, 10f, Color.argb(160, 0, 0, 0))
+        }
+
+        // draw gold circle
+        canvas.drawCircle(
+            box.x + radius,
+            box.y + radius,
+            radius,
+            sweepPaint
+        )
+
+        // -------------------------------------------
+        // 3) Age text paint
+        // -------------------------------------------
+        val textPaint = p().apply {
+            color = android.graphics.Color.BLACK
+            textSize = (box.height * 0.45f)          // ~45% of circle height
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            textAlign = Paint.Align.CENTER
+            isAntiAlias = true
+        }
+
+        // vertical centering offset
+        val fm = textPaint.fontMetrics
+        val textOffset = (fm.descent + fm.ascent) / 2f
+
+        // -------------------------------------------
+        // 4) Draw AGE centered in the circle
+        // -------------------------------------------
+        canvas.drawText(
+            age,
+            box.x + radius,                     // centerX
+            box.y + radius - textOffset,        // centerY correction
+            textPaint
+        )
+    }
+
 
 
     // ---------------------------------------------------------

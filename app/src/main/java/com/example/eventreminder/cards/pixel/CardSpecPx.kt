@@ -2,6 +2,7 @@ package com.example.eventreminder.cards.pixel
 
 // =============================================================
 // CardSpecPx.kt (1080 x 1200 canonical spec)
+// defines a fixed pixel layout template of the card.
 // Layout A: Title + Name at top, large middle area, dates at bottom
 // =============================================================
 
@@ -16,6 +17,7 @@ data class CardSpecPx(
     val safeMarginPx: Int,
     val titleBox: RectPx,
     val nameBox: RectPx,
+    val ageBox: RectPx,
     val middleBox: RectPx,
     val dateBox: RectPx,
     val stickerLayer: RectPx,
@@ -35,10 +37,14 @@ data class CardSpecPx(
             val h = 1200
             val margin = 24
 
-            // Title: top area ~120px high
+            /* Title: top area ~120px high
+            // Title begins at (24px, 24px),
+            // Has width 1080 - 48 = 1032px,
+            //Has height 120px */
             val titleBox = RectPx(margin, margin, w - margin * 2, 120)
 
             // Name: below title ~64px
+            // This puts name below the title box with 8px spacing, height 64px.
             val nameBox = RectPx(margin, titleBox.y + titleBox.height + 8, w - margin * 2, 64)
 
             // Middle box: large free area for stickers / avatar (from below name to above dates)
@@ -50,6 +56,14 @@ data class CardSpecPx(
                 w - margin * 2,
                 h - margin - dateBoxHeight - middleTop - 8
             )
+
+            // AGE CIRCLE BOX inside middleBox (left-center)
+            val ageCircleSize = 140     // diameter in px
+
+            val ageBoxX = margin + 8
+            val ageBoxY = middleTop + (middleBox.height - ageCircleSize) / 2
+            val ageBox = RectPx(ageBoxX, ageBoxY, ageCircleSize, ageCircleSize)
+
 
             // Date box: bottom bar
             val dateBox = RectPx(margin, h - margin - dateBoxHeight, w - margin * 2, dateBoxHeight)
@@ -70,6 +84,7 @@ data class CardSpecPx(
                 safeMarginPx = margin,
                 titleBox = titleBox,
                 nameBox = nameBox,
+                ageBox = ageBox,
                 middleBox = middleBox,
                 dateBox = dateBox,
                 stickerLayer = stickerLayer,

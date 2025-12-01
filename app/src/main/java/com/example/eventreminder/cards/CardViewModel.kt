@@ -249,6 +249,9 @@ class CardViewModel @Inject constructor(
     // Loading reminder + background
     // -------------------------
     fun refresh() { if (reminderIdArg != -1L) loadReminder(reminderIdArg) }
+    fun forceLoadReminder(id: Long) {
+        loadReminder(id)
+    }
 
     private fun loadReminder(id: Long) {
         viewModelScope.launch {
@@ -339,7 +342,8 @@ class CardViewModel @Inject constructor(
 
     private fun computeYearsLabel(originalDate: java.time.LocalDate, nextInstant: Instant?, zone: ZoneId): String? {
         return try {
-            val compareDate = (nextInstant ?: Instant.now()).atZone(zone).toLocalDate()
+            //val compareDate = (nextInstant ?: Instant.now()).atZone(zone).toLocalDate()
+            val compareDate = (Instant.now()).atZone(zone).toLocalDate()
             var years = compareDate.year - originalDate.year
             if (compareDate.isBefore(originalDate.withYear(compareDate.year))) years--
             years.takeIf { it >= 0 }?.toString()

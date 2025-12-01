@@ -28,7 +28,9 @@ data class CardRoute(
 )
 
 @Serializable
-data object PixelPreviewRoute
+data class PixelPreviewRoute(
+    val reminderId: Long
+)
 
 
 /*
