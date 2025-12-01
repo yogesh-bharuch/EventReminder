@@ -2,23 +2,7 @@ package com.example.eventreminder.cards.pixel.stickers
 
 import android.graphics.Bitmap
 
-/**
- * =============================================================
- * StickerPx (Option-D Design)
- * -------------------------------------------------------------
- * Independent sticker layer used by:
- *  - StickerVM
- *  - PixelRenderer (free transform)
- *  - StickerHitTest (matrix-inverse selection)
- *
- * Supports 3 payload types:
- *  - drawableResId : Int?  (for images from resources)
- *  - bitmap        : Bitmap? (for custom sticker bitmaps)
- *  - text          : String? (for emoji/symbol)
- *
- * Only ONE of the three is expected to be non-null.
- * =============================================================
- */
+
 data class StickerPx(
 
     // Unique ID so gestures + long-press delete can target the right sticker

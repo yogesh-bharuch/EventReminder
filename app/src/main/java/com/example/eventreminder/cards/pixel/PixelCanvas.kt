@@ -6,6 +6,7 @@ package com.example.eventreminder.cards.pixel
 //   (CardDataPx) changes in Compose state.
 // - Always fills available space so DrawScope.size is valid.
 // - Logs draw size for debugging.
+// - NOTE: removed any delete icon drawing — that is handled by overlay.
 // =============================================================
 
 import androidx.compose.foundation.Canvas

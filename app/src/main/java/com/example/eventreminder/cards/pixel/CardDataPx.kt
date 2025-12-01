@@ -41,8 +41,6 @@ data class AvatarTransformPx(
     val rotationDeg: Float = 0f   // rotate around center
 )
 
-
-
 /**
  * CardDataPx – the authoritative data model used by PixelRenderer.
  */
@@ -62,6 +60,9 @@ data class CardDataPx(
 
     // stickers layer
     val stickers: List<StickerPx> = emptyList(),
+
+    // 🔥 ACTIVE STICKER ID (for delete button inside Canvas)
+    val activeStickerId: Long? = null,
 
     // labels
     val originalDateLabel: String = "",

@@ -45,7 +45,7 @@ object PixelRenderer {
         } finally {
             canvas.restore()
         }
-        }
+    }
 
 
     /**
@@ -412,6 +412,10 @@ object PixelRenderer {
 
     /**
      * Matrix-based hit test for a single sticker.
+     *
+     * Updated to match rendering size exactly (Option A).
+     * Uses same scale-boost rules as renderSingleSticker so the
+     * touch area equals the visible sticker area.
      */
     fun isTouchInsideSticker(
         touchX: Float,
@@ -420,12 +424,68 @@ object PixelRenderer {
         sticker: StickerPx
     ): Boolean {
 
+        // sticker center (in card px)
         val cx = sticker.xNorm * spec.widthPx
         val cy = sticker.yNorm * spec.heightPx
 
-        val sizePx = (spec.widthPx * 0.18f) * sticker.scale
-        val half = sizePx / 2f
+        // Determine the effective rendered width/height (unrotated) to match renderSingleSticker()
+        // Two scale phases exist in renderSingleSticker():
+        // 1) initial canvas.scale(sticker.scale * 3.5f)
+        // 2) drawable-case additional canvas.scale(finalScale) with finalScale = max(sticker.scale * 3.0f, minScale)
+        // EffectiveScale (drawn) =
+        //    - drawable case: sticker.scale * 3.5f * finalScale
+        //    - bitmap/text case: sticker.scale * 3.5f
+        //
+        // We'll compute half widths/heights from that effective scale.
 
+        // Fetch bitmap if available
+        val bmpForSize = when {
+            sticker.drawableResId != null -> StickerBitmapCache.getBitmap(sticker.drawableResId!!)
+            sticker.bitmap != null -> sticker.bitmap
+            else -> null
+        }
+
+        val effectiveScale: Float = if (sticker.drawableResId != null && bmpForSize != null) {
+            // drawable sticker path: follow same logic used while drawing
+            val scaleBoostInitial = 3.5f
+            val drawableBoost = 3.0f
+            val baseScale = sticker.scale * drawableBoost
+
+            val minSize = 180f
+            val minScale = minSize / bmpForSize.width.toFloat()
+
+            val finalScale = max(baseScale, minScale)
+
+            // total effective scale applied to bitmap when drawing
+            sticker.scale * scaleBoostInitial * finalScale
+        } else {
+            // For custom bitmap or text, render applies only the initial boost
+            val scaleBoostInitial = 3.5f
+            sticker.scale * scaleBoostInitial
+        }
+
+        // Determine the native width/height to scale
+        val nativeW: Float
+        val nativeH: Float
+        if (bmpForSize != null) {
+            nativeW = bmpForSize.width.toFloat()
+            nativeH = bmpForSize.height.toFloat()
+        } else if (sticker.text != null) {
+            // approximate text bounds using StickerPaint utilities (if available)
+            val bounds = StickerPaint.getTextBounds(sticker.text!!)
+            nativeW = bounds.width().toFloat()
+            nativeH = bounds.height().toFloat()
+        } else {
+            // Fallback to a reasonable base size
+            val fallback = spec.widthPx * 0.12f
+            nativeW = fallback
+            nativeH = fallback
+        }
+
+        val halfW = (nativeW * effectiveScale) / 2f
+        val halfH = (nativeH * effectiveScale) / 2f
+
+        // Now apply rotation-aware hit test: rotate the touch point into sticker-local coords
         val dx = touchX - cx
         val dy = touchY - cy
 
@@ -436,7 +496,7 @@ object PixelRenderer {
         val rx = (dx * cos + dy * sin).toFloat()
         val ry = (-dx * sin + dy * cos).toFloat()
 
-        return (rx > -half && rx < half && ry > -half && ry < half)
+        return (rx > -halfW && rx < halfW && ry > -halfH && ry < halfH)
     }
 
     // =============================================================

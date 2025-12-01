@@ -114,7 +114,7 @@ fun PixelCardPreviewScreen() {
     // Sync VM -> CardDataPx
     // -------------------------------
 
-    LaunchedEffect(vmAvatarBitmap, vmTransform, vmStickers) {
+    LaunchedEffect(vmAvatarBitmap, vmTransform, vmStickers, activeStickerId) {
 
         val mappedStickers = vmStickers.map { s ->
             StickerPx(
@@ -129,10 +129,12 @@ fun PixelCardPreviewScreen() {
             )
         }
 
+        // IMPORTANT: include activeStickerId so CardDataPx has the current active sticker
         cardData = cardData.copy(
             avatarBitmap = vmAvatarBitmap,
             avatarTransform = vmTransform,
-            stickers = mappedStickers
+            stickers = mappedStickers,
+            activeStickerId = activeStickerId
         )
     }
 
@@ -248,8 +250,8 @@ fun PixelCardPreviewScreen() {
     }
 
     // -------------------------------
-    // Gesture Layer (Step-3 Ready)
-    // -------------------------------
+// Gesture Layer (Step-3 Ready)
+// -------------------------------
     var boxSize by remember { mutableStateOf(IntSize.Zero) }
 
     val gestureModifier = Modifier.pointerInput(
@@ -265,6 +267,9 @@ fun PixelCardPreviewScreen() {
                 val tx = first.position.x
                 val ty = first.position.y
 
+                // Track what was touched at finger-down
+                var touchedStickerOnDown = false
+
                 // ------------------------------------------------------
                 // 1) STICKERS FIRST (topmost)
                 // ------------------------------------------------------
@@ -274,9 +279,10 @@ fun PixelCardPreviewScreen() {
 
                 if (touchedSticker != null) {
 
+                    touchedStickerOnDown = true
                     viewModel.setActiveSticker(touchedSticker.id)
 
-                    // ---> STICKER GESTURE LOOP (NO LONG PRESS)
+                    // ---> STICKER GESTURE LOOP
                     while (event.changes.any { it.pressed }) {
 
                         val pan = event.calculatePan()
@@ -294,6 +300,8 @@ fun PixelCardPreviewScreen() {
                         event = awaitPointerEvent()
                     }
 
+                    // IMPORTANT:
+                    // DO NOT clear active sticker — user expects delete button AFTER release
                     continue
                 }
 
@@ -302,32 +310,43 @@ fun PixelCardPreviewScreen() {
                 // ------------------------------------------------------
                 val hitAvatar = PixelRenderer.isTouchInsideAvatar(tx, ty, spec, cardData)
 
-                if (!hitAvatar) {
+                if (hitAvatar) {
+
                     viewModel.setActiveSticker(null)
 
+                    // Avatar gesture loop
                     while (event.changes.any { it.pressed }) {
+                        val pan = event.calculatePan()
+                        val zoom = event.calculateZoom().coerceFinite()
+                        val rot = event.calculateRotation().coerceFinite()
+
+                        viewModel.updatePixelAvatarPosition(
+                            pan.x / boxSize.width.toFloat(),
+                            pan.y / boxSize.height.toFloat()
+                        )
+                        viewModel.updatePixelAvatarScale(zoom)
+                        viewModel.updatePixelAvatarRotation(rot)
+
+                        event.changes.forEach { it.consume() }
                         event = awaitPointerEvent()
                     }
+
                     continue
                 }
 
-                // ---> AVATAR GESTURE LOOP
+                // ------------------------------------------------------
+                // 3) EMPTY SPACE TAP
+                // Clear sticker selection ONLY if finger-down was NOT on a sticker
+                // ------------------------------------------------------
+                if (!touchedStickerOnDown) {
+                    viewModel.setActiveSticker(null)
+                }
+
+                // consume tap and wait for release
                 while (event.changes.any { it.pressed }) {
-
-                    val pan = event.calculatePan()
-                    val zoom = event.calculateZoom().coerceFinite()
-                    val rot = event.calculateRotation().coerceFinite()
-
-                    viewModel.updatePixelAvatarPosition(
-                        pan.x / boxSize.width.toFloat(),
-                        pan.y / boxSize.height.toFloat()
-                    )
-                    viewModel.updatePixelAvatarScale(zoom)
-                    viewModel.updatePixelAvatarRotation(rot)
-
-                    event.changes.forEach { it.consume() }
                     event = awaitPointerEvent()
                 }
+                continue
             }
         }
     }
@@ -337,7 +356,7 @@ fun PixelCardPreviewScreen() {
     // UI
     // -------------------------------
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Pixel Renderer") }) }
+        topBar = { TopAppBar(title = { Text("Create Event Card") }) }
     ) { padding ->
 
         LazyColumn(
@@ -350,8 +369,10 @@ fun PixelCardPreviewScreen() {
 
             // header Design your card
             item {
-                Spacer(Modifier.height(12.dp))
-                Text("Design your card (BG + Photo + Stickers)")
+                Spacer(Modifier.height(4.dp))
+                Text("Design your card (BG + Photo + Stickers)",
+                    modifier = Modifier.padding(start = 8.dp)
+                )
                 Spacer(Modifier.height(16.dp))
             }
 
@@ -382,13 +403,15 @@ fun PixelCardPreviewScreen() {
                             spec = spec,
                             boxSize = boxSize,
                             cardData = cardData,
-                            activeStickerId = activeStickerId,
-                            onDelete = { viewModel.removeSticker(it) }
+                            onDelete = { id ->
+                                // remove via ViewModel (VM will clear its activeStickerId and update pixelStickers)
+                                viewModel.removeSticker(id)
+                            }
                         )
                     }
 
                 }
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(32.dp))
             }
 
             // Background controls
@@ -409,21 +432,7 @@ fun PixelCardPreviewScreen() {
                         Text("Clear Bg")
                     }
                 }
-                Spacer(Modifier.height(16.dp))
-            }
-
-            // Save/Share
-            item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly
-                ) {
-                    Button(onClick = { onSaveClicked() }) { Text("Save PNG") }
-                    Button(onClick = { onShareClicked() }) { Text("Share PNG") }
-                }
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(8.dp))
             }
 
             // Avatar controls
@@ -452,7 +461,21 @@ fun PixelCardPreviewScreen() {
                     }
                 }
 
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(8.dp))
+            }
+
+            // Save/Share
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    Button(onClick = { onSaveClicked() }) { Text("Save PNG") }
+                    Button(onClick = { onShareClicked() }) { Text("Share PNG") }
+                }
+                Spacer(Modifier.height(8.dp))
             }
 
             // ------------------------------------------------------
@@ -492,7 +515,7 @@ fun PixelCardPreviewScreen() {
                     }
                 }
 
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(8.dp))
 
                 // -------------------------
                 // STICKER LIST ROW (only if category is selected)
@@ -516,22 +539,6 @@ fun PixelCardPreviewScreen() {
                 }
             }
 
-            /*item {
-                LazyRow(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp),
-                    horizontalArrangement = Arrangement.Start
-                ) {
-                    items(StickerCatalogPacks.birthdayPack) { item ->
-                        StickerPreviewItem(item) {
-                            viewModel.addStickerFromCatalog(item)
-                        }
-                    }
-                }
-                Spacer(Modifier.height(12.dp))
-            } */
-
         }
     }
 }
@@ -548,32 +555,82 @@ private fun DeleteStickerButtonOverlay(
     spec: CardSpecPx,
     boxSize: IntSize,
     cardData: CardDataPx,
-    activeStickerId: Long?,
     onDelete: (Long) -> Unit
 ) {
-    if (activeStickerId == null) return
+    // ensure we have an active sticker
+    val activeId = cardData.activeStickerId ?: return
+    if (boxSize.width == 0 || boxSize.height == 0) return
 
-    val s = cardData.stickers.firstOrNull { it.id == activeStickerId } ?: return
+    val s = cardData.stickers.firstOrNull { it.id == activeId } ?: return
+    val density = LocalDensity.current
 
-    // compute px position
-    val pxX = s.xNorm * boxSize.width
-    val pxY = s.yNorm * boxSize.height
-    val offset = 40.dp      // always fixed size
+    // --- compute scale (card px -> UI px) ---
+    val scale = boxSize.width.toFloat() / spec.widthPx.toFloat()
 
-    Box(
-        modifier = Modifier
-            .offset(
-                x = (pxX.dp + offset),
-                y = (pxY.dp - offset)
-            )
+    // sticker center in CARD px
+    val cxPx = s.xNorm * spec.widthPx
+    val cyPx = s.yNorm * spec.heightPx
+
+    // sticker base bitmap size (fallback)
+    val bmp = when {
+        s.drawableResId != null -> StickerBitmapCache.getBitmap(s.drawableResId)
+        s.bitmap != null        -> s.bitmap
+        else -> null
+    }
+
+    val baseW = bmp?.width?.toFloat() ?: 120f
+    val baseH = bmp?.height?.toFloat() ?: 120f
+
+    // match PixelRenderer scaleBoost
+    val finalScale = s.scale * 3.0f
+
+    val stickerWpx = baseW * finalScale
+    val stickerHpx = baseH * finalScale
+
+    // Convert to UI (px)
+    val uiCx = cxPx * scale
+    val uiCy = cyPx * scale
+    val uiW = stickerWpx * scale
+    val uiH = stickerHpx * scale
+
+    // Icon size (px) and offsets (we keep icon centered on the top-right corner)
+    val iconPx = 32f
+    val halfIcon = iconPx / 2f
+    val gapPx = 0.2f * density.density // small gap in px (density-aware)
+
+    // Anchor the icon so it visually touches top-right of sticker
+    val iconCenterXpx = uiCx + uiW / 2f - halfIcon
+    val iconCenterYpx = uiCy - uiH / 2f - halfIcon - gapPx
+
+    // TIMBER DEBUG — will show computed values and whether inside bounds
+    //Timber.tag("DELETE_DBG").d("DBG active=%d box=(%d,%d) scale=%.3f uiCx=%.1f uiCy=%.1f uiW=%.1f uiH=%.1f icon=(%.1f,%.1f)", activeId, boxSize.width, boxSize.height, scale, uiCx, uiCy, uiW, uiH, iconCenterXpx, iconCenterYpx)
+    //Timber.tag("DELETE_DBG").d("IN_BOUNDS? x:[0..%d]=%b  y:[0..%d]=%b", boxSize.width, iconCenterXpx >= 0f && iconCenterXpx <= boxSize.width, boxSize.height, iconCenterYpx >= 0f && iconCenterYpx <= boxSize.height)
+
+    // Convert px -> Dp for Popup offset using LocalDensity
+    val iconDpX = with(density) { iconCenterXpx.toDp() }
+    val iconDpY = with(density) { iconCenterYpx.toDp() }
+
+    // Use Popup so the Icon is above gesture layer and receives clicks
+    androidx.compose.ui.window.Popup(
+        // align with top-left of the window; our offsets are relative to window content
+        offset = androidx.compose.ui.unit.IntOffset(iconCenterXpx.toInt(), iconCenterYpx.toInt()),
+        onDismissRequest = {} // no-op, we control visibility via activeStickerId
     ) {
-        IconButton(onClick = { onDelete(s.id) }) {
-            Icon(
-                imageVector = Icons.Default.Close,
-                contentDescription = "Delete sticker",
-                tint = Color.Red,
-                modifier = Modifier.size(36.dp)
-            )
+        // We still create a small Box so Icon has proper layout
+        Box(
+            modifier = Modifier
+                .size((iconPx).dp) // visual size (dp)
+        ) {
+            // clickable here; Popup guarantees event delivery
+            IconButton(
+                onClick = {
+                    Timber.tag("DELETE_DBG").d("DELETE CLICK -> id=%d", s.id)
+                    onDelete(s.id)
+                },
+                modifier = Modifier.fillMaxSize()
+            ) {
+                Icon(imageVector = Icons.Default.Close, contentDescription = "Delete sticker", tint = Color.Red, modifier = Modifier.fillMaxSize())
+            }
         }
     }
 }
