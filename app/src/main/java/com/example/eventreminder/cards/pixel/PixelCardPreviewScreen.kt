@@ -1,13 +1,10 @@
 package com.example.eventreminder.cards.pixel
 
 // =============================================================
-// PixelCardPreviewScreen.kt
-// - Preview UI for PixelRenderer output (scaled in Compose).
-// - Loads placeholder avatar into the ViewModel pipeline.
-// - Gesture handling (pan/zoom/rotate) forwards normalized deltas to VM.
-// - SAF save/share preserved.
-// - Gesture modifier is placed last in the Box modifier chain so it sits
-//   above the rendered canvas and receives pointer events.
+// PixelCardPreviewScreen.kt — CLEAN + STICKER-READY VERSION
+// - Avatar/background/save/share preserved
+// - Sticker system integrated with CardViewModel (Step-2)
+// - Gesture pipeline ready for Step-3 routing
 // =============================================================
 
 import android.content.Intent
@@ -19,49 +16,32 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import kotlinx.coroutines.delay
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateRotation
 import androidx.compose.foundation.gestures.calculateZoom
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.material3.Button
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.documentfile.provider.DocumentFile
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.eventreminder.cards.CardViewModel
+import com.example.eventreminder.cards.pixel.stickers.StickerCatalogItem
 import com.example.eventreminder.cards.util.ImageUtil
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -70,70 +50,51 @@ import timber.log.Timber
 import java.io.File
 import java.io.FileOutputStream
 import java.io.OutputStream
-import kotlin.math.min
+import com.example.eventreminder.R
+import com.example.eventreminder.cards.pixel.stickers.StickerBitmapCache
+import com.example.eventreminder.cards.pixel.stickers.StickerCatalogPacks
+import com.example.eventreminder.cards.pixel.stickers.StickerCategory
+import com.example.eventreminder.cards.pixel.stickers.StickerPreviewItem
+
 
 private const val TAG = "PixelCardPreviewScreen"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PixelCardPreviewScreen() {
+
     Timber.tag(TAG).d("PixelCardPreviewScreen Loaded")
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val viewModel: CardViewModel = hiltViewModel()
-    //var isAvatarGestureActive by remember { mutableStateOf(false) }
 
-    // Ensure placeholder avatar loaded into VM once
+    val viewModel: CardViewModel = hiltViewModel()
+
+    // Stickers from VM (LIVE!)
+    val vmStickers by viewModel.pixelStickers.collectAsState()
+    val stickerList by viewModel.pixelStickers.collectAsState()
+    val activeStickerId by viewModel.activeStickerId.collectAsState()
+
+
+    // Avatar bitmap + transforms
     val vmAvatarBitmap by viewModel.pixelAvatarBitmap.collectAsState()
 
-    // Load placeholder ONLY if no avatar has been set yet
-    /*LaunchedEffect(vmAvatarBitmap) {
-        if (vmAvatarBitmap == null) {
-            delay(50)
-            Timber.tag("TESTPH").d("No avatar present → loading placeholder")
-            viewModel.loadPixelAvatarPlaceholder()
-        } else {
-            Timber.tag("TESTPH").d("Avatar exists → skipping placeholder load")
-        }
-    }*/
-
-
-
-    // Debug: confirm bitmap observed
-    /*LaunchedEffect(vmAvatarBitmap) {
-        Timber.tag("TESTPH").d("vmAvatarBitmap present? = ${vmAvatarBitmap != null}")
-    }*/
-
-    // Canonical spec (1080x1200)
     val spec = remember { CardSpecPx.default1080x1200() }
 
-    // Observe VM pixel avatar bitmap
-    //val vmAvatarBitmap by viewModel.pixelAvatarBitmap.collectAsState()
-    LaunchedEffect(vmAvatarBitmap) {
-        Timber.tag(TAG).d("VM avatar bitmap present? = ${vmAvatarBitmap != null}")
-    }
-
-    // Observe 4 transform values directly from VM
     val xNorm by viewModel.pixelAvatarXNorm.collectAsState()
     val yNorm by viewModel.pixelAvatarYNorm.collectAsState()
     val scale by viewModel.pixelAvatarScale.collectAsState()
     val rotation by viewModel.pixelAvatarRotationDeg.collectAsState()
 
-    // Build transform for CardDataPx
-    val vmTransform = AvatarTransformPx(
-        xNorm = xNorm,
-        yNorm = yNorm,
-        scale = scale,
-        rotationDeg = rotation
-    )
+    val vmTransform = AvatarTransformPx(xNorm, yNorm, scale, rotation)
 
-
-    // Local CardDataPx used by PixelCanvas; keep in sync with VM
+    // -------------------------------
+    // CardDataPx (canvas input)
+    // -------------------------------
     var cardData by remember {
         mutableStateOf(
             CardDataPx(
-                reminderId = 999L,
+                reminderId = 1L,
                 titleText = "Happy Birthday",
                 nameText = "Yogesh",
                 showTitle = true,
@@ -149,97 +110,98 @@ fun PixelCardPreviewScreen() {
         )
     }
 
-    // Mirror VM avatar bitmap + transform into cardData (triggers recomposition & PixelCanvas redraw)
-    LaunchedEffect(vmAvatarBitmap, vmTransform) {
+    // -------------------------------
+    // Sync VM -> CardDataPx
+    // -------------------------------
+
+    LaunchedEffect(vmAvatarBitmap, vmTransform, vmStickers) {
+
+        val mappedStickers = vmStickers.map { s ->
+            StickerPx(
+                id = s.id,
+                drawableResId = s.drawableResId,
+                bitmap = s.bitmap,
+                text = s.text,
+                xNorm = s.xNorm,
+                yNorm = s.yNorm,
+                scale = s.scale,
+                rotationDeg = s.rotationDeg
+            )
+        }
+
         cardData = cardData.copy(
             avatarBitmap = vmAvatarBitmap,
-            avatarTransform = vmTransform
+            avatarTransform = vmTransform,
+            stickers = mappedStickers
         )
-        Timber.tag(TAG).d("cardData updated — avatarBitmap null? = ${vmAvatarBitmap == null}")
     }
 
-    // Background image picker
+    // -------------------------------
+    // Background picker
+    // -------------------------------
     val backgroundPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia()
-    ) { uri: Uri? ->
-        if (uri == null) return@rememberLauncherForActivityResult
-        Timber.tag(TAG).d("BG picked: $uri")
-        val bmp = try {
-            ImageUtil.loadBitmapFromUri(context, uri, maxDim = 2000)
-        } catch (t: Throwable) {
-            Timber.tag(TAG).e(t, "BG decode failed")
-            null
+    ) { uri ->
+        if (uri != null) {
+            val bmp = ImageUtil.loadBitmapFromUri(context, uri, maxDim = 2000)
+            if (bmp != null) cardData = cardData.copy(backgroundBitmap = bmp)
+            else Toast.makeText(context, "Failed to load image", Toast.LENGTH_SHORT).show()
         }
-        if (bmp != null) cardData = cardData.copy(backgroundBitmap = bmp)
-        else Toast.makeText(context, "Failed to load image", Toast.LENGTH_SHORT).show()
     }
 
-    // SAF folder launcher to store tree URI (persistable)
+    // -------------------------------
+    // SAF Save
+    // -------------------------------
     val openTreeLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocumentTree()
-    ) { treeUri: Uri? ->
-        if (treeUri == null) {
-            Timber.tag(TAG).d("User cancelled tree selection")
-            return@rememberLauncherForActivityResult
-        }
+    ) { treeUri ->
+        if (treeUri == null) return@rememberLauncherForActivityResult
         try {
             val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
             context.contentResolver.takePersistableUriPermission(treeUri, flags)
+
             scope.launch(Dispatchers.IO) {
                 SafStorageHelper.saveTreeUri(context, treeUri.toString())
-                Timber.tag(TAG).d("Saved SAF tree URI to DataStore: $treeUri")
             }
-            Toast.makeText(context, "Folder selected. Ready to save.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "Folder selected", Toast.LENGTH_SHORT).show()
+
         } catch (t: Throwable) {
-            Timber.tag(TAG).e(t, "Failed to persist tree URI")
-            Toast.makeText(context, "Failed to take permission for folder", Toast.LENGTH_LONG).show()
+            Timber.tag(TAG).e(t, "persist tree failed")
         }
     }
 
-    // Helper to ensure a subfolder exists inside the saved tree
     suspend fun ensureEventFolder(treeUri: Uri): DocumentFile? {
         return try {
-            val treeDoc = DocumentFile.fromTreeUri(context, treeUri) ?: run {
-                Timber.tag(TAG).w("DocumentFile.fromTreeUri returned null")
-                return null
-            }
+            val treeDoc = DocumentFile.fromTreeUri(context, treeUri) ?: return null
             val existing = treeDoc.findFile("EventReminderCards")
             if (existing != null && existing.isDirectory) return existing
-            treeDoc.createDirectory("EventReminderCards").also {
-                Timber.tag(TAG).d("Created EventReminderCards folder: $it")
-            }
+            treeDoc.createDirectory("EventReminderCards")
         } catch (t: Throwable) {
             Timber.tag(TAG).e(t, "ensureEventFolder failed")
             null
         }
     }
 
-    // Save function using saved tree URI
     suspend fun savePngViaSaf(): Uri? {
         return try {
             val savedUri: Uri? = SafStorageHelper.getTreeUriFlow(context).first()
-            if (savedUri == null) {
-                Timber.tag(TAG).d("No saved tree URI")
-                return null
-            }
+            if (savedUri == null) return null
+
             val folder = ensureEventFolder(savedUri) ?: return null
             val filename = "Card_${System.currentTimeMillis()}.png"
-            val newFile = folder.createFile("image/png", filename) ?: run {
-                Timber.tag(TAG).e("createFile returned null")
-                return null
-            }
+            val newFile = folder.createFile("image/png", filename) ?: return null
+
             val out: OutputStream? = context.contentResolver.openOutputStream(newFile.uri)
-            if (out == null) {
-                Timber.tag(TAG).e("openOutputStream returned null")
-                return null
-            }
+            if (out == null) return null
+
             val bmp = Bitmap.createBitmap(spec.widthPx, spec.heightPx, Bitmap.Config.ARGB_8888)
             val canvas = Canvas(bmp)
             PixelRenderer.renderToAndroidCanvas(canvas, spec, cardData)
+
             bmp.compress(Bitmap.CompressFormat.PNG, 100, out)
             out.flush()
             out.close()
-            Timber.tag(TAG).d("Saved via SAF to: ${newFile.uri}")
+
             newFile.uri
         } catch (t: Throwable) {
             Timber.tag(TAG).e(t, "savePngViaSaf failed")
@@ -247,98 +209,121 @@ fun PixelCardPreviewScreen() {
         }
     }
 
-    // Save button wrapper
     fun onSaveClicked() {
         scope.launch {
             val savedUri: Uri? = SafStorageHelper.getTreeUriFlow(context).first()
             if (savedUri != null) {
-                val uri = savePngViaSaf()
-                if (uri != null) Toast.makeText(context, "Saved to Documents/EventReminderCards", Toast.LENGTH_LONG).show()
-                else Toast.makeText(context, "Save failed; try selecting folder again.", Toast.LENGTH_LONG).show()
+                savePngViaSaf()
                 return@launch
             }
-            Toast.makeText(context, "Please choose the Documents folder (select base folder).", Toast.LENGTH_LONG).show()
             openTreeLauncher.launch(null)
         }
     }
 
-    // Share wrapper (cache + FileProvider)
+    // -------------------------------
+    // Share
+    // -------------------------------
     fun onShareClicked() {
         scope.launch(Dispatchers.IO) {
-            try {
-                val bmp = Bitmap.createBitmap(spec.widthPx, spec.heightPx, Bitmap.Config.ARGB_8888)
-                val canvas = Canvas(bmp)
-                PixelRenderer.renderToAndroidCanvas(canvas, spec, cardData)
-                val cacheFile = File(context.cacheDir, "share_${System.currentTimeMillis()}.png")
-                FileOutputStream(cacheFile).use { out -> bmp.compress(Bitmap.CompressFormat.PNG, 100, out) }
-                val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", cacheFile)
-                scope.launch {
-                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                        type = "image/png"
-                        putExtra(Intent.EXTRA_STREAM, uri)
-                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    }
-                    context.startActivity(Intent.createChooser(shareIntent, "Share Card PNG"))
+            val bmp = Bitmap.createBitmap(spec.widthPx, spec.heightPx, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bmp)
+            PixelRenderer.renderToAndroidCanvas(canvas, spec, cardData)
+
+            val cacheFile = File(context.cacheDir, "share_${System.currentTimeMillis()}.png")
+            FileOutputStream(cacheFile).use {
+                bmp.compress(Bitmap.CompressFormat.PNG, 100, it)
+            }
+
+            val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", cacheFile)
+
+            scope.launch {
+                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                    type = "image/png"
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
-            } catch (t: Throwable) {
-                Timber.tag(TAG).e(t, "onShareClicked failed")
-                scope.launch { Toast.makeText(context, "Share failed: ${t.message}", Toast.LENGTH_LONG).show() }
+                context.startActivity(Intent.createChooser(shareIntent, "Share Card PNG"))
             }
         }
     }
 
-    // -------------------------
-    // Gesture layer (FINAL, FIXED)
-    // -------------------------
+    // -------------------------------
+    // Gesture Layer (Step-3 Ready)
+    // -------------------------------
     var boxSize by remember { mutableStateOf(IntSize.Zero) }
 
-    var isAvatarGestureActive by remember { mutableStateOf(false) }
-
-    val gestureModifier = Modifier.pointerInput(spec, boxSize) {
+    val gestureModifier = Modifier.pointerInput(
+        spec, boxSize, stickerList, activeStickerId
+    ) {
         awaitPointerEventScope {
+
             while (true) {
 
-                // Wait for first press
                 var event = awaitPointerEvent()
-                val firstDown = event.changes.firstOrNull { it.pressed } ?: continue
+                val first = event.changes.firstOrNull { it.pressed } ?: continue
 
-                val touchX = firstDown.position.x
-                val touchY = firstDown.position.y
+                val tx = first.position.x
+                val ty = first.position.y
 
-                // --------------------------------------------
-                // ⭐ Accurate matrix-based hit-testing
-                // --------------------------------------------
-                isAvatarGestureActive = PixelRenderer.isTouchInsideAvatar(
-                    touchX = touchX,
-                    touchY = touchY,
-                    spec = spec,
-                    data = cardData
+                // ------------------------------------------------------
+                // 1) STICKERS FIRST (topmost)
+                // ------------------------------------------------------
+                val touchedSticker = PixelRenderer.findTopmostStickerUnderTouch(
+                    tx, ty, spec, cardData
                 )
 
-                // If touch is NOT inside avatar → ignore gesture
-                if (!isAvatarGestureActive) {
-                    // Wait until all fingers released
+                if (touchedSticker != null) {
+
+                    viewModel.setActiveSticker(touchedSticker.id)
+
+                    // ---> STICKER GESTURE LOOP (NO LONG PRESS)
+                    while (event.changes.any { it.pressed }) {
+
+                        val pan = event.calculatePan()
+                        val zoom = event.calculateZoom().coerceFinite()
+                        val rot = event.calculateRotation().coerceFinite()
+
+                        viewModel.updateActiveStickerPosition(
+                            pan.x / boxSize.width.toFloat(),
+                            pan.y / boxSize.height.toFloat()
+                        )
+                        viewModel.updateActiveStickerScale(zoom)
+                        viewModel.updateActiveStickerRotation(rot)
+
+                        event.changes.forEach { it.consume() }
+                        event = awaitPointerEvent()
+                    }
+
+                    continue
+                }
+
+                // ------------------------------------------------------
+                // 2) AVATAR SECOND
+                // ------------------------------------------------------
+                val hitAvatar = PixelRenderer.isTouchInsideAvatar(tx, ty, spec, cardData)
+
+                if (!hitAvatar) {
+                    viewModel.setActiveSticker(null)
+
                     while (event.changes.any { it.pressed }) {
                         event = awaitPointerEvent()
                     }
                     continue
                 }
 
-                // --------------------------------------------
-                // ⭐ AVATAR GESTURES (pan/zoom/rotate)
-                // --------------------------------------------
+                // ---> AVATAR GESTURE LOOP
                 while (event.changes.any { it.pressed }) {
 
                     val pan = event.calculatePan()
-                    val zoom = event.calculateZoom()
-                    val rotation = event.calculateRotation()
+                    val zoom = event.calculateZoom().coerceFinite()
+                    val rot = event.calculateRotation().coerceFinite()
 
-                    val dxNorm = pan.x / boxSize.width.toFloat()
-                    val dyNorm = pan.y / boxSize.height.toFloat()
-
-                    viewModel.updatePixelAvatarPosition(dxNorm, dyNorm)
+                    viewModel.updatePixelAvatarPosition(
+                        pan.x / boxSize.width.toFloat(),
+                        pan.y / boxSize.height.toFloat()
+                    )
                     viewModel.updatePixelAvatarScale(zoom)
-                    viewModel.updatePixelAvatarRotation(rotation)
+                    viewModel.updatePixelAvatarRotation(rot)
 
                     event.changes.forEach { it.consume() }
                     event = awaitPointerEvent()
@@ -348,9 +333,9 @@ fun PixelCardPreviewScreen() {
     }
 
 
-    // -------------------------
+    // -------------------------------
     // UI
-    // -------------------------
+    // -------------------------------
     Scaffold(
         topBar = { TopAppBar(title = { Text("Pixel Renderer") }) }
     ) { padding ->
@@ -363,16 +348,14 @@ fun PixelCardPreviewScreen() {
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
 
+            // header Design your card
             item {
                 Spacer(Modifier.height(12.dp))
-                Text(
-                    text = "Design your card pick BG, add Photo, stickers etc..",
-                    color = Color.DarkGray
-                )
+                Text("Design your card (BG + Photo + Stickers)")
                 Spacer(Modifier.height(16.dp))
             }
 
-            // ---------- CARD CANVAS ITEM ----------
+            // Canvas + Sticker DELETE BUTTON
             item {
                 Box(
                     modifier = Modifier
@@ -380,10 +363,8 @@ fun PixelCardPreviewScreen() {
                         .padding(horizontal = 12.dp)
                         .aspectRatio(1080f / 1200f)
                         .background(Color.LightGray)
-                        .onGloballyPositioned { coords ->
-                            boxSize = IntSize(coords.size.width, coords.size.height)
-                            Timber.tag(TAG)
-                                .d("Box size = ${boxSize.width} x ${boxSize.height}")
+                        .onGloballyPositioned {
+                            boxSize = IntSize(it.size.width, it.size.height)
                         }
                         .then(gestureModifier)
                 ) {
@@ -392,11 +373,25 @@ fun PixelCardPreviewScreen() {
                         data = cardData,
                         modifier = Modifier.fillMaxSize()
                     )
+
+                    val density = LocalDensity.current
+
+                    // --- DELETE BUTTON OVERLAY ---
+                    if (activeStickerId != null) {
+                        DeleteStickerButtonOverlay(
+                            spec = spec,
+                            boxSize = boxSize,
+                            cardData = cardData,
+                            activeStickerId = activeStickerId,
+                            onDelete = { viewModel.removeSticker(it) }
+                        )
+                    }
+
                 }
-                Spacer(Modifier.height(46.dp))
+                Spacer(Modifier.height(16.dp))
             }
 
-            // ---------- Background Buttons ----------
+            // Background controls
             item {
                 Row(
                     modifier = Modifier
@@ -410,14 +405,14 @@ fun PixelCardPreviewScreen() {
                         )
                     }) { Text("Pick Bg") }
 
-                    Button(onClick = {
-                        cardData = cardData.copy(backgroundBitmap = null)
-                    }) { Text("Clear Bg") }
+                    Button(onClick = { cardData = cardData.copy(backgroundBitmap = null) }) {
+                        Text("Clear Bg")
+                    }
                 }
-                Spacer(Modifier.height(46.dp))
+                Spacer(Modifier.height(16.dp))
             }
 
-            // ---------- SAVE / SHARE ----------
+            // Save/Share
             item {
                 Row(
                     modifier = Modifier
@@ -431,15 +426,12 @@ fun PixelCardPreviewScreen() {
                 Spacer(Modifier.height(16.dp))
             }
 
-            // ---------- Avatar Controls ----------
+            // Avatar controls
             item {
                 val avatarPicker = rememberLauncherForActivityResult(
                     ActivityResultContracts.PickVisualMedia()
                 ) { uri ->
-                    if (uri != null) {
-                        Timber.tag(TAG).d("Avatar picked: $uri")
-                        viewModel.onPixelAvatarImageSelected(context, uri)
-                    }
+                    if (uri != null) viewModel.onPixelAvatarImageSelected(context, uri)
                 }
 
                 Row(
@@ -452,27 +444,136 @@ fun PixelCardPreviewScreen() {
                         avatarPicker.launch(
                             PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                         )
-                    }) { Text("Pick Photo") }
-
+                    }) {
+                        Text("Pick Photo")
+                    }
                     Button(onClick = { viewModel.clearPixelAvatar() }) {
                         Text("Clear Photo")
                     }
                 }
 
-                Spacer(Modifier.height(100.dp)) // extra space bottom
+                Spacer(Modifier.height(16.dp))
             }
+
+            // ------------------------------------------------------
+            // CATEGORY BUTTONS  +  STICKER LIST (Expandable)
+            // ------------------------------------------------------
+            item {
+
+                // Stores CURRENT selected category
+                var selectedCategory by remember { mutableStateOf<StickerCategory?>(null) }
+
+                // -------------------------
+                // CATEGORY BUTTON ROW
+                // -------------------------
+                LazyRow(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    // Birthday, Smileys, Hearts....
+                    val categories = listOf(
+                        //StickerCategory.Birthday,
+                        StickerCategory.Smileys,
+                        StickerCategory.Hearts,
+                        StickerCategory.Celebration,
+                        StickerCategory.Misc
+                    )
+
+                    // Catagory buttons lazyRow Birthday, Smileys, Hearts....
+                    items(categories) { cat ->
+                        Button(
+                            onClick = {
+                                selectedCategory =
+                                    if (selectedCategory == cat) null else cat   // toggle
+                            },
+                        ) {
+                            Text(cat.name)
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(12.dp))
+
+                // -------------------------
+                // STICKER LIST ROW (only if category is selected)
+                // -------------------------
+                selectedCategory?.let { cat ->
+                    val list = StickerCatalogPacks.getPack(cat)
+
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        items(list) { item ->
+                            StickerPreviewItem(
+                                item = item,
+                                onClick = { viewModel.addStickerFromCatalog(item) }
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(20.dp))
+                }
+            }
+
+            /*item {
+                LazyRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp),
+                    horizontalArrangement = Arrangement.Start
+                ) {
+                    items(StickerCatalogPacks.birthdayPack) { item ->
+                        StickerPreviewItem(item) {
+                            viewModel.addStickerFromCatalog(item)
+                        }
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+            } */
+
         }
     }
-
 }
 
 /* --------------------------
-   Small helpers
+   Helpers
    -------------------------- */
 
-// Extension to coerce zoom to finite value (avoid NaN/infinity)
 private fun Float.coerceFinite(): Float =
     if (this.isFinite()) this else 1f
 
-// Format helper for logs
-private fun Float.format(digits: Int): String = "%.${digits}f".format(this)
+@Composable
+private fun DeleteStickerButtonOverlay(
+    spec: CardSpecPx,
+    boxSize: IntSize,
+    cardData: CardDataPx,
+    activeStickerId: Long?,
+    onDelete: (Long) -> Unit
+) {
+    if (activeStickerId == null) return
+
+    val s = cardData.stickers.firstOrNull { it.id == activeStickerId } ?: return
+
+    // compute px position
+    val pxX = s.xNorm * boxSize.width
+    val pxY = s.yNorm * boxSize.height
+    val offset = 40.dp      // always fixed size
+
+    Box(
+        modifier = Modifier
+            .offset(
+                x = (pxX.dp + offset),
+                y = (pxY.dp - offset)
+            )
+    ) {
+        IconButton(onClick = { onDelete(s.id) }) {
+            Icon(
+                imageVector = Icons.Default.Close,
+                contentDescription = "Delete sticker",
+                tint = Color.Red,
+                modifier = Modifier.size(36.dp)
+            )
+        }
+    }
+}

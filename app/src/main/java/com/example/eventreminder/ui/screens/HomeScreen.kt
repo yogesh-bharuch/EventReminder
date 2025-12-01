@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -34,6 +35,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.example.eventreminder.navigation.AddEditReminderRoute
+import com.example.eventreminder.navigation.CardRoute
 import com.example.eventreminder.navigation.HomeRoute
 import com.example.eventreminder.navigation.LoginRoute
 import com.example.eventreminder.navigation.PixelPreviewRoute
@@ -118,14 +120,12 @@ fun HomeScreen(
     HomeScaffold(
         onNewEventClick = { navController.navigate(AddEditReminderRoute()) },
         snackbarHostState = snackbarHostState,
-
         onSignOut = {
             FirebaseAuth.getInstance().signOut()
             navController.navigate(LoginRoute) {
                 popUpTo(HomeRoute) { inclusive = true }
             }
         },
-
         onManageRemindersClick = { navController.navigate(ReminderManagerRoute) },
 
         // ---------------------------------------------------------
@@ -166,10 +166,7 @@ fun HomeScreen(
             // ---------------------------------------------------------
             Row(Modifier.padding(bottom = 8.dp)) {
                 Text("Welcome: ", fontSize = 12.sp)
-                Text(
-                    FirebaseAuth.getInstance().currentUser?.email ?: "Guest",
-                    fontSize = 10.sp
-                )
+                Text(FirebaseAuth.getInstance().currentUser?.email ?: "Guest", fontSize = 10.sp)
             }
 
             HorizontalDivider(thickness = 1.dp, color = Color.Gray)
@@ -183,15 +180,29 @@ fun HomeScreen(
                 BirthdayEmptyState()
 
             } else {
-                // navigate to (Debug)
-                Button(
-                    onClick = {
-                        navController.navigate(PixelPreviewRoute)
-                        //navController.navigate(CardRoute(reminderId = 54))
+                // navigate to New screen / Stickers screen buttons
+                Row {
+                    Button(
+                        onClick = {
+                            navController.navigate(PixelPreviewRoute)
+                            //navController.navigate(CardRoute(reminderId = 54))
+                        }
+                    ) {
+                        Text("New screen")
                     }
-                ) {
-                    Text("Developer Tools")
+
+                    Spacer(modifier = Modifier.width(8.dp)) // optional spacing between buttons
+
+                    Button(
+                        onClick = {
+                            //navController.navigate(PixelPreviewRoute)
+                            navController.navigate(CardRoute(reminderId = 54))
+                        }
+                    ) {
+                        Text("Stickers screen")
+                    }
                 }
+
 
                 Spacer(Modifier.height(10.dp))
 

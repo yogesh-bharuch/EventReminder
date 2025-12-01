@@ -12,6 +12,7 @@ package com.example.eventreminder.cards.pixel
 import android.graphics.*
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.nativeCanvas
+import com.example.eventreminder.cards.pixel.stickers.StickerBitmapCache
 import timber.log.Timber
 import kotlin.math.max
 import kotlin.math.min
@@ -24,6 +25,7 @@ object PixelRenderer {
     // Gradient colors
     private val bgTop = android.graphics.Color.parseColor("#FFFDE7")
     private val bgBottom = android.graphics.Color.parseColor("#FFF0F4")
+    var contextProvider: (() -> android.content.Context)? = null
 
     private fun p() = Paint(Paint.ANTI_ALIAS_FLAG)
 
@@ -95,7 +97,7 @@ object PixelRenderer {
         }
 
         // ---------------------------------------------------------
-        // 3) Subtle overlay tint (for consistent appearance)
+        // 3) Subtle overlay tint
         // ---------------------------------------------------------
         canvas.drawRect(
             0f, 0f, spec.widthPx.toFloat(), spec.heightPx.toFloat(),
@@ -108,20 +110,18 @@ object PixelRenderer {
         drawTitle(canvas, spec, data)
         drawName(canvas, spec, data)
 
-        // Stickers (independent free-floating objects)
-        drawStickers(canvas, spec, data)
+        // ---------------------------------------------------------
+        // 5) Stickers (NEW FINAL)
+        // ---------------------------------------------------------
+        renderStickers(canvas, spec, data)   // <-- ONLY ONE CALL HERE
 
-        // Date row
+        // ---------------------------------------------------------
+        // 6) Date row
+        // ---------------------------------------------------------
         drawDateRow(canvas, spec, data)
 
         // ---------------------------------------------------------
-        // 5) FREE-AVATAR LAYER (NEW)
-        // No circular mask.
-        // Photo is rendered just like a free-move sticker:
-        // - Pan anywhere
-        // - Zoom freely
-        // - Rotate
-        // - Position can move outside clip bounds
+        // 7) FREE AVATAR (after stickers, above everything)
         // ---------------------------------------------------------
         drawAvatarFree(canvas, spec, data)
 
@@ -132,7 +132,6 @@ object PixelRenderer {
 
         Timber.tag(TAG).d("renderToAndroidCanvas DONE")
     }
-
 
     // ---------------------------------------------------------
     // Gradient Background
@@ -386,6 +385,154 @@ object PixelRenderer {
             iconPaint
         )
     }
+
+
+    // =============================================================
+    // Sticker Hit Testing — Step 3
+    // =============================================================
+
+    /**
+     * Find topmost sticker under the touch point.
+     * Iterate in reverse order because last sticker drawn is topmost.
+     */
+    fun findTopmostStickerUnderTouch(
+        touchX: Float,
+        touchY: Float,
+        spec: CardSpecPx,
+        data: CardDataPx
+    ): StickerPx? {
+        for (i in data.stickers.indices.reversed()) {
+            val sticker = data.stickers[i]
+            if (isTouchInsideSticker(touchX, touchY, spec, sticker)) {
+                return sticker
+            }
+        }
+        return null
+    }
+
+    /**
+     * Matrix-based hit test for a single sticker.
+     */
+    fun isTouchInsideSticker(
+        touchX: Float,
+        touchY: Float,
+        spec: CardSpecPx,
+        sticker: StickerPx
+    ): Boolean {
+
+        val cx = sticker.xNorm * spec.widthPx
+        val cy = sticker.yNorm * spec.heightPx
+
+        val sizePx = (spec.widthPx * 0.18f) * sticker.scale
+        val half = sizePx / 2f
+
+        val dx = touchX - cx
+        val dy = touchY - cy
+
+        val r = Math.toRadians(sticker.rotationDeg.toDouble())
+        val cos = kotlin.math.cos(r)
+        val sin = kotlin.math.sin(r)
+
+        val rx = (dx * cos + dy * sin).toFloat()
+        val ry = (-dx * sin + dy * cos).toFloat()
+
+        return (rx > -half && rx < half && ry > -half && ry < half)
+    }
+
+    // =============================================================
+//  STICKER RENDERING (STEP-3C — FINAL, RENAMED)
+// =============================================================
+
+    private val stickerMatrix = android.graphics.Matrix()
+
+    /**
+     * Render all stickers.
+     * Bottom → Top order (same order as stored).
+     */
+    fun renderStickers(
+        canvas: android.graphics.Canvas,
+        spec: CardSpecPx,
+        data: CardDataPx
+    ) {
+        val list = data.stickers
+        if (list.isEmpty()) return
+
+        list.forEach { sticker ->
+            renderSingleSticker(canvas, spec, sticker)
+        }
+    }
+
+    /**
+     * Render a single sticker (image resource, bitmap, or emoji text).
+     */
+    private fun renderSingleSticker(
+        canvas: Canvas,
+        spec: CardSpecPx,
+        sticker: StickerPx
+    ) {
+        val cx = sticker.xNorm * spec.widthPx
+        val cy = sticker.yNorm * spec.heightPx
+
+        canvas.save()
+
+        // Move to sticker center
+        canvas.translate(cx, cy)
+        canvas.rotate(sticker.rotationDeg)
+
+        // BOOST SIZE → easier for gestures
+        val scaleBoost = 3.5f
+        canvas.scale(sticker.scale * scaleBoost, sticker.scale * scaleBoost)
+
+        when {
+            // -----------------------------------------------------
+            // A) DRAWABLE STICKER (WEBP/JPG/PNG) — with min-size boost
+            // -----------------------------------------------------
+            sticker.drawableResId != null -> {
+                val bmp = StickerBitmapCache.getBitmap(sticker.drawableResId!!)
+                if (bmp != null) {
+
+                    // 🔥 Make stickers larger + enforce minimum size for visibility
+                    val scaleBoost = 3.0f              // increase if still too small
+                    val baseScale = sticker.scale * scaleBoost
+
+                    val minSize = 180f                 // px – minimum rendered width
+                    val minScale = minSize / bmp.width // if drawable too small
+
+                    val finalScale = max(baseScale, minScale)
+
+                    canvas.scale(finalScale, finalScale)
+                    canvas.drawBitmap(bmp, -bmp.width / 2f, -bmp.height / 2f, null)
+                }
+            }
+
+            // -----------------------------------------------------
+            // B) Custom bitmap (picked by user)
+            // -----------------------------------------------------
+            sticker.bitmap != null -> {
+                val bmp = sticker.bitmap!!
+                val halfW = bmp.width / 2f
+                val halfH = bmp.height / 2f
+                canvas.drawBitmap(bmp, -halfW, -halfH, null)
+            }
+
+            // -----------------------------------------------------
+            // C) Emoji text
+            // -----------------------------------------------------
+            sticker.text != null -> {
+                val paint = StickerPaint.textPaint
+                val bounds = StickerPaint.getTextBounds(sticker.text!!)
+                canvas.drawText(
+                    sticker.text!!,
+                    -bounds.centerX().toFloat(),
+                    -bounds.centerY().toFloat(),
+                    paint
+                )
+            }
+        }
+
+        canvas.restore()
+    }
+
 
 
 }

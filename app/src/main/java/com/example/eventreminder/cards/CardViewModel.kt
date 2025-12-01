@@ -3,8 +3,11 @@ package com.example.eventreminder.cards
 // =============================================================
 // Imports
 // =============================================================
+
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
 import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
@@ -13,29 +16,27 @@ import com.example.eventreminder.cards.model.CardBackground
 import com.example.eventreminder.cards.model.CardData
 import com.example.eventreminder.cards.model.CardSticker
 import com.example.eventreminder.cards.model.StickerItem
+import com.example.eventreminder.cards.pixel.AvatarTransformPx
+import com.example.eventreminder.cards.pixel.stickers.StickerPx
+import com.example.eventreminder.cards.pixel.stickers.StickerCatalogItem
 import com.example.eventreminder.cards.state.CardUiState
+import com.example.eventreminder.cards.util.ImageUtil
 import com.example.eventreminder.data.model.EventReminder
 import com.example.eventreminder.data.model.ReminderTitle
 import com.example.eventreminder.data.repo.ReminderRepository
 import com.example.eventreminder.util.NextOccurrenceCalculator
-import com.example.eventreminder.cards.util.ImageUtil
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import android.graphics.Paint
 import timber.log.Timber
 import java.time.Instant
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import javax.inject.Inject
-import android.graphics.Canvas
-import com.example.eventreminder.cards.pixel.AvatarTransformPx
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
 
 // =============================================================
 // TAG
@@ -158,7 +159,7 @@ class CardViewModel @Inject constructor(
     }
 
     // -------------------------
-    // Sticker APIs
+    // Sticker APIs old cards
     // -------------------------
     fun addSticker(item: StickerItem) {
         val current = (_uiState.value as? CardUiState.Data)?.cardData ?: return
@@ -509,6 +510,86 @@ class CardViewModel @Inject constructor(
             Timber.tag(TAG).e(t, "Failed to generate placeholder avatar")
         }
     }
+
+
+    // =============================================================
+    // PIXEL STICKER SYSTEM — FINAL IMPLEMENTATION (CLEAN & VERIFIED)
+    // =============================================================
+
+    private val _pixelStickers = MutableStateFlow<List<StickerPx>>(emptyList())
+    val pixelStickers = _pixelStickers.asStateFlow()
+
+    private val _activeStickerId = MutableStateFlow<Long?>(null)
+    val activeStickerId = _activeStickerId.asStateFlow()
+
+    /**
+     * Add sticker from selector row (emoji, drawable, or bitmap).
+     * Automatically becomes the active sticker.
+     */
+    fun addStickerFromCatalog(item: StickerCatalogItem) {
+        val newSticker = StickerPx(
+            id = System.currentTimeMillis(),
+            drawableResId = item.resId,
+            bitmap = null,
+            text = item.text,
+            xNorm = 0.12f,
+            yNorm = 0.82f,
+            scale = 1f,
+            rotationDeg = 0f
+        )
+        _pixelStickers.value = _pixelStickers.value + newSticker
+        _activeStickerId.value = newSticker.id
+        Timber.tag(TAG).d("added sticker id=${newSticker.id} text=${newSticker.text} res=${newSticker.drawableResId}")
+    }
+
+    /** Remove a sticker completely */
+    fun removeSticker(stickerId: Long) {
+        _pixelStickers.value = _pixelStickers.value.filterNot { it.id == stickerId }
+        if (_activeStickerId.value == stickerId) _activeStickerId.value = null
+    }
+
+    /** Mark a sticker as active for gestures */
+    fun setActiveSticker(id: Long?) {
+        _activeStickerId.value = id
+    }
+
+    /** Pan movement (dx/dy already normalized) */
+    fun updateActiveStickerPosition(dxNorm: Float, dyNorm: Float) {
+        val id = _activeStickerId.value ?: return
+
+        _pixelStickers.value = _pixelStickers.value.map { s ->
+            if (s.id != id) s else s.copy(
+                xNorm = (s.xNorm + dxNorm).coerceIn(-5f, 6f),
+                yNorm = (s.yNorm + dyNorm).coerceIn(-5f, 6f)
+            )
+        }
+    }
+
+    /** Zoom gesture → scale multiplier */
+    fun updateActiveStickerScale(scaleFactor: Float) {
+        val id = _activeStickerId.value ?: return
+
+        _pixelStickers.value = _pixelStickers.value.map { s ->
+            if (s.id != id) s else s.copy(
+                scale = (s.scale * scaleFactor).coerceIn(0.15f, 6f)
+            )
+        }
+    }
+
+    /** Rotation gesture */
+    fun updateActiveStickerRotation(deltaDeg: Float) {
+        val id = _activeStickerId.value ?: return
+
+        _pixelStickers.value = _pixelStickers.value.map { s ->
+            if (s.id != id) s else s.copy(
+                rotationDeg = (s.rotationDeg + deltaDeg).mod(360f)
+            )
+        }
+    }
+
+    /** Lookup helper */
+    fun getStickerById(id: Long): StickerPx? =
+        _pixelStickers.value.firstOrNull { it.id == id }
 
 }
 
