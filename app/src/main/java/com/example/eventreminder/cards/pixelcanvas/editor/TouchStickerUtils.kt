@@ -3,8 +3,8 @@ package com.example.eventreminder.cards.pixelcanvas.editor
 import com.example.eventreminder.cards.pixelcanvas.CardDataPx
 import com.example.eventreminder.cards.pixelcanvas.CardSpecPx
 import com.example.eventreminder.cards.pixelcanvas.StickerPaint
-import com.example.eventreminder.cards.pixelcanvas.StickerPx
 import com.example.eventreminder.cards.pixelcanvas.stickers.engine.StickerBitmapCache
+import com.example.eventreminder.cards.pixelcanvas.stickers.model.StickerPx
 import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.sin

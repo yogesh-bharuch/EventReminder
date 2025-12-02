@@ -42,7 +42,6 @@ import com.example.eventreminder.cards.CardViewModel
 import com.example.eventreminder.cards.pixelcanvas.AvatarTransformPx
 import com.example.eventreminder.cards.pixelcanvas.CardDataPx
 import com.example.eventreminder.cards.pixelcanvas.CardSpecPx
-import com.example.eventreminder.cards.pixelcanvas.StickerPx
 import com.example.eventreminder.cards.pixelcanvas.editor.GestureHandlers
 import com.example.eventreminder.cards.pixelcanvas.export.CardExportUtils
 import com.example.eventreminder.cards.pixelcanvas.export.SafStorageHelper
@@ -54,6 +53,7 @@ import com.example.eventreminder.cards.pixelcanvas.stickers.model.StickerCategor
 import com.example.eventreminder.cards.pixelcanvas.stickers.panel.StickerCategoryBar
 import com.example.eventreminder.cards.pixelcanvas.stickers.panel.StickerListPanel
 import com.example.eventreminder.cards.CardUiState
+import com.example.eventreminder.cards.pixelcanvas.stickers.model.StickerPx
 import com.example.eventreminder.cards.util.ImageUtil
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first

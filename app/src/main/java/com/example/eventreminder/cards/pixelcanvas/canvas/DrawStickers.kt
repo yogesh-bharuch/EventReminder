@@ -11,7 +11,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Matrix
 import com.example.eventreminder.cards.pixelcanvas.CardSpecPx
-import com.example.eventreminder.cards.pixelcanvas.StickerPx
+//import com.example.eventreminder.cards.pixelcanvas.StickerPx
 import com.example.eventreminder.cards.pixelcanvas.stickers.engine.StickerBitmapCache
 import com.example.eventreminder.cards.pixelcanvas.StickerPaint
 import timber.log.Timber
@@ -19,6 +19,7 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.cos
 import kotlin.math.sin
+import com.example.eventreminder.cards.pixelcanvas.stickers.model.StickerPx
 
 private const val TAG = "DrawStickers"
 
