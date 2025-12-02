@@ -1,4 +1,4 @@
-package com.example.eventreminder.cards.pixelcanvas.canvasui
+package com.example.eventreminder.cards.pixelcanvas.ui
 
 // =============================================================
 // CardCanvasArea
@@ -11,7 +11,10 @@ package com.example.eventreminder.cards.pixelcanvas.canvasui
 //import androidx.compose.foundation.layout.onGloballyPositioned
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
 import androidx.compose.ui.Modifier
@@ -20,6 +23,7 @@ import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.dp
 import com.example.eventreminder.cards.pixelcanvas.CardDataPx
 import com.example.eventreminder.cards.pixelcanvas.CardSpecPx
 import com.example.eventreminder.cards.pixelcanvas.PixelCanvas
@@ -34,28 +38,34 @@ fun CardCanvasArea(
     onDeleteSticker: (Long) -> Unit
 ) {
     val boxSize = boxSizeState.value
-    val density = LocalDensity.current
 
     Box(
         modifier = Modifier
-            .fillMaxSize()
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp)
+            .aspectRatio(1080f / 1200f)        // <-- RESTORED: Proper canvas space
             .background(Color.LightGray)
-            .onGloballyPositioned { coords: LayoutCoordinates ->
+            .onGloballyPositioned { coords ->
                 boxSizeState.value = IntSize(
                     coords.size.width,
                     coords.size.height
                 )
             }
-            .then(gestureModifier)
+            .then(gestureModifier)             // gesture recognizer ON TOP
     ) {
-        // Main renderer
+
+        // ---------------------------
+        // Main Pixel Canvas
+        // ---------------------------
         PixelCanvas(
             spec = spec,
             data = cardData,
             modifier = Modifier.fillMaxSize()
         )
 
-        // Delete button overlay
+        // ---------------------------
+        // Delete Button Overlay (popup)
+        // ---------------------------
         if (cardData.activeStickerId != null) {
             DeleteStickerOverlay(
                 spec = spec,
