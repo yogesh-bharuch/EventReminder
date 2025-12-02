@@ -1,6 +1,6 @@
-package com.example.eventreminder.cards.pixel.stickers
+package com.example.eventreminder.cards.pixelcanvas.stickers
 
-import com.example.eventreminder.cards.pixel.CardSpecPx
+import com.example.eventreminder.cards.pixelcanvas.CardSpecPx
 
 /**
  * Hit test if a touch lies inside a sticker

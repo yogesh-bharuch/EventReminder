@@ -1,4 +1,4 @@
-package com.example.eventreminder.cards.pixel
+package com.example.eventreminder.cards.pixelcanvas
 
 // =============================================================
 // CardDataPx.kt

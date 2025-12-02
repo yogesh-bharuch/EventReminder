@@ -1,10 +1,9 @@
-package com.example.eventreminder.cards.pixel.stickers
+package com.example.eventreminder.cards.pixelcanvas.stickers
 
 import android.graphics.Canvas
-import android.graphics.Matrix
 import android.graphics.Paint
-import com.example.eventreminder.cards.pixel.CardDataPx
-import com.example.eventreminder.cards.pixel.CardSpecPx
+import com.example.eventreminder.cards.pixelcanvas.CardDataPx
+import com.example.eventreminder.cards.pixelcanvas.CardSpecPx
 
 /**
  * Sticker drawing module — called by PixelRenderer.

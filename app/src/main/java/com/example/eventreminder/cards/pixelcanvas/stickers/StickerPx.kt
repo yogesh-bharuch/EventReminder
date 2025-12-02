@@ -1,4 +1,4 @@
-package com.example.eventreminder.cards.pixel.stickers
+package com.example.eventreminder.cards.pixelcanvas.stickers
 
 import android.graphics.Bitmap
 

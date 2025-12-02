@@ -1,6 +1,4 @@
-package com.example.eventreminder.cards.pixel.stickers
-
-import com.example.eventreminder.R
+package com.example.eventreminder.cards.pixelcanvas.stickers
 
 object StickerCatalogPacks {
 

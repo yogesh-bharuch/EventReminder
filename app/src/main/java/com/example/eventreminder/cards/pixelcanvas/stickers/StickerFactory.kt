@@ -1,8 +1,6 @@
-package com.example.eventreminder.cards.pixel.stickers
+package com.example.eventreminder.cards.pixelcanvas.stickers
 
 import android.content.Context
-import android.graphics.BitmapFactory
-import com.example.eventreminder.cards.pixel.stickers.StickerCatalogItem
 import timber.log.Timber
 
 /**

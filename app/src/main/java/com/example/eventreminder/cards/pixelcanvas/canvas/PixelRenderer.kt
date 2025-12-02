@@ -1,4 +1,5 @@
-package com.example.eventreminder.cards.pixelcanvas
+
+package com.example.eventreminder.cards.pixelcanvas.canvas
 
 // =============================================================
 // PixelRenderer.kt — Free Avatar Layer (Sticker-like)
@@ -9,22 +10,29 @@ package com.example.eventreminder.cards.pixelcanvas
 // - Clips only the CARD SHAPE, not the avatar
 // =============================================================
 
+import android.content.Context
 import android.graphics.*
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.nativeCanvas
+import com.example.eventreminder.cards.pixelcanvas.CardDataPx
+import com.example.eventreminder.cards.pixelcanvas.CardSpecPx
+import com.example.eventreminder.cards.pixelcanvas.StickerPaint
+import com.example.eventreminder.cards.pixelcanvas.StickerPx
 import com.example.eventreminder.cards.pixelcanvas.stickers.StickerBitmapCache
 import timber.log.Timber
+import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.sin
 
 private const val TAG = "PixelRenderer"
 
 object PixelRenderer {
 
     // Gradient colors
-    private val bgTop = android.graphics.Color.parseColor("#FFFDE7")
-    private val bgBottom = android.graphics.Color.parseColor("#FFF0F4")
-    var contextProvider: (() -> android.content.Context)? = null
+    private val bgTop = Color.parseColor("#FFFDE7")
+    private val bgBottom = Color.parseColor("#FFF0F4")
+    var contextProvider: (() -> Context)? = null
 
     private fun p() = Paint(Paint.ANTI_ALIAS_FLAG)
 
@@ -104,7 +112,7 @@ object PixelRenderer {
         // ---------------------------------------------------------
         canvas.drawRect(
             0f, 0f, spec.widthPx.toFloat(), spec.heightPx.toFloat(),
-            p().apply { color = android.graphics.Color.argb(18, 0, 0, 0) }
+            p().apply { color = Color.argb(18, 0, 0, 0) }
         )
 
         // ---------------------------------------------------------
@@ -163,7 +171,7 @@ object PixelRenderer {
     private fun drawTitle(c: Canvas, spec: CardSpecPx, data: CardDataPx) {
         val box = spec.titleBox
         val paint = p().apply {
-            color = android.graphics.Color.parseColor("#222222")
+            color = Color.parseColor("#222222")
             textSize = 72f
             isFakeBoldText = true
         }
@@ -174,7 +182,7 @@ object PixelRenderer {
     private fun drawName(c: Canvas, spec: CardSpecPx, data: CardDataPx) {
         val box = spec.nameBox
         val paint = p().apply {
-            color = android.graphics.Color.parseColor("#444444")
+            color = Color.parseColor("#444444")
             textSize = 72f
         }
         val name = data.nameText
@@ -194,9 +202,9 @@ object PixelRenderer {
         // 1) Circle background paint
         // -------------------------------------------
         val circlePaint = p().apply {
-            color = android.graphics.Color.WHITE
+            color = Color.WHITE
             isAntiAlias = true
-            setShadowLayer(12f, 0f, 6f, android.graphics.Color.argb(120, 0, 0, 0))
+            setShadowLayer(12f, 0f, 6f, Color.argb(120, 0, 0, 0))
         }
 
         // -------------------------------------------
@@ -232,9 +240,9 @@ object PixelRenderer {
         // 3) Age text paint
         // -------------------------------------------
         val textPaint = p().apply {
-            color = android.graphics.Color.BLACK
+            color = Color.BLACK
             textSize = (box.height * 0.45f)          // ~45% of circle height
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            typeface = Typeface.DEFAULT_BOLD
             textAlign = Paint.Align.CENTER
             isAntiAlias = true
         }
@@ -275,7 +283,7 @@ object PixelRenderer {
                 val scaled = Bitmap.createScaledBitmap(s.bitmap, size, size, true)
                 c.drawBitmap(scaled, -half.toFloat(), -half.toFloat(), null)
             } else {
-                val paint = p().apply { color = android.graphics.Color.parseColor("#222222"); textSize = 28f }
+                val paint = p().apply { color = Color.parseColor("#222222"); textSize = 28f }
                 c.drawText(s.text ?: "◻", -half + 8f, 8f, paint)
             }
 
@@ -289,7 +297,7 @@ object PixelRenderer {
     // ---------------------------------------------------------
     private fun drawDateRow(c: Canvas, spec: CardSpecPx, data: CardDataPx) {
         val box = spec.dateBox
-        val paint = p().apply { color = android.graphics.Color.parseColor("#666666"); textSize = 40f }
+        val paint = p().apply { color = Color.parseColor("#666666"); textSize = 40f }
         val y = box.y + paint.textSize
 
         val left = ellipsize(paint, data.originalDateLabel, box.width * 0.6f)
@@ -367,9 +375,9 @@ object PixelRenderer {
         val half = size / 2f
 
         // Box
-        val bg = p().apply { color = android.graphics.Color.parseColor("#F0F0F0"); style = Paint.Style.FILL }
+        val bg = p().apply { color = Color.parseColor("#F0F0F0"); style = Paint.Style.FILL }
         val stroke = p().apply {
-            color = android.graphics.Color.parseColor("#CCCCCC")
+            color = Color.parseColor("#CCCCCC")
             style = Paint.Style.STROKE
             strokeWidth = size * 0.05f
         }
@@ -379,13 +387,13 @@ object PixelRenderer {
         c.drawRoundRect(rect, 16f, 16f, stroke)
 
         // Lens
-        c.drawCircle(cx, cy, size * 0.18f, p().apply { color = android.graphics.Color.parseColor("#999999") })
+        c.drawCircle(cx, cy, size * 0.18f, p().apply { color = Color.parseColor("#999999") })
 
         // Flash
         val fw = size * 0.28f
         val fh = size * 0.12f
         val fr = RectF(cx - fw / 2f, cy - half + size * 0.06f, cx + fw / 2f, cy - half + size * 0.06f + fh)
-        c.drawRoundRect(fr, 8f, 8f, p().apply { color = android.graphics.Color.parseColor("#999999") })
+        c.drawRoundRect(fr, 8f, 8f, p().apply { color = Color.parseColor("#999999") })
     }
 
 
@@ -428,14 +436,14 @@ object PixelRenderer {
 
         // White circle
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = android.graphics.Color.WHITE
+            color = Color.WHITE
             style = Paint.Style.FILL
         }
         c.drawCircle(cx, cy, radius, paint)
 
         // Gray border
         val border = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = android.graphics.Color.parseColor("#888888")
+            color = Color.parseColor("#888888")
             style = Paint.Style.STROKE
             strokeWidth = radius * 0.08f
         }
@@ -443,7 +451,7 @@ object PixelRenderer {
 
         // Camera icon (simple)
         val iconPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = android.graphics.Color.parseColor("#666666")
+            color = Color.parseColor("#666666")
             style = Paint.Style.STROKE
             strokeWidth = radius * 0.12f
         }
@@ -569,8 +577,8 @@ object PixelRenderer {
         val dy = touchY - cy
 
         val r = Math.toRadians(sticker.rotationDeg.toDouble())
-        val cos = kotlin.math.cos(r)
-        val sin = kotlin.math.sin(r)
+        val cos = cos(r)
+        val sin = sin(r)
 
         val rx = (dx * cos + dy * sin).toFloat()
         val ry = (-dx * sin + dy * cos).toFloat()
@@ -582,14 +590,14 @@ object PixelRenderer {
 //  STICKER RENDERING (STEP-3C — FINAL, RENAMED)
 // =============================================================
 
-    private val stickerMatrix = android.graphics.Matrix()
+    private val stickerMatrix = Matrix()
 
     /**
      * Render all stickers.
      * Bottom → Top order (same order as stored).
      */
     fun renderStickers(
-        canvas: android.graphics.Canvas,
+        canvas: Canvas,
         spec: CardSpecPx,
         data: CardDataPx
     ) {

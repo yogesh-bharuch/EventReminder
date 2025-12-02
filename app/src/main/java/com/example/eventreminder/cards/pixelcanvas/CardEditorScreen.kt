@@ -1,7 +1,7 @@
 package com.example.eventreminder.cards.pixelcanvas
 
 // =============================================================
-// PixelCardPreviewScreen.kt — CLEAN + STICKER-READY VERSION
+// CardEditorScreen.kt — CLEAN + STICKER-READY VERSION
 // - Avatar/background/save/share preserved
 // - Sticker system integrated with CardViewModel (Step-2)
 // - Gesture pipeline ready for Step-3 routing
@@ -41,6 +41,7 @@ import androidx.core.content.FileProvider
 import androidx.documentfile.provider.DocumentFile
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.eventreminder.cards.CardViewModel
+import com.example.eventreminder.cards.pixelcanvas.canvas.PixelRenderer
 import com.example.eventreminder.cards.util.ImageUtil
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first

@@ -1,4 +1,4 @@
-package com.example.eventreminder.cards.pixel
+package com.example.eventreminder.cards.pixelcanvas
 
 // =============================================================
 // CardSpecPx.kt (1080 x 1200 canonical spec)

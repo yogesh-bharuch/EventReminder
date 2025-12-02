@@ -1,4 +1,4 @@
-package com.example.eventreminder.cards.pixel
+package com.example.eventreminder.cards.pixelcanvas
 
 // =============================================================
 // PixelCanvas.kt — stable minimal wrapper for PixelRenderer
@@ -15,6 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
+import com.example.eventreminder.cards.pixelcanvas.canvas.PixelRenderer
 import timber.log.Timber
 
 private const val TAG = "PixelCanvas"

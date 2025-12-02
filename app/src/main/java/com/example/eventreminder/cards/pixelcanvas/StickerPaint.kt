@@ -1,4 +1,4 @@
-package com.example.eventreminder.cards.pixel
+package com.example.eventreminder.cards.pixelcanvas
 
 import android.graphics.Paint
 import android.graphics.Rect
