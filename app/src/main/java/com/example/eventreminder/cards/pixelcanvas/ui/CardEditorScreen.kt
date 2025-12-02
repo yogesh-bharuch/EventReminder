@@ -42,11 +42,12 @@ import com.example.eventreminder.cards.CardViewModel
 import com.example.eventreminder.cards.pixelcanvas.ui.CardCanvasArea
 import com.example.eventreminder.cards.pixelcanvas.editor.GestureHandlers
 import com.example.eventreminder.cards.pixelcanvas.export.CardExportUtils
+import com.example.eventreminder.cards.pixelcanvas.export.SafStorageHelper
 import com.example.eventreminder.cards.pixelcanvas.panels.SaveShareRow
 import com.example.eventreminder.cards.pixelcanvas.pickers.AvatarPickerRow
 import com.example.eventreminder.cards.pixelcanvas.pickers.BackgroundPickerRow
-import com.example.eventreminder.cards.pixelcanvas.stickers.StickerCatalogPacks
-import com.example.eventreminder.cards.pixelcanvas.stickers.StickerCategory
+import com.example.eventreminder.cards.pixelcanvas.stickers.catalog.StickerCatalogPacks
+import com.example.eventreminder.cards.pixelcanvas.stickers.model.StickerCategory
 import com.example.eventreminder.cards.pixelcanvas.stickers.panel.StickerCategoryBar
 import com.example.eventreminder.cards.pixelcanvas.stickers.panel.StickerListPanel
 import com.example.eventreminder.cards.state.CardUiState

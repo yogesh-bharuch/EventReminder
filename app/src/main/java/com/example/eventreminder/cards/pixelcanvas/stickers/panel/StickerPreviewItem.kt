@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.Image
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.sp
+import com.example.eventreminder.cards.pixelcanvas.stickers.model.StickerCatalogItem
 
 /**
  * Small preview tile used inside the sticker selector LazyRow.
