@@ -1,4 +1,4 @@
-package com.example.eventreminder.cards.pixel
+package com.example.eventreminder.cards.pixelcanvas
 
 // =============================================================
 // PixelCardPreviewScreen.kt — CLEAN + STICKER-READY VERSION
@@ -41,7 +41,6 @@ import androidx.core.content.FileProvider
 import androidx.documentfile.provider.DocumentFile
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.eventreminder.cards.CardViewModel
-import com.example.eventreminder.cards.pixel.stickers.StickerCatalogItem
 import com.example.eventreminder.cards.util.ImageUtil
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -50,11 +49,10 @@ import timber.log.Timber
 import java.io.File
 import java.io.FileOutputStream
 import java.io.OutputStream
-import com.example.eventreminder.R
-import com.example.eventreminder.cards.pixel.stickers.StickerBitmapCache
-import com.example.eventreminder.cards.pixel.stickers.StickerCatalogPacks
-import com.example.eventreminder.cards.pixel.stickers.StickerCategory
-import com.example.eventreminder.cards.pixel.stickers.StickerPreviewItem
+import com.example.eventreminder.cards.pixelcanvas.stickers.StickerBitmapCache
+import com.example.eventreminder.cards.pixelcanvas.stickers.StickerCatalogPacks
+import com.example.eventreminder.cards.pixelcanvas.stickers.StickerCategory
+import com.example.eventreminder.cards.pixelcanvas.stickers.StickerPreviewItem
 
 
 private const val TAG = "PixelCardPreviewScreen"

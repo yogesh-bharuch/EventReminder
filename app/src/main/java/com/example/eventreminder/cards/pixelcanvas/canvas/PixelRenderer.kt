@@ -1,4 +1,4 @@
-package com.example.eventreminder.cards.pixel
+package com.example.eventreminder.cards.pixelcanvas
 
 // =============================================================
 // PixelRenderer.kt — Free Avatar Layer (Sticker-like)
@@ -12,11 +12,10 @@ package com.example.eventreminder.cards.pixel
 import android.graphics.*
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.nativeCanvas
-import com.example.eventreminder.cards.pixel.stickers.StickerBitmapCache
+import com.example.eventreminder.cards.pixelcanvas.stickers.StickerBitmapCache
 import timber.log.Timber
 import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.roundToInt
 
 private const val TAG = "PixelRenderer"
 
