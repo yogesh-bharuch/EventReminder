@@ -4,10 +4,13 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
-import androidx.compose.runtime.*
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
 import androidx.navigation.compose.rememberNavController
-import com.example.eventreminder.navigation.*
+import com.example.eventreminder.navigation.AppNavGraph
+import com.example.eventreminder.navigation.HomeRoute
+import com.example.eventreminder.navigation.LoginRoute
+import com.example.eventreminder.navigation.PixelPreviewRoute
 import com.example.eventreminder.ui.theme.EventReminderTheme
 import com.google.firebase.auth.FirebaseAuth
 import dagger.hilt.android.AndroidEntryPoint
@@ -52,7 +55,7 @@ class MainActivity : ComponentActivity() {
                     if (req != null) {
                         if (isLoggedIn) {
                             Timber.tag(TAG).d("Handling pending nav → navigating to CardScreen(reminderId=${req.reminderId})")
-                            navController.navigate(CardRoute(reminderId = req.reminderId))
+                            navController.navigate(PixelPreviewRoute(reminderId = req.reminderId))
                             // clear pending request to avoid re-navigation on config changes
                             pendingNavRequest.value = null
                         } else {

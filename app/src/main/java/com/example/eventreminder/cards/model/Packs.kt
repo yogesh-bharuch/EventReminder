@@ -1,13 +1,16 @@
 package com.example.eventreminder.cards.model
 
+/*
 
 import androidx.annotation.DrawableRes
 import com.example.eventreminder.R
 
+*/
 /**
  * Small, lightweight packs used by StickerBar & BackgroundBar.
  * Keep packs simple arrays of BackgroundItem / StickerItem.
- */
+ *//*
+
 
 data class StickerItem_1(
     val id: String,
@@ -67,3 +70,4 @@ object EmojiStickerPack {
         StickerItem(id = "moon", text = "🌙"),
     )
 }
+*/

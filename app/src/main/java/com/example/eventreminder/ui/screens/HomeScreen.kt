@@ -1,8 +1,5 @@
 package com.example.eventreminder.ui.screens
 
-// =============================================================
-// Imports
-// =============================================================
 import android.app.Activity
 import android.content.Intent
 import android.widget.Toast
@@ -13,7 +10,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -35,7 +31,6 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.example.eventreminder.navigation.AddEditReminderRoute
-import com.example.eventreminder.navigation.CardRoute
 import com.example.eventreminder.navigation.HomeRoute
 import com.example.eventreminder.navigation.LoginRoute
 import com.example.eventreminder.navigation.PixelPreviewRoute
@@ -192,16 +187,16 @@ fun HomeScreen(
                         Text("New screen")
                     }
 
-                    Spacer(modifier = Modifier.width(8.dp)) // optional spacing between buttons
+                    //Spacer(modifier = Modifier.width(8.dp)) // optional spacing between buttons
 
-                    Button(
+                    /*Button(
                         onClick = {
                             //navController.navigate(PixelPreviewRoute)
                             navController.navigate(CardRoute(reminderId = 54))
                         }
                     ) {
-                        Text("Stickers screen")
-                    }
+                        Text("Debug screen")
+                    }*/
                 }
 
 

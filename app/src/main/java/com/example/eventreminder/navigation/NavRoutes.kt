@@ -22,10 +22,6 @@ data class AddEditReminderRoute(
     val eventId: String? = null
 )
 
-@Serializable
-data class CardRoute(
-    val reminderId: Long
-)
 
 @Serializable
 data class PixelPreviewRoute(
