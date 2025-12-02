@@ -1,4 +1,4 @@
-package com.example.eventreminder.cards.pixelcanvas.stickers
+package com.example.eventreminder.cards.pixelcanvas.stickers.panel
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable

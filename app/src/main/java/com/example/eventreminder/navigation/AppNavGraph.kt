@@ -5,8 +5,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.toRoute
-import com.example.eventreminder.cards.pixelcanvas.CardEditorScreen
-import com.example.eventreminder.ui.debug.CardDebugScreen
+import com.example.eventreminder.cards.pixelcanvas.ui.CardEditorScreen
 import com.example.eventreminder.ui.screens.AddEditReminderScreen
 import com.example.eventreminder.ui.screens.HomeScreen
 import com.example.eventreminder.ui.screens.ReminderManagerScreen
@@ -50,18 +49,6 @@ fun AppNavGraph(
             ReminderManagerScreen(onBack = { navController.popBackStack() })
         }
 
-        // 🧪 Card Debug / Developer Tools
-        composable<CardDebugRoute> { entry ->
-            val args = entry.toRoute<CardDebugRoute>()
-
-            CardDebugScreen(
-                //navController = navController,
-                reminderId = args.reminderId,
-                eventType = args.eventType
-            )
-        }
-
-
         // 🎉 Event entry (add/edit)
         composable<AddEditReminderRoute> { backStackEntry ->
             val args = backStackEntry.toRoute<AddEditReminderRoute>()
@@ -71,7 +58,5 @@ fun AppNavGraph(
                 eventId = args.eventId
             )
         }
-
-
     }
 }

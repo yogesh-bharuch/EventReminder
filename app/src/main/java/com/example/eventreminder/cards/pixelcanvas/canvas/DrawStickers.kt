@@ -12,7 +12,7 @@ import android.graphics.Canvas
 import android.graphics.Matrix
 import com.example.eventreminder.cards.pixelcanvas.CardSpecPx
 import com.example.eventreminder.cards.pixelcanvas.StickerPx
-import com.example.eventreminder.cards.pixelcanvas.stickers.StickerBitmapCache
+import com.example.eventreminder.cards.pixelcanvas.stickers.engine.StickerBitmapCache
 import com.example.eventreminder.cards.pixelcanvas.StickerPaint
 import timber.log.Timber
 import kotlin.math.max

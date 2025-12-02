@@ -1,4 +1,4 @@
-package com.example.eventreminder.cards.pixelcanvas
+package com.example.eventreminder.cards.pixelcanvas.ui
 
 // =============================================================
 // CardEditorScreen.kt — MAIN EDITOR SCREEN (Clean & Modular)
@@ -39,7 +39,10 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.eventreminder.cards.CardViewModel
-import com.example.eventreminder.cards.pixelcanvas.ui.CardCanvasArea
+import com.example.eventreminder.cards.pixelcanvas.AvatarTransformPx
+import com.example.eventreminder.cards.pixelcanvas.CardDataPx
+import com.example.eventreminder.cards.pixelcanvas.CardSpecPx
+import com.example.eventreminder.cards.pixelcanvas.StickerPx
 import com.example.eventreminder.cards.pixelcanvas.editor.GestureHandlers
 import com.example.eventreminder.cards.pixelcanvas.export.CardExportUtils
 import com.example.eventreminder.cards.pixelcanvas.export.SafStorageHelper
@@ -50,7 +53,7 @@ import com.example.eventreminder.cards.pixelcanvas.stickers.catalog.StickerCatal
 import com.example.eventreminder.cards.pixelcanvas.stickers.model.StickerCategory
 import com.example.eventreminder.cards.pixelcanvas.stickers.panel.StickerCategoryBar
 import com.example.eventreminder.cards.pixelcanvas.stickers.panel.StickerListPanel
-import com.example.eventreminder.cards.state.CardUiState
+import com.example.eventreminder.cards.CardUiState
 import com.example.eventreminder.cards.util.ImageUtil
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -95,7 +98,7 @@ fun CardEditorScreen(reminderId: Long) {
     val vmTransform = AvatarTransformPx(xNorm, yNorm, scale, rotation)
 
     // Card spec (1080×1200 px)
-    val spec = remember { CardSpecPx.default1080x1200() }
+    val spec = remember { CardSpecPx.Companion.default1080x1200() }
 
     // ---------------------------------------------------------
     // CardDataPx (Canvas Input Model)

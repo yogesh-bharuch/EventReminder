@@ -17,9 +17,8 @@ import com.example.eventreminder.cards.model.CardData
 import com.example.eventreminder.cards.model.CardSticker
 import com.example.eventreminder.cards.model.StickerItem
 import com.example.eventreminder.cards.pixelcanvas.AvatarTransformPx
-import com.example.eventreminder.cards.pixelcanvas.stickers.StickerPx
-import com.example.eventreminder.cards.pixelcanvas.stickers.StickerCatalogItem
-import com.example.eventreminder.cards.state.CardUiState
+import com.example.eventreminder.cards.pixelcanvas.stickers.model.StickerPx
+import com.example.eventreminder.cards.pixelcanvas.stickers.model.StickerCatalogItem
 import com.example.eventreminder.cards.util.ImageUtil
 import com.example.eventreminder.data.model.EventReminder
 import com.example.eventreminder.data.model.ReminderTitle

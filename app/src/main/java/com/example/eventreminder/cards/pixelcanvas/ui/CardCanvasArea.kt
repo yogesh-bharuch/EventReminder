@@ -19,14 +19,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.example.eventreminder.cards.pixelcanvas.CardDataPx
 import com.example.eventreminder.cards.pixelcanvas.CardSpecPx
-import com.example.eventreminder.cards.pixelcanvas.PixelCanvas
 import com.example.eventreminder.cards.pixelcanvas.overlays.DeleteStickerOverlay
 
 @Composable

@@ -17,10 +17,10 @@ import androidx.compose.ui.unit.IntSize
 import com.example.eventreminder.cards.CardViewModel
 import com.example.eventreminder.cards.pixelcanvas.CardDataPx
 import com.example.eventreminder.cards.pixelcanvas.CardSpecPx
-import com.example.eventreminder.cards.pixelcanvas.canvas.TouchAvatarUtils
-import com.example.eventreminder.cards.pixelcanvas.canvas.TouchStickerUtils
+import com.example.eventreminder.cards.pixelcanvas.editor.TouchAvatarUtils
+import com.example.eventreminder.cards.pixelcanvas.editor.TouchStickerUtils
 //import com.example.eventreminder.cards.pixelcanvas.StickerPx
-import com.example.eventreminder.cards.pixelcanvas.stickers.StickerPx
+import com.example.eventreminder.cards.pixelcanvas.stickers.model.StickerPx
 
 
 object GestureHandlers {

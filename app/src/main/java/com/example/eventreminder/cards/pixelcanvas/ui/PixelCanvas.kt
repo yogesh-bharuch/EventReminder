@@ -1,4 +1,4 @@
-package com.example.eventreminder.cards.pixelcanvas
+package com.example.eventreminder.cards.pixelcanvas.ui
 
 // =============================================================
 // PixelCanvas.kt — stable wrapper around PixelRenderer
@@ -12,6 +12,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import com.example.eventreminder.cards.pixelcanvas.CardDataPx
+import com.example.eventreminder.cards.pixelcanvas.CardSpecPx
 import com.example.eventreminder.cards.pixelcanvas.canvas.PixelRenderer
 import timber.log.Timber
 

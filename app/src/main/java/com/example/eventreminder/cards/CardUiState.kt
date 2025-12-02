@@ -1,4 +1,4 @@
-package com.example.eventreminder.cards.state
+package com.example.eventreminder.cards
 
 import com.example.eventreminder.cards.model.CardData
 

@@ -15,8 +15,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.example.eventreminder.cards.pixelcanvas.stickers.StickerCatalogItem
-import com.example.eventreminder.cards.pixelcanvas.stickers.StickerPreviewItem
+import com.example.eventreminder.cards.pixelcanvas.stickers.model.StickerCatalogItem
 
 @Composable
 fun StickerListPanel(

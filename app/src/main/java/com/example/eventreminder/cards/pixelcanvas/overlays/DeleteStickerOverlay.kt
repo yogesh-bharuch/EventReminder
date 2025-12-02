@@ -23,7 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import com.example.eventreminder.cards.pixelcanvas.CardDataPx
 import com.example.eventreminder.cards.pixelcanvas.CardSpecPx
-import com.example.eventreminder.cards.pixelcanvas.stickers.StickerBitmapCache
+import com.example.eventreminder.cards.pixelcanvas.stickers.engine.StickerBitmapCache
 import timber.log.Timber
 
 private const val TAG = "DeleteStickerOverlay"
