@@ -1,20 +1,17 @@
 package com.example.eventreminder.cards.pixelcanvas
 
 // =============================================================
-// PixelCanvas.kt — stable minimal wrapper for PixelRenderer
-// - Uses drawIntoCanvas to ensure the Canvas redraws when data
-//   (CardDataPx) changes in Compose state.
-// - Always fills available space so DrawScope.size is valid.
-// - Logs draw size for debugging.
-// - NOTE: removed any delete icon drawing — that is handled by overlay.
+// PixelCanvas.kt — stable wrapper around PixelRenderer
+// - Delegates drawing to PixelRenderer.renderToDrawScope()
+// - Ensures Compose invalidates when data changes
+// - Logs current canvas size for debugging
+// - No delete icon or overlays here (handled by UI layer)
 // =============================================================
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
-import androidx.compose.ui.graphics.nativeCanvas
 import com.example.eventreminder.cards.pixelcanvas.canvas.PixelRenderer
 import timber.log.Timber
 
@@ -26,29 +23,25 @@ fun PixelCanvas(
     data: CardDataPx,
     modifier: Modifier = Modifier
 ) {
-    // Canvas must receive size from parent (fillMaxSize recommended).
     Canvas(
-        modifier = modifier
-            .fillMaxSize()
+        modifier = modifier.fillMaxSize()
     ) {
         val w = size.width
         val h = size.height
 
-        Timber.tag(TAG).d("Canvas draw() size = %.1f × %.1f".format(w, h))
+        Timber.tag(TAG).d("🎨 PixelCanvas draw size = ${w} × ${h}")
 
         if (w <= 0f || h <= 0f) {
-            Timber.tag(TAG).e("❌ ZERO SIZE CANVAS — skip draw")
+            Timber.tag(TAG).e("❌ PixelCanvas: ZERO SIZE — skipping draw")
             return@Canvas
         }
 
-        // drawIntoCanvas ensures the native canvas draw gets invoked on Compose redraws
-        // which happen when 'data' (or any remembered state used by the caller) changes.
-        drawIntoCanvas { canvas ->
-            try {
-                PixelRenderer.renderToAndroidCanvas(canvas.nativeCanvas, spec, data)
-            } catch (t: Throwable) {
-                Timber.tag(TAG).e(t, "PixelRenderer.renderToAndroidCanvas failed")
-            }
-        }
+        // The correct new pipeline entry:
+        // PixelRenderer handles scaling, clipping, export logic internally.
+        PixelRenderer.renderToDrawScope(
+            ds = this,
+            spec = spec,
+            data = data
+        )
     }
 }

@@ -42,6 +42,8 @@ import androidx.documentfile.provider.DocumentFile
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.eventreminder.cards.CardViewModel
 import com.example.eventreminder.cards.pixelcanvas.canvas.PixelRenderer
+import com.example.eventreminder.cards.pixelcanvas.canvas.TouchAvatarUtils
+import com.example.eventreminder.cards.pixelcanvas.canvas.TouchStickerUtils
 import com.example.eventreminder.cards.util.ImageUtil
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -60,7 +62,7 @@ private const val TAG = "PixelCardPreviewScreen"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PixelCardPreviewScreen(reminderId: Long) {
+fun CardEditorScreen(reminderId: Long) {
 
     Timber.tag(TAG).d("PixelCardPreviewScreen Loaded")
 
@@ -259,20 +261,18 @@ fun PixelCardPreviewScreen(reminderId: Long) {
     }
 
     // -------------------------------
-// Gesture Layer (Step-3 Ready)
-// -------------------------------
+    // Gesture Layer (Step-3 Ready)
+    // -------------------------------
     var boxSize by remember { mutableStateOf(IntSize.Zero) }
 
-    val gestureModifier = Modifier.pointerInput(
-        spec, boxSize, stickerList, activeStickerId
-    ) {
+    // pointerInput keys: spec, boxSize, stickerList, activeStickerId
+    val gestureModifier = Modifier.pointerInput(spec, boxSize, stickerList, activeStickerId) {
         awaitPointerEventScope {
-
             while (true) {
-
                 var event = awaitPointerEvent()
                 val first = event.changes.firstOrNull { it.pressed } ?: continue
 
+                // touch coords in UI px (match previous behaviour)
                 val tx = first.position.x
                 val ty = first.position.y
 
@@ -282,25 +282,27 @@ fun PixelCardPreviewScreen(reminderId: Long) {
                 // ------------------------------------------------------
                 // 1) STICKERS FIRST (topmost)
                 // ------------------------------------------------------
-                val touchedSticker = PixelRenderer.findTopmostStickerUnderTouch(
-                    tx, ty, spec, cardData
+                val touchedSticker = TouchStickerUtils.findTopmostStickerUnderTouch(
+                    touchX = tx,
+                    touchY = ty,
+                    spec = spec,
+                    data = cardData
                 )
 
                 if (touchedSticker != null) {
-
                     touchedStickerOnDown = true
                     viewModel.setActiveSticker(touchedSticker.id)
 
-                    // ---> STICKER GESTURE LOOP
+                    // ---> STICKER GESTURE LOOP (pan / zoom / rotate)
                     while (event.changes.any { it.pressed }) {
-
                         val pan = event.calculatePan()
                         val zoom = event.calculateZoom().coerceFinite()
                         val rot = event.calculateRotation().coerceFinite()
 
+                        // Normalize pan by UI box size to VM's expected normalized delta
                         viewModel.updateActiveStickerPosition(
-                            pan.x / boxSize.width.toFloat(),
-                            pan.y / boxSize.height.toFloat()
+                            dxNorm = pan.x / boxSize.width.toFloat(),
+                            dyNorm = pan.y / boxSize.height.toFloat()
                         )
                         viewModel.updateActiveStickerScale(zoom)
                         viewModel.updateActiveStickerRotation(rot)
@@ -317,10 +319,15 @@ fun PixelCardPreviewScreen(reminderId: Long) {
                 // ------------------------------------------------------
                 // 2) AVATAR SECOND
                 // ------------------------------------------------------
-                val hitAvatar = PixelRenderer.isTouchInsideAvatar(tx, ty, spec, cardData)
+                val hitAvatar = TouchAvatarUtils.isTouchInsideAvatar(
+                    touchX = tx,
+                    touchY = ty,
+                    spec = spec,
+                    data = cardData
+                )
 
                 if (hitAvatar) {
-
+                    // ensure no sticker is active while moving avatar
                     viewModel.setActiveSticker(null)
 
                     // Avatar gesture loop
@@ -330,8 +337,8 @@ fun PixelCardPreviewScreen(reminderId: Long) {
                         val rot = event.calculateRotation().coerceFinite()
 
                         viewModel.updatePixelAvatarPosition(
-                            pan.x / boxSize.width.toFloat(),
-                            pan.y / boxSize.height.toFloat()
+                            dxNorm = pan.x / boxSize.width.toFloat(),
+                            dyNorm = pan.y / boxSize.height.toFloat()
                         )
                         viewModel.updatePixelAvatarScale(zoom)
                         viewModel.updatePixelAvatarRotation(rot)

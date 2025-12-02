@@ -5,7 +5,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.toRoute
-import com.example.eventreminder.cards.pixelcanvas.PixelCardPreviewScreen
+import com.example.eventreminder.cards.pixelcanvas.CardEditorScreen
 import com.example.eventreminder.ui.debug.CardDebugScreen
 import com.example.eventreminder.ui.screens.AddEditReminderScreen
 import com.example.eventreminder.ui.screens.HomeScreen
@@ -42,7 +42,7 @@ fun AppNavGraph(
         composable<PixelPreviewRoute> {entry ->
             val args = entry.toRoute<PixelPreviewRoute>()
             //PixelRendererSimpleTestScreen()
-            PixelCardPreviewScreen(reminderId = args.reminderId)
+            CardEditorScreen(reminderId = args.reminderId)
         }
 
         // ⏰ Reminder manager
