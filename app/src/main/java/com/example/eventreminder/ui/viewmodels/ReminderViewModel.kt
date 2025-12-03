@@ -3,6 +3,9 @@ package com.example.eventreminder.ui.viewmodels
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.eventreminder.data.model.EventReminder
+import com.example.eventreminder.data.model.ReminderOffset
+import com.example.eventreminder.data.model.ReminderTitle
+import com.example.eventreminder.data.model.RepeatRule
 import com.example.eventreminder.data.repo.ReminderRepository
 import com.example.eventreminder.scheduler.AlarmScheduler
 import com.example.eventreminder.util.NextOccurrenceCalculator
@@ -143,6 +146,46 @@ class ReminderViewModel @Inject constructor(
     // 💾 SAVE REMINDER (Insert or Update) + Schedule Alarms
     // Emits snackbar to HomeScreen
     // ============================================================
+
+    fun onSaveClicked(
+        title: ReminderTitle,
+        description: String,
+        date: LocalDate,
+        time: LocalTime,
+        offsets: Set<ReminderOffset>,
+        repeatRule: RepeatRule,
+        existingId: Long?,
+        zoneId: ZoneId = ZoneId.systemDefault()
+    ) {
+        viewModelScope.launch {
+
+            // Minimal validation
+            if (title.label.isBlank()) {
+                _uiState.value = _uiState.value.copy(errorMessage = "Title cannot be empty")
+                return@launch
+            }
+
+            // Compose → VM mapping
+            val zdt = ZonedDateTime.of(date, time, zoneId)
+            val epoch = zdt.toInstant().toEpochMilli()
+
+            // Build reminder
+            val reminder = EventReminder(
+                id = existingId ?: 0L,
+                title = title.label,
+                description = description.ifBlank { null },
+                eventEpochMillis = epoch,
+                timeZone = zoneId.id,
+                repeatRule = repeatRule.key,
+                reminderOffsets = offsets.map { it.millis },
+                enabled = true
+            )
+
+            // ⬅️ IMPORTANT: delegate to your existing logic
+            saveReminder(reminder)
+        }
+    }
+
 
     fun saveReminder(reminder: EventReminder) = viewModelScope.launch {
         try {
