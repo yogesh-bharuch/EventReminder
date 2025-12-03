@@ -15,34 +15,58 @@ class GroupedEventsViewModel @Inject constructor(
     private val repo: ReminderRepository
 ) : ViewModel() {
 
+    // ============================================================
+    // 📅 GROUPED EVENTS FOR HOME SCREEN UI
+    // Called from HomeScreen to render the grouped reminder list
+    // ============================================================
     val groupedEvents: StateFlow<List<GroupedUiSection>> =
         repo.getAllReminders()
             .map { reminders ->
 
-                val uiList = reminders
-                    .filter { it.enabled }
-                    .map { rem ->
+                // ------------------------------------------------------------
+                // STEP 1: Filter only enabled reminders
+                // ------------------------------------------------------------
+                val enabledReminders = reminders.filter { it.enabled }
 
-                        val nextEpoch = NextOccurrenceCalculator.nextOccurrence(
-                            rem.eventEpochMillis,
-                            rem.timeZone,
-                            rem.repeatRule
-                        ) ?: rem.eventEpochMillis
+                // ------------------------------------------------------------
+                // STEP 2: Convert each DB reminder → EventReminderUI
+                // Also computes next occurrence if repeating
+                // ------------------------------------------------------------
+                val uiList = enabledReminders.map { rem ->
 
-                        EventReminderUI.from(
-                            id = rem.id,
-                            title = rem.title,
-                            desc = rem.description,
-                            eventMillis = nextEpoch,
-                            repeat = rem.repeatRule,
-                            tz = rem.timeZone
-                        )
-                    }
+                    // Resolve the next fire-time for repeating reminders.
+                    // If no future repeat exists, fallback to stored epoch.
+                    val nextEpoch = NextOccurrenceCalculator.nextOccurrence(
+                        rem.eventEpochMillis,
+                        rem.timeZone,
+                        rem.repeatRule
+                    ) ?: rem.eventEpochMillis
+
+                    // Convert into a UI-friendly object for display.
+                    EventReminderUI.from(
+                        id = rem.id,
+                        title = rem.title,
+                        desc = rem.description,
+                        eventMillis = nextEpoch,
+                        repeat = rem.repeatRule,
+                        tz = rem.timeZone,
+                        offsets = rem.reminderOffsets
+                    )
+                }
+                    // Sort by upcoming time (soonest first)
                     .sortedBy { it.eventEpochMillis }
 
+                // ------------------------------------------------------------
+                // STEP 3: Group the converted UI models into:
+                // Today, Tomorrow, This Week, Later
+                // ------------------------------------------------------------
                 groupUiEvents(uiList)
             }
-            .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.Eagerly,
+                initialValue = emptyList()
+            )
 
     // --------------------------------------------------------------
     // GROUPING LOGIC

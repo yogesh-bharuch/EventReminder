@@ -78,72 +78,19 @@ class ReminderViewModel @Inject constructor(
 
     fun onTitleChanged(newTitle: ReminderTitle) =
         _uiState.update { it.copy(title = newTitle) }
-
     fun onDescriptionChanged(text: String) =
         _uiState.update { it.copy(description = text) }
-
     fun onDateChanged(newDate: LocalDate) =
         _uiState.update { it.copy(date = newDate) }
-
     fun onTimeChanged(newTime: LocalTime) =
         _uiState.update { it.copy(time = newTime) }
-
     fun onOffsetsChanged(newOffsets: Set<ReminderOffset>) =
         _uiState.update { it.copy(offsets = newOffsets) }
-
     fun onRepeatChanged(rule: RepeatRule) =
         _uiState.update { it.copy(repeat = rule) }
-
     fun clearEditReminder() =
         _uiState.update { it.copy(editReminder = null) }
 
-    // ============================================================
-    // 📅 GROUPED EVENTS FOR HOME SCREEN
-    // ============================================================
-
-    val groupedEvents: StateFlow<List<GroupedUiSection>> =
-        repo.getAllReminders()
-            .map { list ->
-                val now = LocalDate.now()
-                val tomorrow = now.plusDays(1)
-                val weekEnd = now.with(DayOfWeek.SUNDAY)
-
-                val todayList = mutableListOf<EventReminderUI>()
-                val tomorrowList = mutableListOf<EventReminderUI>()
-                val weekList = mutableListOf<EventReminderUI>()
-                val laterList = mutableListOf<EventReminderUI>()
-
-                list.forEach { ev ->
-                    val ui = EventReminderUI.from(
-                        id = ev.id,
-                        title = ev.title,
-                        desc = ev.description,
-                        eventMillis = ev.eventEpochMillis,
-                        repeat = ev.repeatRule,
-                        tz = ev.timeZone
-                    )
-
-                    val date = Instant.ofEpochMilli(ev.eventEpochMillis)
-                        .atZone(ZoneId.of(ev.timeZone))
-                        .toLocalDate()
-
-                    when {
-                        date.isEqual(now) -> todayList.add(ui)
-                        date.isEqual(tomorrow) -> tomorrowList.add(ui)
-                        date.isAfter(tomorrow) && date <= weekEnd -> weekList.add(ui)
-                        else -> laterList.add(ui)
-                    }
-                }
-
-                val groups = mutableListOf<GroupedUiSection>()
-                if (todayList.isNotEmpty()) groups.add(GroupedUiSection("Today", todayList.sortedBy { it.eventEpochMillis }))
-                if (tomorrowList.isNotEmpty()) groups.add(GroupedUiSection("Tomorrow", tomorrowList.sortedBy { it.eventEpochMillis }))
-                if (weekList.isNotEmpty()) groups.add(GroupedUiSection("This Week", weekList.sortedBy { it.eventEpochMillis }))
-                if (laterList.isNotEmpty()) groups.add(GroupedUiSection("Later", laterList.sortedBy { it.eventEpochMillis }))
-
-                groups
-            }
-            .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     // ============================================================
     // 📥 LOAD REMINDER FOR EDIT MODE
@@ -186,18 +133,11 @@ class ReminderViewModel @Inject constructor(
 
     // ============================================================
     // 💾 UI → VM SAVE ENTRY POINT (WRAPPER)
+    // 💾 SAVE (Insert or Update) + Schedule Alarms
     // ============================================================
 
-    fun onSaveClicked(
-        title: ReminderTitle,
-        description: String,
-        date: LocalDate,
-        time: LocalTime,
-        offsets: Set<ReminderOffset>,
-        repeatRule: RepeatRule,
-        existingId: Long?,
-        zoneId: ZoneId = ZoneId.systemDefault()
-    ) = viewModelScope.launch {
+    // WRAPPER
+    fun onSaveClicked(title: ReminderTitle, description: String, date: LocalDate, time: LocalTime, offsets: Set<ReminderOffset>, repeatRule: RepeatRule, existingId: Long?, zoneId: ZoneId = ZoneId.systemDefault()) = viewModelScope.launch {
 
         if (title.label.isBlank()) {
             _uiState.update { it.copy(errorMessage = "Title cannot be empty") }
@@ -220,11 +160,7 @@ class ReminderViewModel @Inject constructor(
 
         saveReminder(reminder) // delegates to full logic
     }
-
-    // ============================================================
-    // 💾 SAVE (Insert or Update) + Schedule Alarms
-    // ============================================================
-
+    // Insert or Update
     fun saveReminder(reminder: EventReminder) = viewModelScope.launch {
         try {
             val isNew = reminder.id == 0L
@@ -326,22 +262,6 @@ class ReminderViewModel @Inject constructor(
 
         } catch (e: Exception) {
             Timber.e(e, "restoreLastDeleted failed")
-            _uiState.update { it.copy(errorMessage = e.message) }
-        }
-    }
-
-    // ============================================================
-    // LEGACY DELETE
-    // ============================================================
-
-    fun deleteEvent(id: Long) = viewModelScope.launch {
-        try {
-            val reminder = repo.getReminder(id) ?: return@launch
-
-            scheduler.cancelAll(id, reminder.reminderOffsets)
-            repo.delete(reminder)
-
-        } catch (e: Exception) {
             _uiState.update { it.copy(errorMessage = e.message) }
         }
     }

@@ -17,6 +17,9 @@ import androidx.navigation.NavController
 import com.example.eventreminder.navigation.*
 import com.example.eventreminder.pdf.PdfViewModel
 import com.example.eventreminder.ui.components.*
+import com.example.eventreminder.ui.components.events.EventsListGrouped
+import com.example.eventreminder.ui.components.home.BirthdayEmptyState
+import com.example.eventreminder.ui.components.home.HomeScaffold
 import com.example.eventreminder.ui.viewmodels.GroupedEventsViewModel
 import com.example.eventreminder.ui.viewmodels.ReminderViewModel
 import com.google.firebase.auth.FirebaseAuth
