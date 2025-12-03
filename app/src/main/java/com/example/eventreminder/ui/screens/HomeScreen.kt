@@ -50,14 +50,18 @@ fun HomeScreen(
     // Collects snackbar events when Add/EditReminderScreen sends them
     // ---------------------------------------------------------
     val snackbarHostState = remember { SnackbarHostState() }
-
-    LaunchedEffect(true) {
+    LaunchedEffect(snackbarHostState) {
         Timber.tag("HOME_SNACK").d("Collector ACTIVE")
 
         reminderVm.snackbarEvent.collectLatest { message ->
             Timber.tag("HOME_SNACK").d("Received: $message")
-            snackbarHostState.showSnackbar(message)
-            reminderVm.clearSnackbar()  // ⭐ Avoid duplicate replay
+
+            snackbarHostState.showSnackbar(
+                message = message,
+                duration = SnackbarDuration.Short     // ⭐ SHORT DURATION
+            )
+
+            reminderVm.clearSnackbar() // ⭐ Consume event to prevent replay
         }
     }
 

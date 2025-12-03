@@ -1,6 +1,5 @@
 package com.example.eventreminder.ui.screens
 
-
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -20,16 +19,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
-import com.example.eventreminder.data.model.ReminderOffset
-import com.example.eventreminder.data.model.ReminderTitle
-import com.example.eventreminder.data.model.RepeatRule
 import com.example.eventreminder.ui.modules.actions.ReminderSaveButtonModule
 import com.example.eventreminder.ui.modules.date.ReminderDatePickerModule
 import com.example.eventreminder.ui.modules.dropdown.ReminderRepeatRuleDropdownModule
@@ -38,9 +31,6 @@ import com.example.eventreminder.ui.modules.offsets.ReminderOffsetsModule
 import com.example.eventreminder.ui.modules.time.ReminderTimePickerModule
 import com.example.eventreminder.ui.viewmodels.ReminderViewModel
 import timber.log.Timber
-import java.time.Instant
-import java.time.LocalDate
-import java.time.LocalTime
 import java.time.ZoneId
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -52,74 +42,26 @@ fun AddEditReminderScreen(
 ) {
     val context = LocalContext.current
 
-    // ViewModel state
+    // VM-driven state
     val uiState by reminderVm.uiState.collectAsState()
 
-    // Convert incoming ID
+    // Converted edit id
     val reminderId = eventId?.toLongOrNull()
     val zoneId = ZoneId.systemDefault()
-
-    // --------------------------------------------------------------
-    // LOCAL COMPOSE STATES FOR INPUTS
-    // --------------------------------------------------------------
-    var title by remember { mutableStateOf(ReminderTitle.EVENT) }
-    var description by remember { mutableStateOf("") }
-    var pickedDate by remember { mutableStateOf(LocalDate.now()) }
-    var pickedTime by remember { mutableStateOf(LocalTime.now().withSecond(0).withNano(0)) }
-
-    var selectedOffsets by remember { mutableStateOf(mutableSetOf<ReminderOffset>()) }
-    var selectedRepeat by remember { mutableStateOf(RepeatRule.NONE) }
 
     Timber.tag("ADD_VM").d("VM instance: $reminderVm")
 
     // --------------------------------------------------------------
-    // 1) RESET UI FOR ADD MODE
-    // --------------------------------------------------------------
-    LaunchedEffect(eventId) {
-        if (eventId == null) {
-            title = ReminderTitle.EVENT
-            description = ""
-            pickedDate = LocalDate.now()
-            pickedTime = LocalTime.now().withSecond(0).withNano(0)
-            selectedOffsets = mutableSetOf()
-            selectedRepeat = RepeatRule.NONE
-        }
-    }
-
-    // --------------------------------------------------------------
-    // 2) LOAD REMINDER IN EDIT MODE
+    // 1) LOAD REMINDER IN EDIT MODE
     // --------------------------------------------------------------
     LaunchedEffect(reminderId) {
-        if (reminderId != null) reminderVm.load(reminderId)
-    }
-
-    // --------------------------------------------------------------
-    // 3) POPULATE UI ONCE VM LOADS DATA
-    // --------------------------------------------------------------
-    LaunchedEffect(uiState.editReminder) {
-        uiState.editReminder?.let { r ->
-            title = ReminderTitle.entries.find { it.label == r.title } ?: ReminderTitle.EVENT
-            description = r.description ?: ""
-
-            val zdt = Instant.ofEpochMilli(r.eventEpochMillis)
-                .atZone(ZoneId.of(r.timeZone))
-
-            pickedDate = zdt.toLocalDate()
-            pickedTime = zdt.toLocalTime()
-
-            selectedOffsets = r.reminderOffsets
-                .mapNotNull { ReminderOffset.fromMillis(it) }
-                .toMutableSet()
-
-            selectedRepeat = RepeatRule.fromKey(r.repeatRule)
-
-            // Clear VM state so ADD mode won't reuse stale data
-            reminderVm.clearEditReminder()
+        if (reminderId != null) {
+            reminderVm.load(reminderId)
         }
     }
 
     // --------------------------------------------------------------
-    // 4) VALIDATION SNACKBAR (local)
+    // 2) VALIDATION SNACKBAR (local)
     // --------------------------------------------------------------
     LaunchedEffect(uiState.errorMessage) {
         uiState.errorMessage?.let {
@@ -147,20 +89,20 @@ fun AddEditReminderScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
+
             // TITLE
             item {
                 ReminderTitleDropdownModule(
-                    selectedTitle = title,
-                    onTitleChanged = { title = it }
+                    selectedTitle = uiState.title,
+                    onTitleChanged = reminderVm::onTitleChanged
                 )
             }
-
 
             // DESCRIPTION
             item {
                 OutlinedTextField(
-                    value = description,
-                    onValueChange = { description = it },
+                    value = uiState.description,
+                    onValueChange = reminderVm::onDescriptionChanged,
                     label = { Text("Description") },
                     placeholder = { Text("Name / Event details") },
                     leadingIcon = { Icon(Icons.Default.Info, null) },
@@ -173,36 +115,33 @@ fun AddEditReminderScreen(
             // DATE & TIME
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+
                     ReminderDatePickerModule(
-                        selectedDate = pickedDate,
-                        title = title,
-                        onDateChanged = { pickedDate = it }
+                        selectedDate = uiState.date,
+                        title = uiState.title,
+                        onDateChanged = reminderVm::onDateChanged
                     )
 
                     ReminderTimePickerModule(
-                        selectedTime = pickedTime,
-                        onTimeChanged = { pickedTime = it }
+                        selectedTime = uiState.time,
+                        onTimeChanged = reminderVm::onTimeChanged
                     )
-
                 }
             }
 
             // MULTI-OFFSETS
             item {
                 ReminderOffsetsModule(
-                    selectedOffsets = selectedOffsets,
-                    onOffsetsChanged = { updated ->
-                        selectedOffsets = updated.toMutableSet()
-                    }
+                    selectedOffsets = uiState.offsets,
+                    onOffsetsChanged = reminderVm::onOffsetsChanged
                 )
             }
-
 
             // REPEAT RULE
             item {
                 ReminderRepeatRuleDropdownModule(
-                    selectedRule = selectedRepeat,
-                    onRuleChanged = { selectedRepeat = it }
+                    selectedRule = uiState.repeat,
+                    onRuleChanged = reminderVm::onRepeatChanged
                 )
             }
 
@@ -213,19 +152,18 @@ fun AddEditReminderScreen(
                     modifier = Modifier.fillMaxWidth(),
                     onSave = {
                         reminderVm.onSaveClicked(
-                            title = title,
-                            description = description,
-                            date = pickedDate,
-                            time = pickedTime,
-                            offsets = selectedOffsets,
-                            repeatRule = selectedRepeat,
+                            title = uiState.title,
+                            description = uiState.description,
+                            date = uiState.date,
+                            time = uiState.time,
+                            offsets = uiState.offsets,
+                            repeatRule = uiState.repeat,
                             existingId = reminderId
                         )
                         navController.popBackStack()
                     }
                 )
             }
-
         }
     }
 }
