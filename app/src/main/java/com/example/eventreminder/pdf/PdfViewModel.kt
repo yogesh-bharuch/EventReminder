@@ -38,7 +38,7 @@ class PdfViewModel @Inject constructor(
     val openPdfEvent = _openPdfEvent.receiveAsFlow()
 
     // =========================================================
-    // TODO-3: REAL DB DATA → PDF REPORT
+    // REAL DB DATA → PDF REPORT
     // =========================================================
     fun runTodo3RealReport() {
         viewModelScope.launch {
