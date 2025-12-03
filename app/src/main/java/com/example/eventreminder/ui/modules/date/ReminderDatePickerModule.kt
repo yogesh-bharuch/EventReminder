@@ -12,6 +12,7 @@ import com.example.eventreminder.data.model.ReminderTitle
 import timber.log.Timber
 import java.time.LocalDate
 import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 private const val TAG = "ReminderDatePickerModule"
 
@@ -43,6 +44,11 @@ fun ReminderDatePickerModule(
     // ─────────────────────────────────────────────────────────────
     val showDialog = remember { mutableStateOf(false) }
 
+    // Formatter for display: dd-MM-yyyy
+    val displayFormatter = remember {
+        DateTimeFormatter.ofPattern("dd-MM-yyyy")
+    }
+
     if (showDialog.value) {
         ShowDatePickerDialog(
             title = title,
@@ -60,7 +66,7 @@ fun ReminderDatePickerModule(
     // BUTTON UI
     // ─────────────────────────────────────────────────────────────
     Button(onClick = { showDialog.value = true }) {
-        Text("Date: $selectedDate")
+        Text("Date: ${selectedDate.format(displayFormatter)}")
     }
 }
 
