@@ -26,6 +26,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.example.eventreminder.ui.viewmodels.EventReminderUI
 import com.example.eventreminder.ui.viewmodels.GroupedUiSection
+import com.example.eventreminder.ui.viewmodels.ReminderViewModel
 import kotlinx.coroutines.launch
 import timber.log.Timber
 import java.time.Duration
@@ -107,8 +108,8 @@ fun BirthdayEmptyState() {
 @Composable
 fun EventsListGrouped(
     sections: List<GroupedUiSection>,
+    viewModel: ReminderViewModel,
     onClick: (Long) -> Unit,
-    onDelete: (Long) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Timber.tag(TAG).d("Rendering EventsListGrouped")
@@ -166,47 +167,72 @@ fun EventsListGrouped(
                         exit = fadeOut() + shrinkVertically()
                     ) {
                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+
                             section.events.forEach { ui ->
 
+                                // Swipe-to-delete with Undo
                                 val dismissState = rememberSwipeToDismissBoxState(
                                     confirmValueChange = { value ->
-                                        if (value == SwipeToDismissBoxValue.EndToStart || value == SwipeToDismissBoxValue.StartToEnd
+
+                                        if (value == SwipeToDismissBoxValue.EndToStart ||
+                                            value == SwipeToDismissBoxValue.StartToEnd
                                         ) {
+
+                                            // 🔥 Delete + ask for Undo BEFORE animation
                                             coroutine.launch {
-                                                onDelete(ui.id)
+
+                                                // Delete (ViewModel handles scheduling + DB)
+                                                viewModel.deleteEventWithUndo(ui.id)
+
                                                 val result = snackbarHostState.showSnackbar(
                                                     message = "Event deleted",
-                                                    actionLabel = "Undo"
+                                                    actionLabel = "Undo",
+                                                    duration = SnackbarDuration.Long
                                                 )
+
                                                 if (result == SnackbarResult.ActionPerformed) {
-                                                    // Implement undo if needed
+                                                    // Restore event (undo deletion)
+                                                    viewModel.restoreLastDeleted()
                                                 }
                                             }
+
+                                            // Prevent built-in dismiss animation → fixes red freeze
+                                            false
+                                        } else {
                                             true
-                                        } else false
+                                        }
                                     }
                                 )
 
                                 SwipeToDismissBox(
                                     state = dismissState,
-                                    backgroundContent = { SwipeBackgroundM3(dismissState) },
-                                    content = {
-                                        EventCard(
-                                            ui = ui,
-                                            onClick = { onClick(ui.id) },
-                                            onDelete = {
-                                                coroutine.launch {
-                                                    onDelete(ui.id)
-                                                    snackbarHostState.showSnackbar("Event deleted")
+                                    backgroundContent = { SwipeBackgroundM3(dismissState) }
+                                ) {
+                                    EventCard(
+                                        ui = ui,
+                                        onClick = { onClick(ui.id) },
+                                        onDelete = {
+                                            coroutine.launch {
+                                                viewModel.deleteEventWithUndo(ui.id)
+
+                                                val result = snackbarHostState.showSnackbar(
+                                                    message = "Event deleted",
+                                                    actionLabel = "Undo",
+                                                    duration = SnackbarDuration.Long
+                                                )
+
+                                                if (result == SnackbarResult.ActionPerformed) {
+                                                    viewModel.restoreLastDeleted()
                                                 }
                                             }
-                                        )
-                                    }
-                                )
+                                        }
+                                    )
+                                }
                             }
                         }
                     }
                 }
+
             }
         }
 
@@ -239,9 +265,12 @@ fun SwipeBackgroundM3(state: SwipeToDismissBoxState) {
             .fillMaxSize()
             .background(color)
             .padding(20.dp),
-        contentAlignment =
-            if (state.dismissDirection == SwipeToDismissBoxValue.StartToEnd)
-                Alignment.CenterStart else Alignment.CenterEnd
+        contentAlignment = when (state.dismissDirection) {
+            SwipeToDismissBoxValue.StartToEnd -> Alignment.CenterStart
+            SwipeToDismissBoxValue.EndToStart -> Alignment.CenterEnd
+            else -> Alignment.Center
+        }
+
     ) {
         Icon(
             Icons.Default.Delete,

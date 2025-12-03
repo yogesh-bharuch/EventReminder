@@ -1,5 +1,6 @@
 package com.example.eventreminder.ui.screens
 
+
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
 import android.widget.DatePicker
@@ -17,14 +18,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.example.eventreminder.data.model.EventReminder
 import com.example.eventreminder.data.model.ReminderOffset
 import com.example.eventreminder.data.model.ReminderTitle
 import com.example.eventreminder.data.model.RepeatRule
 import com.example.eventreminder.ui.viewmodels.ReminderViewModel
-import com.example.eventreminder.util.NextOccurrenceCalculator
+import timber.log.Timber
 import java.time.*
 import java.time.format.DateTimeFormatter
 
@@ -33,128 +33,128 @@ import java.time.format.DateTimeFormatter
 fun AddEditReminderScreen(
     navController: NavController,
     eventId: String?,
-    vm: ReminderViewModel = hiltViewModel()
+    reminderVm: ReminderViewModel
 ) {
     val context = LocalContext.current
-    val uiState by vm.uiState.collectAsState()
-    val snackbarHost = remember { SnackbarHostState() }
 
+    // ViewModel state
+    val uiState by reminderVm.uiState.collectAsState()
+
+    // Convert incoming ID
     val reminderId = eventId?.toLongOrNull()
     val zoneId = ZoneId.systemDefault()
 
-    // ------------------------------------------------------------------
-    // LOCAL UI STATE (Enum-powered)
-    // ------------------------------------------------------------------
+    // --------------------------------------------------------------
+    // LOCAL COMPOSE STATES FOR INPUTS
+    // --------------------------------------------------------------
     var title by remember { mutableStateOf(ReminderTitle.EVENT) }
     var description by remember { mutableStateOf("") }
     var pickedDate by remember { mutableStateOf(LocalDate.now()) }
     var pickedTime by remember { mutableStateOf(LocalTime.now().withSecond(0).withNano(0)) }
 
-    // 🆕 MULTIPLE REMINDER OFFSETS
     var selectedOffsets by remember { mutableStateOf(mutableSetOf<ReminderOffset>()) }
-
     var selectedRepeat by remember { mutableStateOf(RepeatRule.NONE) }
 
-    // ------------------------------------------------------------------
-    // LOAD EXISTING REMINDER
-    // ------------------------------------------------------------------
-    LaunchedEffect(reminderId) {
-        if (reminderId != null) vm.load(reminderId)
+    Timber.tag("ADD_VM").d("VM instance: $reminderVm")
+
+    // --------------------------------------------------------------
+    // 1) RESET UI FOR ADD MODE
+    // --------------------------------------------------------------
+    LaunchedEffect(eventId) {
+        if (eventId == null) {
+            title = ReminderTitle.EVENT
+            description = ""
+            pickedDate = LocalDate.now()
+            pickedTime = LocalTime.now().withSecond(0).withNano(0)
+            selectedOffsets = mutableSetOf()
+            selectedRepeat = RepeatRule.NONE
+        }
     }
 
+    // --------------------------------------------------------------
+    // 2) LOAD REMINDER IN EDIT MODE
+    // --------------------------------------------------------------
+    LaunchedEffect(reminderId) {
+        if (reminderId != null) reminderVm.load(reminderId)
+    }
+
+    // --------------------------------------------------------------
+    // 3) POPULATE UI ONCE VM LOADS DATA
+    // --------------------------------------------------------------
     LaunchedEffect(uiState.editReminder) {
         uiState.editReminder?.let { r ->
-
             title = ReminderTitle.entries.find { it.label == r.title } ?: ReminderTitle.EVENT
             description = r.description ?: ""
 
-            val zdt = Instant.ofEpochMilli(r.eventEpochMillis).atZone(ZoneId.of(r.timeZone))
+            val zdt = Instant.ofEpochMilli(r.eventEpochMillis)
+                .atZone(ZoneId.of(r.timeZone))
+
             pickedDate = zdt.toLocalDate()
             pickedTime = zdt.toLocalTime()
 
-            // 🆕 Load multi-reminder offsets
             selectedOffsets = r.reminderOffsets
                 .mapNotNull { ReminderOffset.fromMillis(it) }
                 .toMutableSet()
 
             selectedRepeat = RepeatRule.fromKey(r.repeatRule)
+
+            // Clear VM state so ADD mode won't reuse stale data
+            reminderVm.clearEditReminder()
         }
     }
 
-    // ------------------------------------------------------------------
-    // VALIDATION ERRORS
-    // ------------------------------------------------------------------
+    // --------------------------------------------------------------
+    // 4) VALIDATION SNACKBAR (local)
+    // --------------------------------------------------------------
     LaunchedEffect(uiState.errorMessage) {
         uiState.errorMessage?.let {
-            snackbarHost.showSnackbar(it)
-            vm.resetError()
+            SnackbarHostState().showSnackbar(it)
+            reminderVm.resetError()
         }
     }
 
-    // ------------------------------------------------------------------
-    // CLOSE SCREEN AFTER SAVE (NEXT OCCURRENCE)
-    // ------------------------------------------------------------------
-    LaunchedEffect(uiState.saved) {
-        if (uiState.saved && uiState.editReminder != null) {
-
-            val r = uiState.editReminder!!
-
-            val next = NextOccurrenceCalculator.nextOccurrence(
-                r.eventEpochMillis,
-                r.timeZone,
-                r.repeatRule
-            ) ?: r.eventEpochMillis
-
-            val readable = Instant.ofEpochMilli(next)
-                .atZone(ZoneId.of(r.timeZone))
-                .format(DateTimeFormatter.ofPattern("dd MMM yyyy, hh:mm a"))
-
-            snackbarHost.showSnackbar(
-                "${if (reminderId == null) "Created" else "Updated"}: ${r.title} → $readable"
-            )
-
-            vm.resetSaved()
-            navController.popBackStack()
-        }
-    }
-
-    // ------------------------------------------------------------------
-    // DATE PICKER (LOGICAL TITLE RULES)
-    // ------------------------------------------------------------------
+    // --------------------------------------------------------------
+    // DATE PICKER
+    // --------------------------------------------------------------
     val datePicker = remember(title) {
         DatePickerDialog(
             context,
-            { _: DatePicker, y: Int, m: Int, d: Int ->
+            { _: DatePicker, y, m, d ->
                 pickedDate = LocalDate.of(y, m + 1, d)
             },
-            pickedDate.year, pickedDate.monthValue - 1, pickedDate.dayOfMonth
+            pickedDate.year,
+            pickedDate.monthValue - 1,
+            pickedDate.dayOfMonth
         ).apply {
 
-            val todayMillis = LocalDate.now().atStartOfDay(ZoneId.systemDefault())
+            val todayMillis = LocalDate.now()
+                .atStartOfDay(ZoneId.systemDefault())
                 .toInstant().toEpochMilli()
 
             when (title) {
                 ReminderTitle.BIRTHDAY,
-                ReminderTitle.ANNIVERSARY ->
-                    datePicker.maxDate = todayMillis   // past only
-
-                else ->
-                    datePicker.minDate = todayMillis   // future only
+                ReminderTitle.ANNIVERSARY -> datePicker.maxDate = todayMillis
+                else -> datePicker.minDate = todayMillis
             }
         }
     }
 
+    // --------------------------------------------------------------
+    // TIME PICKER
+    // --------------------------------------------------------------
     val timePicker = remember {
         TimePickerDialog(
             context,
-            { _: TimePicker, h: Int, mi: Int -> pickedTime = LocalTime.of(h, mi) },
-            pickedTime.hour, pickedTime.minute, true
+            { _: TimePicker, h, mi -> pickedTime = LocalTime.of(h, mi) },
+            pickedTime.hour,
+            pickedTime.minute,
+            true
         )
     }
 
-    // ------------------------------------------------------------------
+    // --------------------------------------------------------------
     // UI LAYOUT
-    // ------------------------------------------------------------------
+    // --------------------------------------------------------------
     Scaffold(
         topBar = {
             TopAppBar(
@@ -162,8 +162,7 @@ fun AddEditReminderScreen(
                     Text(if (reminderId == null) "Add Reminder" else "Edit Reminder")
                 }
             )
-        },
-        snackbarHost = { SnackbarHost(snackbarHost) }
+        }
     ) { padding ->
 
         LazyColumn(
@@ -172,21 +171,17 @@ fun AddEditReminderScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
-
-            // ------------------------------------------------------------
-            // TITLE DROPDOWN
-            // ------------------------------------------------------------
+            // TITLE
             item {
                 var expanded by remember { mutableStateOf(false) }
 
                 ExposedDropdownMenuBox(expanded, { expanded = !expanded }) {
-
                     OutlinedTextField(
                         value = title.label,
                         onValueChange = {},
                         label = { Text("Title") },
                         readOnly = true,
-                        leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
+                        leadingIcon = { Icon(Icons.Default.Edit, null) },
                         modifier = Modifier.menuAnchor().fillMaxWidth(),
                         shape = RoundedCornerShape(14.dp)
                     )
@@ -205,25 +200,21 @@ fun AddEditReminderScreen(
                 }
             }
 
-            // ------------------------------------------------------------
             // DESCRIPTION
-            // ------------------------------------------------------------
             item {
                 OutlinedTextField(
                     value = description,
                     onValueChange = { description = it },
                     label = { Text("Description") },
                     placeholder = { Text("Name / Event details") },
-                    leadingIcon = { Icon(Icons.Default.Info, contentDescription = null) },
+                    leadingIcon = { Icon(Icons.Default.Info, null) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(14.dp)
                 )
             }
 
-            // ------------------------------------------------------------
             // DATE & TIME
-            // ------------------------------------------------------------
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Button(onClick = { datePicker.show() }) {
@@ -235,20 +226,14 @@ fun AddEditReminderScreen(
                 }
             }
 
-            // ------------------------------------------------------------
-            // 🆕 MULTI-REMINDER OFFSETS (CHECKBOX LIST)
-            // ------------------------------------------------------------
+            // MULTI-OFFSETS
             item {
                 Text("Reminder Alerts", style = MaterialTheme.typography.titleMedium)
 
                 ReminderOffset.entries.forEach { off ->
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.Start
-                    ) {
+                    Row(Modifier.fillMaxWidth()) {
                         Checkbox(
-                            checked = selectedOffsets.contains(off),
+                            checked = off in selectedOffsets,
                             onCheckedChange = { checked ->
                                 selectedOffsets = selectedOffsets.toMutableSet().apply {
                                     if (checked) add(off) else remove(off)
@@ -261,21 +246,18 @@ fun AddEditReminderScreen(
                 }
             }
 
-            // ------------------------------------------------------------
             // REPEAT RULE
-            // ------------------------------------------------------------
             item {
                 var expanded by remember { mutableStateOf(false) }
 
                 Text("Repeat Rule")
 
                 ExposedDropdownMenuBox(expanded, { expanded = !expanded }) {
-
                     OutlinedTextField(
                         value = selectedRepeat.label,
                         onValueChange = {},
                         readOnly = true,
-                        leadingIcon = { Icon(Icons.Default.Repeat, contentDescription = null) },
+                        leadingIcon = { Icon(Icons.Default.Repeat, null) },
                         modifier = Modifier.menuAnchor().fillMaxWidth(),
                         shape = RoundedCornerShape(14.dp)
                     )
@@ -294,9 +276,7 @@ fun AddEditReminderScreen(
                 }
             }
 
-            // ------------------------------------------------------------
             // SAVE BUTTON
-            // ------------------------------------------------------------
             item {
                 Button(
                     onClick = {
@@ -309,18 +289,19 @@ fun AddEditReminderScreen(
                             eventEpochMillis = zdt.toInstant().toEpochMilli(),
                             timeZone = zoneId.id,
                             repeatRule = selectedRepeat.key,
-
-                            // 🆕 MULTIPLE OFFSETS
                             reminderOffsets = selectedOffsets.map { it.millis },
-
                             enabled = true
                         )
 
-                        vm.saveReminder(reminder)
+                        reminderVm.saveReminder(reminder)
+
+                        // ⭐ Navigation happens immediately.
+                        //    Snackbar is handled by HomeScreen via SharedFlow.
+                        navController.popBackStack()
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Icon(Icons.Default.Save, contentDescription = null)
+                    Icon(Icons.Default.Save, null)
                     Spacer(Modifier.width(8.dp))
                     Text(if (reminderId == null) "Save" else "Update")
                 }

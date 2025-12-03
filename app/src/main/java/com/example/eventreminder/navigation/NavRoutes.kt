@@ -12,10 +12,8 @@ data object HomeRoute
 data object ReminderManagerRoute
 
 @Serializable
-data class CardDebugRoute(
-    val reminderId: Long,
-    val eventType: String
-)
+data object HomeGraphRoute
+
 
 @Serializable
 data class AddEditReminderRoute(

@@ -8,7 +8,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.navigation.compose.rememberNavController
 import com.example.eventreminder.navigation.AppNavGraph
-import com.example.eventreminder.navigation.HomeRoute
+import com.example.eventreminder.navigation.HomeGraphRoute
 import com.example.eventreminder.navigation.LoginRoute
 import com.example.eventreminder.navigation.PixelPreviewRoute
 import com.example.eventreminder.ui.theme.EventReminderTheme
@@ -41,7 +41,7 @@ class MainActivity : ComponentActivity() {
 
             // Determine if user is logged in
             val isLoggedIn = FirebaseAuth.getInstance().currentUser != null
-            val start = if (isLoggedIn) HomeRoute else LoginRoute
+            val start = if (isLoggedIn) HomeGraphRoute else LoginRoute
 
             EventReminderTheme {
                 AppNavGraph(
