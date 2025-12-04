@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -59,18 +60,14 @@ fun AddEditReminderScreen(
 
     Timber.tag("ADD_VM").d("VM instance: $reminderVm")
 
-    // --------------------------------------------------------------
     // 1) LOAD REMINDER IN EDIT MODE
-    // --------------------------------------------------------------
     LaunchedEffect(reminderId) {
         if (reminderId != null) {
             reminderVm.load(reminderId)
         }
     }
 
-    // --------------------------------------------------------------
     // 2) VALIDATION SNACKBAR (local)
-    // --------------------------------------------------------------
     LaunchedEffect(uiState.errorMessage) {
         uiState.errorMessage?.let {
             SnackbarHostState().showSnackbar(it)
@@ -78,10 +75,9 @@ fun AddEditReminderScreen(
         }
     }
 
-    // --------------------------------------------------------------
     // UI LAYOUT
-    // --------------------------------------------------------------
     Scaffold(
+        modifier = Modifier.imePadding(),   // ⭐ Auto-adjust UI when keyboard opens
         topBar = {
             TopAppBar(
                 title = {
@@ -113,7 +109,8 @@ fun AddEditReminderScreen(
         LazyColumn(
             modifier = Modifier
                 .padding(padding)
-                .padding(16.dp),
+                .padding(16.dp)
+                .imePadding(),     // ⭐ Important for nested scrolling layouts
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
 
