@@ -8,7 +8,15 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import java.time.Instant
 import java.time.ZoneId
+import java.time.LocalDate
 import javax.inject.Inject
+
+// ===============================================================
+// TIME CONSTANTS
+// ===============================================================
+private const val DAY_MILLIS = 86_400_000L
+private const val WEEK_DAYS = 7L
+private const val MONTH_DAYS = 30L
 
 @HiltViewModel
 class GroupedEventsViewModel @Inject constructor(
@@ -16,33 +24,28 @@ class GroupedEventsViewModel @Inject constructor(
 ) : ViewModel() {
 
     // ============================================================
-    // 📅 GROUPED EVENTS FOR HOME SCREEN UI
-    // Called from HomeScreen to render the grouped reminder list
+    // 📅 GROUPED EVENTS — consumed in HomeScreen → EventsListGrouped
     // ============================================================
     val groupedEvents: StateFlow<List<GroupedUiSection>> =
         repo.getAllReminders()
             .map { reminders ->
 
                 // ------------------------------------------------------------
-                // STEP 1: Filter only enabled reminders
+                // STEP 1: Filter enabled reminders only
                 // ------------------------------------------------------------
-                val enabledReminders = reminders.filter { it.enabled }
+                val enabled = reminders.filter { it.enabled }
 
                 // ------------------------------------------------------------
-                // STEP 2: Convert each DB reminder → EventReminderUI
-                // Also computes next occurrence if repeating
+                // STEP 2: Convert DB → UI model w/ Next Occurrence
                 // ------------------------------------------------------------
-                val uiList = enabledReminders.map { rem ->
+                val uiList = enabled.map { rem ->
 
-                    // Resolve the next fire-time for repeating reminders.
-                    // If no future repeat exists, fallback to stored epoch.
                     val nextEpoch = NextOccurrenceCalculator.nextOccurrence(
                         rem.eventEpochMillis,
                         rem.timeZone,
                         rem.repeatRule
                     ) ?: rem.eventEpochMillis
 
-                    // Convert into a UI-friendly object for display.
                     EventReminderUI.from(
                         id = rem.id,
                         title = rem.title,
@@ -53,12 +56,10 @@ class GroupedEventsViewModel @Inject constructor(
                         offsets = rem.reminderOffsets
                     )
                 }
-                    // Sort by upcoming time (soonest first)
                     .sortedBy { it.eventEpochMillis }
 
                 // ------------------------------------------------------------
-                // STEP 3: Group the converted UI models into:
-                // Today, Tomorrow, This Week, Later
+                // STEP 3: Apply advanced grouping
                 // ------------------------------------------------------------
                 groupUiEvents(uiList)
             }
@@ -68,46 +69,97 @@ class GroupedEventsViewModel @Inject constructor(
                 initialValue = emptyList()
             )
 
-    // --------------------------------------------------------------
-    // GROUPING LOGIC
-    // --------------------------------------------------------------
+    // ============================================================
+    // NEW ADVANCED GROUPING (Today / Tomorrow / Next7 / Next30 /
+    // Upcoming / Past7 / Archives)
+    // ============================================================
     private fun groupUiEvents(list: List<EventReminderUI>): List<GroupedUiSection> {
         if (list.isEmpty()) return emptyList()
 
-        val now = Instant.now().atZone(ZoneId.systemDefault())
-        val today = now.toLocalDate()
-        val tomorrow = today.plusDays(1)
-        val weekEnd = today.plusDays(7)
+        // Thresholds
+        val now = System.currentTimeMillis()
+        val today = LocalDate.now()
+        val zone = ZoneId.systemDefault()
 
+        val todayStart = today.atStartOfDay(zone).toInstant().toEpochMilli()
+        val tomorrowStart = todayStart + DAY_MILLIS
+        val next7Start = todayStart + (2 * DAY_MILLIS)
+        val weekEnd = todayStart + (WEEK_DAYS * DAY_MILLIS)
+        val monthEnd = todayStart + (MONTH_DAYS * DAY_MILLIS)
+        val past7Threshold = now - (WEEK_DAYS * DAY_MILLIS)
+
+        // Groups
         val todayList = mutableListOf<EventReminderUI>()
         val tomorrowList = mutableListOf<EventReminderUI>()
-        val weekList = mutableListOf<EventReminderUI>()
-        val upcomingList = mutableListOf<EventReminderUI>()
-        val pastList = mutableListOf<EventReminderUI>()
+        val next7 = mutableListOf<EventReminderUI>()
+        val next30 = mutableListOf<EventReminderUI>()
+        val upcoming = mutableListOf<EventReminderUI>()
+        val past7 = mutableListOf<EventReminderUI>()
+        val archives = mutableListOf<EventReminderUI>()
 
+        // ------------------------------------------------------------
+        // CLASSIFY EACH REMINDER
+        // ------------------------------------------------------------
         list.forEach { ui ->
 
-            val eventDate = Instant.ofEpochMilli(ui.eventEpochMillis)
-                .atZone(ZoneId.systemDefault())
-                .toLocalDate()
+            val t = ui.eventEpochMillis
 
             when {
-                eventDate.isEqual(today) -> todayList.add(ui)
-                eventDate.isEqual(tomorrow) -> tomorrowList.add(ui)
-                eventDate.isAfter(tomorrow) && eventDate.isBefore(weekEnd) -> weekList.add(ui)
-                eventDate.isAfter(weekEnd) -> upcomingList.add(ui)
-                else -> pastList.add(ui)
+                // ------------------ FUTURE ------------------
+                t in todayStart until tomorrowStart ->
+                    todayList.add(ui)
+
+                t in tomorrowStart until (tomorrowStart + DAY_MILLIS) ->
+                    tomorrowList.add(ui)
+
+                t in next7Start until weekEnd ->
+                    next7.add(ui)
+
+                t in weekEnd until monthEnd ->
+                    next30.add(ui)
+
+                t >= monthEnd ->
+                    upcoming.add(ui)
+
+                // ------------------ PAST --------------------
+                t in past7Threshold until now ->
+                    past7.add(ui)
+
+                else ->
+                    archives.add(ui)
             }
         }
 
-        val result = mutableListOf<GroupedUiSection>()
+        // ------------------------------------------------------------
+        // BUILD SECTIONS (only non-empty)
+        // ------------------------------------------------------------
+        val sections = mutableListOf<GroupedUiSection>()
 
-        if (todayList.isNotEmpty()) result.add(GroupedUiSection("Today", todayList))
-        if (tomorrowList.isNotEmpty()) result.add(GroupedUiSection("Tomorrow", tomorrowList))
-        if (weekList.isNotEmpty()) result.add(GroupedUiSection("This Week", weekList))
-        if (upcomingList.isNotEmpty()) result.add(GroupedUiSection("Upcoming", upcomingList))
-        if (pastList.isNotEmpty()) result.add(GroupedUiSection("Past", pastList))
+        fun add(header: String, items: List<EventReminderUI>, sortDesc: Boolean = false) {
+            if (items.isNotEmpty()) {
+                sections.add(
+                    GroupedUiSection(
+                        header = header,
+                        events = if (sortDesc)
+                            items.sortedByDescending { it.eventEpochMillis }
+                        else
+                            items.sortedBy { it.eventEpochMillis }
+                    )
+                )
+            }
+        }
 
-        return result
+        // Future
+        add("Today", todayList)
+        add("Tomorrow", tomorrowList)
+        add("Next 7 Days", next7)
+        add("Next 30 Days", next30)
+        add("Upcoming", upcoming)
+
+        // Past
+        add("Past 7 Days", past7, sortDesc = true)
+        add("Archives", archives, sortDesc = true)
+
+        return sections
     }
 }

@@ -1,15 +1,21 @@
 package com.example.eventreminder.ui.screens
 
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AddCircle
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHostState
@@ -19,6 +25,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -32,6 +39,7 @@ import com.example.eventreminder.ui.modules.time.ReminderTimePickerModule
 import com.example.eventreminder.ui.viewmodels.ReminderViewModel
 import timber.log.Timber
 import java.time.ZoneId
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -77,10 +85,29 @@ fun AddEditReminderScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(if (reminderId == null) "Add Reminder" else "Edit Reminder")
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+
+                        val icon = if (reminderId == null)
+                            Icons.Default.AddCircle   // ➕ Add Reminder
+                        else
+                            Icons.Default.Edit        // ✏️ Edit Reminder
+
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        Text(
+                            text = if (reminderId == null) "Add Reminder" else "Edit Reminder"
+                        )
+                    }
                 }
             )
         }
+
     ) { padding ->
 
         LazyColumn(
