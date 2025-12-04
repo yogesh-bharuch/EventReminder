@@ -1,38 +1,57 @@
 package com.example.eventreminder.ui.modules.time
 
+// =============================================================
+// Imports
+// =============================================================
 import android.app.TimePickerDialog
 import android.widget.TimePicker
 import androidx.compose.material3.Button
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import timber.log.Timber
 import java.time.LocalTime
+import java.time.format.DateTimeFormatter
 
 private const val TAG = "ReminderTimePickerModule"
 
 /**
  * ---------------------------------------------------------
- *  ReminderTimePickerModule
+ * ReminderTimePickerModule
  * ---------------------------------------------------------
  *
  * UI-only wrapper around TimePickerDialog.
- *  - Pure Composable
- *  - No business logic
- *  - Fully driven by ViewModel state
+ * - No business logic inside
+ * - ViewModel drives actual state
+ * - Supports auto-open when coming from date selection
  *
- * Returns selected LocalTime to caller.
+ * @param selectedTime    Current time from VM
+ * @param onTimeChanged   Callback to update VM
+ * @param autoOpen        If true → dialog opens automatically
+ * @param modifier        Used for focus navigation
  */
 @Composable
 fun ReminderTimePickerModule(
     selectedTime: LocalTime,
-    onTimeChanged: (LocalTime) -> Unit
+    onTimeChanged: (LocalTime) -> Unit,
+    autoOpen: Boolean = false,
+    modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
 
-    // Controls when dialog is shown
+    // Control dialog visibility
     val showDialog = remember { mutableStateOf(false) }
 
+    // Auto-open support (e.g., after picking date)
+    LaunchedEffect(autoOpen) {
+        if (autoOpen) {
+            Timber.tag(TAG).d("Auto-opening time picker")
+            showDialog.value = true
+        }
+    }
+
+    // 🔔 If dialog should show → render it
     if (showDialog.value) {
         ShowTimePickerDialog(
             initial = selectedTime,
@@ -45,15 +64,24 @@ fun ReminderTimePickerModule(
         )
     }
 
-    // Simple button UI
-    Button(onClick = { showDialog.value = true }) {
-        Text("Time: $selectedTime")
+    // Display time in "hh:mm a" format
+    val formatted = remember(selectedTime) {
+        val formatter = DateTimeFormatter.ofPattern("hh:mm a")
+        selectedTime.format(formatter)
+    }
+
+    // UI Button
+    Button(
+        modifier = modifier,
+        onClick = { showDialog.value = true }
+    ) {
+        Text("Time: $formatted")
     }
 }
 
 /**
  * ---------------------------------------------------------
- *  Internal TimePickerDialog handler
+ * Internal composable that controls TimePickerDialog
  * ---------------------------------------------------------
  */
 @Composable
@@ -72,11 +100,10 @@ private fun ShowTimePickerDialog(
             },
             initial.hour,
             initial.minute,
-            true
+            false // 12-hour AM/PM format
         )
     }
 
-    // Ensure dialog closes when composable leaves
     LaunchedEffect(Unit) {
         dialog.setOnDismissListener { onDismiss() }
         dialog.show()

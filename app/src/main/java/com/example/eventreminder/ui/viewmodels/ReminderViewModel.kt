@@ -90,6 +90,12 @@ class ReminderViewModel @Inject constructor(
         _uiState.update { it.copy(repeat = rule) }
     fun clearEditReminder() =
         _uiState.update { it.copy(editReminder = null) }
+    // Clears all Add/Edit fields back to default for "Add new" mode
+    // editReminder = null, errorMessage = null, title = EVENT, description = "", date = today, time= now, offsets = emptySet(), repeat = NONE
+    fun resetAddEditForm() {
+        _uiState.value = UiState()
+    }
+
 
 
     // ============================================================
@@ -206,7 +212,7 @@ class ReminderViewModel @Inject constructor(
             Timber.tag("VM_SNACK").d("Emitting snackbar: $message")
             _snackbarEvent.emit(message)
 
-            _uiState.value = UiState()
+            resetAddEditForm()
 
         } catch (e: Exception) {
             Timber.e(e)

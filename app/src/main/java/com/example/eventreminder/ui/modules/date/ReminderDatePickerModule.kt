@@ -7,6 +7,7 @@ import android.widget.DatePicker
 import androidx.compose.material3.Button
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import com.example.eventreminder.data.model.ReminderTitle
 import timber.log.Timber
@@ -35,7 +36,8 @@ private const val TAG = "ReminderDatePickerModule"
 fun ReminderDatePickerModule(
     selectedDate: LocalDate,
     title: ReminderTitle,
-    onDateChanged: (LocalDate) -> Unit
+    onDateChanged: (LocalDate) -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
 
@@ -65,7 +67,10 @@ fun ReminderDatePickerModule(
     // ─────────────────────────────────────────────────────────────
     // BUTTON UI
     // ─────────────────────────────────────────────────────────────
-    Button(onClick = { showDialog.value = true }) {
+    Button(
+        onClick = { showDialog.value = true },
+        modifier = modifier   // ⭐ Enable parent to apply focusRequester
+    ) {
         Text("Date: ${selectedDate.format(displayFormatter)}")
     }
 }
