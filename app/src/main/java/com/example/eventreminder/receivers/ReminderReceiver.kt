@@ -25,9 +25,9 @@ private const val TAG = "ReminderReceiver"
  * ReminderReceiver
  *
  * Handles alarm triggers → shows notification + reschedules next event.
- * Enhanced for TODO-9 Notification Upgrade:
- *  - Handles ACTION_DISMISS from notification action (cancels notification)
- *  - ACTION_OPEN_CARD is handled by PendingIntent → MainActivity (no extra handling required here)
+ * Enhanced for:
+ *  - ACTION_DISMISS from notification action (cancels notification)
+ *  - ACTION_OPEN_CARD is handled by PendingIntent → MainActivity
  */
 @AndroidEntryPoint
 class ReminderReceiver : BroadcastReceiver() {
@@ -39,7 +39,7 @@ class ReminderReceiver : BroadcastReceiver() {
         const val EXTRA_REPEAT_RULE = "extra_repeat_rule"
         const val EXTRA_OFFSET_MILLIS = "offsetMillis"
 
-        // NEW — Card-generation routing extras
+        // Card-generation routing extras
         const val EXTRA_FROM_NOTIFICATION = "from_notification"
         const val EXTRA_EVENT_TYPE = "event_type"  // BIRTHDAY / ANNIVERSARY
 
@@ -55,6 +55,8 @@ class ReminderReceiver : BroadcastReceiver() {
     @Inject lateinit var scheduler: AlarmScheduler
 
     override fun onReceive(context: Context, intent: Intent) {
+
+        Timber.tag("RR_FLOW").e("ReminderReceiver → onReceive fired, action=${intent.action}")
 
         // =============================================================
         // Handle notification action: DISMISS
@@ -82,6 +84,9 @@ class ReminderReceiver : BroadcastReceiver() {
         val repeatRule   = intent.getStringExtra(EXTRA_REPEAT_RULE)
         val offsetMillis = intent.getLongExtra(EXTRA_OFFSET_MILLIS, 0L)
 
+        // Derive event type once (used for emoji + card routing)
+        val eventType = inferEventType(title, message)
+
         // =============================================================
         // Build deterministic notification id from reminder id + offset
         // so it can be reliably cancelled later.
@@ -90,23 +95,25 @@ class ReminderReceiver : BroadcastReceiver() {
 
         // =============================================================
         // Show notification → includes deep-link extras + actions
+        // (NotificationHelper internally picks sound via RingtoneResolver)
         // =============================================================
+        Timber.tag("RR_FLOW").e("Calling NotificationHelper for id=$id title=$title message=$message")
         NotificationHelper.showNotification(
             context = context,
             notificationId = notificationId,
             title = title,
             message = message,
-            eventType = inferEventType(title, message),
+            eventType = eventType,
             // pass routing extras for CardScreen
             extras = mapOf(
-                "from_notification" to true,
+                EXTRA_FROM_NOTIFICATION to true,
                 "reminder_id" to id,
-                "event_type" to inferEventType(title, message)
+                EXTRA_EVENT_TYPE to eventType
             )
         )
 
         // =============================================================
-        // Recurring Scheduling (unchanged)
+        // Recurring Scheduling
         // =============================================================
         CoroutineScope(Dispatchers.IO).launch {
             val r = repo.getReminder(id) ?: return@launch
@@ -141,7 +148,6 @@ class ReminderReceiver : BroadcastReceiver() {
     // =============================================================
     private fun generateNotificationId(reminderId: Long, offsetMillis: Long): Int {
         // Combine reminderId and offsetMillis into a single stable int.
-        // We keep it simple: XOR lower 32 bits with upper 32 bits and offset hash.
         val low = reminderId.toInt()
         val high = (reminderId ushr 32).toInt()
         val offsetHash = (offsetMillis xor (offsetMillis ushr 32)).toInt()
