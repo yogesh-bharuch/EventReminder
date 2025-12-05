@@ -30,7 +30,7 @@ class MyApp : Application(), Configuration.Provider {
         }
 
         // 🚀 Seed the database (runs ONLY if DB is empty)
-        databaseSeeder.seedIfEmpty()
+        //databaseSeeder.seedIfEmpty()
     }
 
     // ✅ Must override this property, not a function

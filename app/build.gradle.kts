@@ -109,7 +109,7 @@ dependencies {
 
     implementation(libs.itextg)
 
-
+    implementation(libs.kotlinx.serialization.json)
 
     // ✅ Jetpack Navigation Compose
     implementation(libs.navigation.compose)
