@@ -52,7 +52,7 @@ fun CardCanvasArea(
     ) {
 
         // ---------------------------
-        // Main Pixel Canvas
+        // Main Pixel Canvas → PixelRenderer.draw(canvas, spec, cardData)
         // ---------------------------
         PixelCanvas(
             spec = spec,

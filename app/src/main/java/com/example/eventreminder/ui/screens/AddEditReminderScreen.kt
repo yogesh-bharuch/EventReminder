@@ -50,7 +50,11 @@ import com.example.eventreminder.ui.modules.offsets.ReminderOffsetsModule
 import com.example.eventreminder.ui.modules.time.ReminderTimePickerModule
 import com.example.eventreminder.ui.viewmodels.ReminderViewModel
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.Button
 import androidx.compose.material3.IconButton
+import androidx.compose.runtime.rememberCoroutineScope
+import com.example.eventreminder.navigation.PixelPreviewRoute
+import kotlinx.coroutines.launch
 
 
 // =============================================================
@@ -63,6 +67,8 @@ fun AddEditReminderScreen(
     eventId: String?,
     reminderVm: ReminderViewModel
 ) {
+    val snackbarHostState = remember { SnackbarHostState() }
+    val coroutineScope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
 
     // FocusRequesters for full navigation chain
@@ -99,6 +105,7 @@ fun AddEditReminderScreen(
 
     Scaffold(
         modifier = Modifier.imePadding(),   // ⭐ Auto-adjust UI when keyboard opens
+        snackbarHost = { androidx.compose.material3.SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 navigationIcon = {
@@ -167,38 +174,61 @@ fun AddEditReminderScreen(
                 )
             }
 
-            // DATE + TIME (stacked vertically)
+            // DATE + TIME + CARD BUTTON (stacked vertically)
             item {
-
                 // DATE PICKER BUTTON
                 ReminderDatePickerModule(
                     selectedDate = uiState.date,
                     title = uiState.title,
                     onDateChanged = {
                         reminderVm.onDateChanged(it)
-
                         // Auto-open → Time picker
                         timeFocus.requestFocus()
                         timePickerAutoOpen.value = true
                     },
                     modifier = Modifier.focusRequester(dateFocus)
                 )
-
                 Spacer(Modifier.height(12.dp))
 
-                // TIME PICKER BUTTON
-                ReminderTimePickerModule(
-                    selectedTime = uiState.time,
-                    onTimeChanged = { time ->
-                        reminderVm.onTimeChanged(time)
-
-                        // Next → Offsets
-                        focusManager.clearFocus()
-                        offsetFocus.requestFocus()
-                    },
-                    autoOpen = timePickerAutoOpen.value,
-                    modifier = Modifier.focusRequester(timeFocus)
+                // TIME PICKER + CARD BUTTON (same row)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 )
+                {
+
+                    // TIME PICKER MODULE
+                    ReminderTimePickerModule(
+                        selectedTime = uiState.time,
+                        onTimeChanged = { time ->
+                            reminderVm.onTimeChanged(time)
+                            // Next → move to Offsets
+                            focusManager.clearFocus()
+                            offsetFocus.requestFocus()
+                        },
+                        autoOpen = timePickerAutoOpen.value,
+                        modifier = Modifier.weight(1f)
+                            .focusRequester(timeFocus)
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+
+                    // CARD SCREEN BUTTON
+                    Button(
+                        onClick = {
+                            if (reminderId == null) {
+                                coroutineScope.launch {
+                                    snackbarHostState.showSnackbar("EventId is required")
+                                }
+                            } else {
+                                navController.navigate(PixelPreviewRoute(reminderId = reminderId))
+                            }
+                        }
+                    ) {
+                        Text("Build Card")
+                    }
+
+                }
             }
 
             // OFFSETS
@@ -250,6 +280,7 @@ fun AddEditReminderScreen(
                     }
                 )
             }
+
         }
     }
 }

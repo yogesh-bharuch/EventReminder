@@ -35,13 +35,22 @@ object DrawName {
 
             val box = spec.nameBox
             val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = Color.parseColor("#444444")
+                color = data.nameColor //Color.parseColor("#444444")
                 textSize = 72f
+                isFakeBoldText = true
             }
 
+            val titleLower = data.titleText.lowercase()
+            val nameRaw = data.nameText
+
+            // Should prefix "Dear" only if title is birthday/anniversary
+            val shouldPrefixDear = titleLower.contains("birthday") || titleLower.contains("anniversary")
+            val rawName = if (shouldPrefixDear) "Dear $nameRaw" else nameRaw
+
+            // Ellipsize to fit inside the box
             val text = PixelTextUtils.ellipsize(
                 paint = paint,
-                text = "Dear $name",
+                text = rawName,
                 maxWidth = box.width.toFloat()
             )
 

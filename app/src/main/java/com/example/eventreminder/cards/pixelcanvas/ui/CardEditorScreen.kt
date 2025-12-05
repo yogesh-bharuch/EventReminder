@@ -30,7 +30,14 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -38,6 +45,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.example.eventreminder.cards.CardUiState
 import com.example.eventreminder.cards.CardViewModel
 import com.example.eventreminder.cards.pixelcanvas.AvatarTransformPx
 import com.example.eventreminder.cards.pixelcanvas.CardDataPx
@@ -48,12 +56,12 @@ import com.example.eventreminder.cards.pixelcanvas.export.SafStorageHelper
 import com.example.eventreminder.cards.pixelcanvas.panels.SaveShareRow
 import com.example.eventreminder.cards.pixelcanvas.pickers.AvatarPickerRow
 import com.example.eventreminder.cards.pixelcanvas.pickers.BackgroundPickerRow
+import com.example.eventreminder.cards.pixelcanvas.pickers.CardExpandableColorPickerRow
 import com.example.eventreminder.cards.pixelcanvas.stickers.catalog.StickerCatalogPacks
 import com.example.eventreminder.cards.pixelcanvas.stickers.model.StickerCategory
+import com.example.eventreminder.cards.pixelcanvas.stickers.model.StickerPx
 import com.example.eventreminder.cards.pixelcanvas.stickers.panel.StickerCategoryBar
 import com.example.eventreminder.cards.pixelcanvas.stickers.panel.StickerListPanel
-import com.example.eventreminder.cards.CardUiState
-import com.example.eventreminder.cards.pixelcanvas.stickers.model.StickerPx
 import com.example.eventreminder.cards.util.ImageUtil
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -262,16 +270,53 @@ fun CardEditorScreen(reminderId: Long) {
         ) {
 
             // -----------------------------
-            // HEADER
+            // HEADER Design your card (BG + Photo + Stickers)
             // -----------------------------
             item {
                 Spacer(Modifier.height(4.dp))
-                Text("Design your card (BG + Photo + Stickers)")
+                Text("Design your card (BG + Photo + Stickers)", modifier = Modifier.padding(8.dp))
                 Spacer(Modifier.height(16.dp))
             }
 
+            // TITLE COLOR PICKER
+            item {
+                CardExpandableColorPickerRow(
+                    label = "Title Color",
+                    selectedColor = cardData.titleColor,
+                    onColorSelected = { newColor ->
+                        cardData = cardData.copy(titleColor = newColor)
+                    }
+                )
+                Spacer(Modifier.height(4.dp))
+            }
+            // NAME COLOR PICKER
+            item {
+                CardExpandableColorPickerRow(
+                    label = "Name Color",
+                    selectedColor = cardData.nameColor,
+                    onColorSelected = { newColor ->
+                        cardData = cardData.copy(nameColor = newColor)
+                    }
+                )
+                Spacer(Modifier.height(4.dp))
+            }
+            // DATE COLOR PICKER
+            item {
+                CardExpandableColorPickerRow(
+                    label = "Date Color",
+                    selectedColor = cardData.originalDateColor,
+                    onColorSelected = { newColor ->
+                        cardData = cardData.copy(originalDateColor = newColor)
+                    }
+                )
+                Spacer(Modifier.height(12.dp))
+            }
+
+            
             // -----------------------------
             // CANVAS AREA (Renderer + Gestures + Delete Button)
+            // CardEditorScreen → CardCanvasArea → PixelCanvas
+            // → PixelRenderer.draw(canvas, spec, cardData)
             // -----------------------------
             item {
                 CardCanvasArea(

@@ -27,8 +27,9 @@ object DrawDateRow {
             val box = spec.dateBox
 
             val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = Color.parseColor("#666666")
+                color = data.originalDateColor //Color.parseColor("#666666")
                 textSize = 40f
+                isFakeBoldText = true
             }
 
             val y = box.y + paint.textSize
@@ -38,7 +39,8 @@ object DrawDateRow {
             canvas.drawText(left, box.x.toFloat(), y, paint)
 
             // Right (40%)
-            val right = PixelTextUtils.ellipsize(paint, data.nextDateLabel, box.width * 0.4f)
+            //val right = PixelTextUtils.ellipsize(paint, data.nextDateLabel, box.width * 0.4f)
+            val right = PixelTextUtils.ellipsize(paint, "Yogesh", box.width * 0.4f)
             val rightWidth = paint.measureText(right)
 
             canvas.drawText(

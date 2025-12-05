@@ -6,9 +6,11 @@ package com.example.eventreminder.cards.pixelcanvas
 // =============================================================
 
 import android.graphics.Bitmap
+import android.graphics.Color
 import timber.log.Timber
 import kotlin.math.roundToInt
 import com.example.eventreminder.cards.pixelcanvas.stickers.model.StickerPx
+import androidx.core.graphics.toColorInt
 
 private const val TAG = "CardDataPx"
 
@@ -33,6 +35,7 @@ data class CardDataPx(
     val titleText: String,
     val nameText: String?,
     val showTitle: Boolean = true,
+    //val titleColor: Int = "#222222".toColorInt(),
     val showName: Boolean = true,
 
     // avatar
@@ -51,8 +54,13 @@ data class CardDataPx(
     // labels
     val originalDateLabel: String = "",
     val nextDateLabel: String = "",
-    val ageOrYearsLabel: String? = null
-) {
+    val ageOrYearsLabel: String? = null,
+
+    val titleColor: Int = "#222222".toColorInt(),
+    val nameColor: Int = "#222222".toColorInt(),
+    val originalDateColor: Int = "#222222".toColorInt()
+
+    ) {
     init {
         Timber.tag(TAG).d("CardDataPx created for id=%d title=%s", reminderId, titleText)
     }

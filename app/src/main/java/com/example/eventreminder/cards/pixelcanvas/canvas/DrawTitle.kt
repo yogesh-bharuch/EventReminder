@@ -36,14 +36,18 @@ object DrawTitle {
 
             // Configure paint for title — bold, large
             val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = Color.parseColor("#222222")
-                textSize = 72f
+                color = data.titleColor //Color.parseColor("#222222")
+                textSize = 100f
                 isFakeBoldText = true
             }
 
             // Compose the title string and ellipsize to available width
-            // Note: use safe concatenation — if titleText is blank, we still draw "Happy " only.
-            val raw = "Happy " + (data.titleText ?: "")
+            // Build final title text
+            val titleLower = data.titleText.lowercase()
+            val shouldPrefix = titleLower.contains("birthday") || titleLower.contains("anniversary")
+
+            val raw = if (shouldPrefix) "Happy " + data.titleText else data.titleText
+
             val t = PixelTextUtils.ellipsize(paint, raw, box.width.toFloat())
 
             // Draw text at box.x, baseline tuned by paint.textSize
