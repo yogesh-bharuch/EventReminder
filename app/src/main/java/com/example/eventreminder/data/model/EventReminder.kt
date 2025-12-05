@@ -2,6 +2,8 @@ package com.example.eventreminder.data.model
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import kotlinx.serialization.Serializable
+
 
 /**
  * EventReminder
@@ -9,6 +11,7 @@ import androidx.room.PrimaryKey
  * Supports multi-offset reminders, repeating rules, UTC storage, and enabled state.
  */
 @Entity(tableName = "reminders")
+@Serializable
 data class EventReminder(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0L,

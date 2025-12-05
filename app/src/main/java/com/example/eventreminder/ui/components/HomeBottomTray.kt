@@ -10,9 +10,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.PictureAsPdf
+import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -54,7 +56,9 @@ fun HomeBottomTray(
     onCleanupClick: () -> Unit,
     onGeneratePdfClick: () -> Unit,
     onExportClick: () -> Unit = {},
-    onSyncClick: () -> Unit = {}
+    onSyncClick: () -> Unit = {},
+    onBackupClick: () -> Unit,
+    onRestoreClick: () -> Unit
 ) {
     Timber.tag(TAG).d("Rendering HomeBottomTray")
 
@@ -110,6 +114,26 @@ fun HomeBottomTray(
                     onClick = {
                         Timber.tag(TAG).d("Sync clicked")
                         onSyncClick()
+                    }
+                )
+            }
+
+            item {
+                ActionChip(
+                    label = "Backup",
+                    icon = Icons.Default.Backup,
+                    onClick = {
+                        onBackupClick()
+                    }
+                )
+            }
+
+            item {
+                ActionChip(
+                    label = "Restore",
+                    icon = Icons.Default.Restore,
+                    onClick = {
+                        onRestoreClick()
                     }
                 )
             }

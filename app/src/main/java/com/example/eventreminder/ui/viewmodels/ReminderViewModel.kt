@@ -1,5 +1,6 @@
 package com.example.eventreminder.ui.viewmodels
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.eventreminder.data.model.EventReminder
@@ -8,6 +9,7 @@ import com.example.eventreminder.data.model.ReminderTitle
 import com.example.eventreminder.data.model.RepeatRule
 import com.example.eventreminder.data.repo.ReminderRepository
 import com.example.eventreminder.scheduler.AlarmScheduler
+import com.example.eventreminder.util.BackupHelper
 import com.example.eventreminder.util.NextOccurrenceCalculator
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
@@ -280,4 +282,19 @@ class ReminderViewModel @Inject constructor(
     fun generatePdfReport() = viewModelScope.launch { }
     fun exportRemindersCsv() = viewModelScope.launch { }
     fun syncRemindersWithServer() = viewModelScope.launch { }
+    fun backupReminders(context: Context) {
+        viewModelScope.launch {
+            val resultMessage = repo.exportRemindersToJson(context)
+            _snackbarEvent.tryEmit(resultMessage)   // 🔔 show snackbar with count
+            Timber.tag("BACKUP").i(resultMessage)   // log again if desired
+        }
+    }
+
+    fun restoreReminders(context: Context) {
+        viewModelScope.launch {
+            val resultMessage = repo.restoreRemindersFromBackup(context)
+            _snackbarEvent.tryEmit(resultMessage)   // 🔔 show snackbar
+            Timber.tag("RESTORE_REMINDERS").i(resultMessage)  // ✅ log again for visibility
+        }
+    }
 }

@@ -171,6 +171,12 @@ fun HomeScreen(
                 },
                 onSyncClick = {
                     coroutineScope.launch { reminderVm.syncRemindersWithServer() }
+                },
+                onBackupClick = {
+                    coroutineScope.launch { reminderVm.backupReminders(context) }
+                },
+                onRestoreClick = {
+                    coroutineScope.launch { reminderVm.restoreReminders(context) }
                 }
             )
         }

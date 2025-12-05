@@ -24,6 +24,8 @@ private const val TAG = "NotificationHelper"
 // Category-based channels
 private const val CH_BIRTHDAY = "channel_birthday"
 private const val CH_ANNIVERSARY = "channel_anniversary"
+private const val CH_MEDICINE = "channel_medicine"
+private const val CH_WORKOUT = "channel_workout"
 private const val CH_GENERAL = "channel_general"
 
 /**
@@ -57,12 +59,16 @@ object NotificationHelper {
         val channelId = when (eventType.uppercase()) {
             "BIRTHDAY" -> CH_BIRTHDAY
             "ANNIVERSARY" -> CH_ANNIVERSARY
+            "MEDICINE" -> CH_ANNIVERSARY
+            "WORKOUT" -> CH_ANNIVERSARY
             else -> CH_GENERAL
         }
 
         val channelName = when (eventType.uppercase()) {
             "BIRTHDAY" -> "Birthday Reminders"
             "ANNIVERSARY" -> "Anniversary Reminders"
+            "MEDICINE" -> "Medicine Reminders"
+            "WORKOUT" -> "Workout Reminders"
             else -> "General Reminders"
         }
 

@@ -71,3 +71,78 @@ object RingtoneResolver {
         }
     }
 }
+
+
+
+/*
+package com.example.eventreminder.ui.notification
+
+import android.content.Context
+import android.net.Uri
+import androidx.core.net.toUri
+import com.example.eventreminder.R
+import timber.log.Timber
+
+/**
+ * Category-based auto ringtone selector using sealed classes.
+ */
+object RingtoneResolver {
+
+    private const val TAG = "RingtoneResolver"
+
+    // ---------------------------------------------------------
+    // 🔊 CATEGORY DEFINITIONS
+    // ---------------------------------------------------------
+    sealed class RingtoneCategory(
+        val keywords: List<String>,
+        val soundRes: Int
+    ) {
+        object Birthday : RingtoneCategory(keywords = listOf("birthday", "bday"), soundRes = R.raw.birthday)
+        object Anniversary : RingtoneCategory(keywords = listOf("anniversary", "marriage"), soundRes = R.raw.anniversary)
+        object Medicine : RingtoneCategory(keywords = listOf("medicine", "pill", "tablet"), soundRes = R.raw.medicine)
+        object Meeting : RingtoneCategory(keywords = listOf("meeting", "call", "interview"), soundRes = R.raw.meeting)
+        object Workout : RingtoneCategory(keywords = listOf("gym", "workout", "exercise", "jog"), soundRes = R.raw.workout)
+        object None : RingtoneCategory(keywords = emptyList(), soundRes = -1)  // default
+
+        companion object {
+            val all = listOf(Birthday, Anniversary, Medicine, Meeting, Workout)
+        }
+    }
+
+    // ---------------------------------------------------------
+    // 🔍 MAIN RESOLVER (called from NotificationHelper)
+    // ---------------------------------------------------------
+    fun resolve(context: Context, title: String?, message: String?): Uri? {
+        val raw = "${title.orEmpty()} ${message.orEmpty()}".lowercase()
+
+        Timber.tag(TAG).e("resolve() invoked → text='$raw'")
+
+        // 1) Find first matching category
+        val matched = RingtoneCategory.all.firstOrNull { category ->
+            category.keywords.any { raw.contains(it) }
+        }
+
+        if (matched != null) {
+            //Timber.tag(TAG).d("Matched category: ${matched::class.simpleName}")
+
+            val uri = rawUri(context, matched.soundRes)
+            //Timber.tag(TAG).d("Resolved URI → $uri")
+
+            return uri
+        }
+
+        Timber.tag(TAG).d("No category matched → using DEFAULT notification sound")
+        return null
+    }
+
+    // ---------------------------------------------------------
+    // Build android.resource:// URI
+    // ---------------------------------------------------------
+    private fun rawUri(context: Context, resId: Int): Uri =
+        "android.resource://${context.packageName}/$resId".toUri().also {
+            Timber.tag(TAG).d("Generated raw URI: $it")
+        }
+}
+
+
+ */
