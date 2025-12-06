@@ -312,7 +312,7 @@ fun CardEditorScreen(reminderId: Long) {
                 Spacer(Modifier.height(12.dp))
             }
 
-            
+
             // -----------------------------
             // CANVAS AREA (Renderer + Gestures + Delete Button)
             // CardEditorScreen → CardCanvasArea → PixelCanvas
