@@ -3,21 +3,21 @@ package com.example.eventreminder.sync.core
 // =============================================================
 // Imports
 // =============================================================
+import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import kotlinx.coroutines.tasks.await
 import timber.log.Timber
 
-// =============================================================
-// SyncEngine
-// =============================================================
-
 /**
- * Main orchestrator responsible for synchronizing all configured
- * entity types between Room and Firestore.
+ * SyncEngine
  *
- * This class is intentionally generic and does NOT know any
- * app-specific entities or DAOs.
+ * Bi-directional synchronization engine for Firestore <-> Room.
+ * Generic, works for any entity type through EntitySyncConfig.
+ *
+ * Soft delete model:
+ * - Local delete -> Firestore tombstone { isDeleted = true }
+ * - Firestore tombstone -> local markDeletedByIds()
  */
 class SyncEngine(
     private val firestore: FirebaseFirestore,
@@ -25,17 +25,11 @@ class SyncEngine(
     private val syncMetadataDao: SyncMetadataDao
 ) {
 
-    companion object {
-        private const val TAG = "SyncEngine"
-    }
+    companion object { private const val TAG = "SyncEngine" }
 
-    /**
-     * Entry point to trigger synchronization for all configured entities.
-     *
-     * Typical usage:
-     * - Manually from a "Sync now" button.
-     * - From a WorkManager worker on a background schedule.
-     */
+    // =============================================================
+    // Sync Entry Point
+    // =============================================================
     suspend fun syncAll() {
         if (syncConfig.loggingEnabled) {
             Timber.tag(TAG).i("Starting sync for %d entities", syncConfig.entities.size)
@@ -43,261 +37,239 @@ class SyncEngine(
 
         val userId = syncConfig.userIdProvider.getUserId()
         if (userId == null) {
-            Timber.tag(TAG).w("Skipping sync: userId is null (not authenticated).")
+            Timber.tag(TAG).w("Skipping sync: userId is null.")
             return
         }
 
-        syncConfig.entities.forEach { rawConfig ->
+        Timber.tag(TAG).i("Sync using userId=%s", userId)
+
+        for (raw in syncConfig.entities) {
             @Suppress("UNCHECKED_CAST")
-            val config = rawConfig as EntitySyncConfig<Any>
+            val config = raw as EntitySyncConfig<Any>
 
             try {
-                if (syncConfig.loggingEnabled) {
-                    Timber.tag(TAG).i(
-                        "Syncing entity key=%s direction=%s",
-                        config.key,
-                        config.direction
-                    )
-                }
-
                 when (config.direction) {
-                    SyncDirection.LOCAL_TO_REMOTE -> {
-                        syncLocalToRemote(userId, config)
-                    }
-                    SyncDirection.REMOTE_TO_LOCAL -> {
-                        syncRemoteToLocal(userId, config)
-                    }
+                    SyncDirection.LOCAL_TO_REMOTE -> syncLocalToRemote(userId, config)
+                    SyncDirection.REMOTE_TO_LOCAL -> syncRemoteToLocal(userId, config)
                     SyncDirection.BIDIRECTIONAL -> {
-                        // NOTE: Order is important for perceived conflict behavior.
                         syncLocalToRemote(userId, config)
                         syncRemoteToLocal(userId, config)
                     }
                 }
             } catch (t: Throwable) {
-                Timber.tag(TAG).e(t, "Error syncing entity key=%s", config.key)
+                Timber.tag(TAG).e(t, "Error syncing key=%s", config.key)
             }
         }
 
         if (syncConfig.loggingEnabled) {
-            Timber.tag(TAG).i("Sync completed for all entities.")
+            Timber.tag(TAG).i("Sync complete.")
         }
     }
 
     // =============================================================
     // Local → Remote
     // =============================================================
-
     private suspend fun <Local : Any> syncLocalToRemote(
         userId: String,
         config: EntitySyncConfig<Local>
     ) {
-        // 1) Load existing metadata (checkpoint)
         val meta = syncMetadataDao.get(config.key)
         val lastLocalSyncAt = meta?.lastLocalSyncAt
 
+        val changedLocals = config.daoAdapter.getLocalsChangedAfter(lastLocalSyncAt)
+
         if (syncConfig.loggingEnabled) {
             Timber.tag(TAG).i(
-                "Local→Remote [%s] - lastLocalSyncAt=%s",
+                "Local→Remote [%s] lastLocalSyncAt=%s changed=%d",
                 config.key,
-                lastLocalSyncAt?.toString() ?: "null"
+                lastLocalSyncAt ?: -1,
+                changedLocals.size
             )
         }
 
-        // 2) Fetch all local changes after lastLocalSyncAt
-        val changedLocals = config.daoAdapter.getLocalsChangedAfter(lastLocalSyncAt)
+        if (changedLocals.isEmpty()) return
 
-        if (changedLocals.isEmpty()) {
-            if (syncConfig.loggingEnabled) {
-                Timber.tag(TAG).i("Local→Remote [%s] - no local changes to sync.", config.key)
-            }
-            return
-        }
-
-        val collection = config.getCollectionRef()
         val batch = firestore.batch()
+        val collection = config.getCollectionRef()
 
-        var maxUpdatedAt: Long? = lastLocalSyncAt
+        var maxUpdatedAt = lastLocalSyncAt
 
         for (local in changedLocals) {
             val updatedAt = config.getUpdatedAt(local)
             val docId = config.getLocalId(local)
             val docRef = collection.document(docId)
 
-            maxUpdatedAt = when {
-                maxUpdatedAt == null -> updatedAt
-                updatedAt > maxUpdatedAt!! -> updatedAt
-                else -> maxUpdatedAt
-            }
+            if (maxUpdatedAt == null || updatedAt > maxUpdatedAt!!) maxUpdatedAt = updatedAt
 
             if (config.isDeleted(local)) {
-                // Hybrid strategy: write a tombstone flag instead of hard delete.
-                val tombstone = mapOf(
-                    "uid" to userId,
-                    "id" to docId,
-                    "isDeleted" to true,
-                    "updatedAt" to updatedAt
+
+                // Ensure Firestore always stores updatedAt as Timestamp, even for tombstones
+                val updatedMillis = updatedAt
+                val ts = Timestamp(
+                    updatedMillis / 1000,
+                    ((updatedMillis % 1000) * 1_000_000).toInt()
                 )
-                batch.set(docRef, tombstone)
-                if (syncConfig.loggingEnabled) {
-                    Timber.tag(TAG).d("Local→Remote [%s] - tombstone docId=%s", config.key, docId)
-                }
+
+                batch.set(
+                    docRef,
+                    mapOf(
+                        "uid" to userId,
+                        "id" to docId,
+                        "isDeleted" to true,
+                        "updatedAt" to ts
+                    )
+                )
             } else {
-                // Normal upsert: let toRemote() build full document body
-                val data = config.toRemote(local, userId)
-                batch.set(docRef, data)
-                if (syncConfig.loggingEnabled) {
-                    Timber.tag(TAG).d("Local→Remote [%s] - upsert docId=%s", config.key, docId)
-                }
+                batch.set(docRef, config.toRemote(local, userId))
             }
         }
 
-        // 3) Commit batch
         batch.commit().await()
 
-        // 4) Persist updated checkpoint
-        val newMeta = SyncMetadataEntity(
-            key = config.key,
-            lastLocalSyncAt = maxUpdatedAt,
-            lastRemoteSyncAt = meta?.lastRemoteSyncAt
-        )
-        syncMetadataDao.upsert(newMeta)
-
-        if (syncConfig.loggingEnabled) {
-            Timber.tag(TAG).i(
-                "Local→Remote [%s] - synced %d items, newLastLocalSyncAt=%s",
-                config.key,
-                changedLocals.size,
-                maxUpdatedAt?.toString() ?: "null"
+        syncMetadataDao.upsert(
+            SyncMetadataEntity(
+                key = config.key,
+                lastLocalSyncAt = maxUpdatedAt,
+                lastRemoteSyncAt = meta?.lastRemoteSyncAt
             )
-        }
+        )
     }
 
     // =============================================================
     // Remote → Local
     // =============================================================
-
     private suspend fun <Local : Any> syncRemoteToLocal(
         userId: String,
         config: EntitySyncConfig<Local>
     ) {
-        // 1) Load existing metadata (checkpoint)
+        Timber.tag("REMOTE_DEBUG").e("ENTERED syncRemoteToLocal()")
+
         val meta = syncMetadataDao.get(config.key)
         val lastRemoteSyncAt = meta?.lastRemoteSyncAt
         val lastLocalSyncAt = meta?.lastLocalSyncAt
 
-        if (syncConfig.loggingEnabled) {
-            Timber.tag(TAG).i(
-                "Remote→Local [%s] - lastRemoteSyncAt=%s, lastLocalSyncAt=%s",
-                config.key,
-                lastRemoteSyncAt?.toString() ?: "null",
-                lastLocalSyncAt?.toString() ?: "null"
-            )
-        }
-
-        // 2) Build Firestore query with uid filter (hybrid model)
+        // -------------------------------
+        // Use Timestamp filter (CORRECT)
+        // -------------------------------
         var query: Query = config.getCollectionRef()
             .whereEqualTo("uid", userId)
 
         if (lastRemoteSyncAt != null) {
-            query = query.whereGreaterThan("updatedAt", lastRemoteSyncAt)
+
+            val ts = Timestamp(
+                lastRemoteSyncAt / 1000,
+                ((lastRemoteSyncAt % 1000) * 1_000_000).toInt()
+            )
+
+            Timber.tag("REMOTE_DEBUG").e("Filtering where updatedAt > %s", ts)
+            query = query.whereGreaterThan("updatedAt", ts)
+
+        } else {
+            Timber.tag("REMOTE_DEBUG").e("No lastRemoteSyncAt → FULL SCAN")
         }
 
-        // NOTE: For large datasets, you would add .limit(syncConfig.batchSize)
-        // and paginate. For now, we fetch in one go.
+        // Fetch documents
         val snapshot = query.get().await()
+
+        Timber.tag("REMOTE_DEBUG").e("Remote query returned %d docs", snapshot.size())
+
+        for (doc in snapshot.documents) {
+            val raw = doc.data?.get("updatedAt")
+            Timber.tag("REMOTE_DEBUG").e(
+                "REMOTE DOC id=%s updatedAt RAW=%s TYPE=%s",
+                doc.id,
+                raw,
+                raw?.javaClass?.simpleName
+            )
+        }
+
         if (snapshot.isEmpty) {
-            if (syncConfig.loggingEnabled) {
-                Timber.tag(TAG).i("Remote→Local [%s] - no remote changes to sync.", config.key)
-            }
+            Timber.tag("REMOTE_DEBUG").e("No remote updates → EXIT")
             return
         }
 
         val toUpsert = mutableListOf<Local>()
         val toDeleteIds = mutableListOf<String>()
-        var maxRemoteUpdatedAt: Long? = lastRemoteSyncAt
+        var maxRemoteUpdatedAt = lastRemoteSyncAt
 
         for (doc in snapshot.documents) {
             val data = doc.data ?: continue
-            val updatedAt = (data["updatedAt"] as? Number)?.toLong()
-            val isDeletedRemote = data["isDeleted"] as? Boolean ?: false
             val docId = doc.id
 
-            if (updatedAt != null) {
-                maxRemoteUpdatedAt = when {
-                    maxRemoteUpdatedAt == null -> updatedAt
-                    updatedAt > maxRemoteUpdatedAt!! -> updatedAt
-                    else -> maxRemoteUpdatedAt
-                }
-            }
+            // ------------------------------------
+            // USE HELPER to extract millis
+            // ------------------------------------
+            val remoteUpdatedAt: Long? = extractUpdatedAtMillis(data["updatedAt"])
+            val isRemoteDeleted = data["isDeleted"] as? Boolean ?: false
+            val localUpdatedAt = config.getLocalUpdatedAt(docId)
 
-            // -------- ConflictStrategy handling (coarse-grained) --------
+            Timber.tag("REMOTE_DEBUG").e(
+                "PROCESS id=%s remoteUpdatedAt=%s localUpdatedAt=%s",
+                docId, remoteUpdatedAt, localUpdatedAt
+            )
+
+            // ------------------------------------
+            // Correct conflict logic: LATEST_UPDATED_WINS
+            // ------------------------------------
             val shouldApply = when (config.conflictStrategy) {
-                ConflictStrategy.REMOTE_WINS -> {
-                    // Always apply remote changes.
+                ConflictStrategy.REMOTE_WINS ->
                     true
-                }
-                ConflictStrategy.LOCAL_WINS -> {
-                    // Skip remote changes that are not strictly newer
-                    // than local checkpoint.
-                    if (lastLocalSyncAt == null || updatedAt == null) {
-                        false
-                    } else {
-                        updatedAt > lastLocalSyncAt
-                    }
-                }
-                ConflictStrategy.LATEST_UPDATED_WINS -> {
-                    // Apply if remote is newer than the last local synced value.
-                    if (lastLocalSyncAt == null || updatedAt == null) {
-                        true
-                    } else {
-                        updatedAt >= lastLocalSyncAt
-                    }
-                }
+
+                ConflictStrategy.LOCAL_WINS ->
+                    localUpdatedAt == null // ONLY override if local doesn't exist
+
+                ConflictStrategy.LATEST_UPDATED_WINS ->
+                    localUpdatedAt == null ||
+                            (remoteUpdatedAt != null && remoteUpdatedAt > localUpdatedAt)
             }
 
-            if (!shouldApply) {
-                if (syncConfig.loggingEnabled) {
-                    Timber.tag(TAG).d(
-                        "Remote→Local [%s] - skipping docId=%s due to conflict strategy.",
-                        config.key,
-                        docId
-                    )
-                }
-                continue
+            Timber.tag("REMOTE_DEBUG").e("shouldApply=%s", shouldApply)
+            if (!shouldApply) continue
+
+            if (remoteUpdatedAt != null &&
+                (maxRemoteUpdatedAt == null || remoteUpdatedAt > maxRemoteUpdatedAt!!)
+            ) {
+                maxRemoteUpdatedAt = remoteUpdatedAt
             }
 
-            if (isDeletedRemote) {
+            if (isRemoteDeleted) {
                 toDeleteIds.add(docId)
             } else {
-                val local = config.fromRemote(docId, data)
-                toUpsert.add(local)
+                toUpsert.add(config.fromRemote(docId, data))
             }
         }
 
-        // 3) Apply changes to Room
         if (toUpsert.isNotEmpty()) {
+            Timber.tag("REMOTE_DEBUG").e("Upserting %d records → ROOM", toUpsert.size)
             config.daoAdapter.upsertAll(toUpsert)
         }
+
         if (toDeleteIds.isNotEmpty()) {
+            Timber.tag("REMOTE_DEBUG").e("Deleting %d records → ROOM", toDeleteIds.size)
             config.daoAdapter.markDeletedByIds(toDeleteIds)
         }
 
-        // 4) Persist updated checkpoint
-        val newMeta = SyncMetadataEntity(
-            key = config.key,
-            lastLocalSyncAt = lastLocalSyncAt,
-            lastRemoteSyncAt = maxRemoteUpdatedAt
-        )
-        syncMetadataDao.upsert(newMeta)
-
-        if (syncConfig.loggingEnabled) {
-            Timber.tag(TAG).i(
-                "Remote→Local [%s] - upserted=%d, deleted=%d, newLastRemoteSyncAt=%s",
-                config.key,
-                toUpsert.size,
-                toDeleteIds.size,
-                maxRemoteUpdatedAt?.toString() ?: "null"
+        syncMetadataDao.upsert(
+            SyncMetadataEntity(
+                key = config.key,
+                lastLocalSyncAt = lastLocalSyncAt,
+                lastRemoteSyncAt = maxRemoteUpdatedAt
             )
+        )
+
+        Timber.tag("REMOTE_DEBUG")
+            .e("SYNC COMPLETE — new lastRemoteSyncAt=%s", maxRemoteUpdatedAt)
+    }
+
+    // =============================================================
+    // Helper: Normalize remote updatedAt → millis
+    // =============================================================
+    private fun extractUpdatedAtMillis(raw: Any?): Long? {
+        return when (raw) {
+            is Timestamp -> raw.toDate().time
+            is Number -> raw.toLong()
+            is String -> raw.toLongOrNull()
+            else -> null
         }
     }
 }

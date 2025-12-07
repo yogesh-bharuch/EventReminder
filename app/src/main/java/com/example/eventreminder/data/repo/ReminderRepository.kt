@@ -37,27 +37,34 @@ class ReminderRepository @Inject constructor(
 
     suspend fun insert(reminder: EventReminder): Long {
         Timber.tag(TAG).i("insert id=${reminder.id}")
-        val id = dao.insert(reminder)
-        schedule(reminder.copy(id = id))
+        val newReminder = reminder.copy(updatedAt = System.currentTimeMillis())
+        val id = dao.insert(newReminder)
+        schedule(newReminder.copy(id = id))
         return id
     }
 
     suspend fun update(reminder: EventReminder) {
         Timber.tag(TAG).i("update id=${reminder.id}")
-        dao.update(reminder)
-        reschedule(reminder)
+        val updatedReminder = reminder.copy(updatedAt = System.currentTimeMillis())
+        dao.update(updatedReminder)
+        reschedule(updatedReminder)
     }
 
-    suspend fun delete(reminder: EventReminder) {
+    suspend fun markDelete(reminder: EventReminder) {
         Timber.tag(TAG).i("delete id=${reminder.id}")
-        dao.delete(reminder)
-        cancel(reminder)
+        val ts = System.currentTimeMillis()
+
+        // Build deleted model once
+        val deleted = reminder.copy(isDeleted = true, updatedAt = ts)
+
+        // Apply soft-delete flag in DB
+        dao.markDeleted(reminder.id)
+        dao.update(deleted)
+
+        // Cancel alarms using UPDATED object
+        cancel(deleted)
     }
 
-    suspend fun deleteById(id: Long) {
-        Timber.tag(TAG).i("delete id=$id")
-        dao.deleteById(id)
-    }
 
     // ============================================================
     // Internal Scheduling Helpers
@@ -107,32 +114,72 @@ class ReminderRepository @Inject constructor(
 
         return try {
             val json = file.readText()
-            val reminders: List<EventReminder> = Json.decodeFromString(json)
+            val backupList: List<EventReminder> = Json.decodeFromString(json)
 
-            val existingReminders = getAllOnce()
-            val existingMap = existingReminders.associateBy { it.id }
+            val existingList = getAllOnce()
+            val existingMap = existingList.associateBy { it.id }
 
-            var insertedCount = 0
-            var updatedCount = 0
-            var skippedCount = 0
+            var inserted = 0
+            var updated = 0
+            var skipped = 0
 
-            reminders.forEach { backupReminder ->
-                val existing = existingMap[backupReminder.id]
+            backupList.forEach { backup ->
+
+                // ⚠ Skip deleted reminders in backup
+                if (backup.isDeleted) {
+                    Timber.tag("RESTORE_REMINDERS").i("Skipping deleted reminder id=${backup.id}")
+                    skipped++
+                    return@forEach
+                }
+
+                val existing = existingMap[backup.id]
+
                 if (existing == null) {
-                    insert(backupReminder)
-                    insertedCount++
-                } else if (existing != backupReminder) {
-                    deleteById(existing.id)
-                    insert(backupReminder)
-                    updatedCount++
+                    // -------------------------------------------
+                    // CASE 1: New reminder → Insert fresh copy
+                    // -------------------------------------------
+                    val clean = backup.copy(
+                        id = 0L,
+                        isDeleted = false,
+                        updatedAt = System.currentTimeMillis()
+                    )
+                    insert(clean)
+                    inserted++
                 } else {
-                    skippedCount++
+
+                    // -------------------------------------------
+                    // CASE 2: Existing reminder → Compare content
+                    // Ignore updatedAt & isDeleted when comparing
+                    // -------------------------------------------
+                    val equivalent =
+                        existing.title == backup.title &&
+                                existing.description == backup.description &&
+                                existing.eventEpochMillis == backup.eventEpochMillis &&
+                                existing.timeZone == backup.timeZone &&
+                                existing.repeatRule == backup.repeatRule &&
+                                existing.reminderOffsets == backup.reminderOffsets &&
+                                existing.enabled == backup.enabled &&
+                                existing.backgroundUri == backup.backgroundUri
+
+                    if (equivalent) {
+                        skipped++
+                    } else {
+                        // Update the existing row
+                        val merged = backup.copy(
+                            id = existing.id,
+                            isDeleted = false,
+                            updatedAt = System.currentTimeMillis()
+                        )
+                        update(merged)
+                        updated++
+                    }
                 }
             }
 
-            val msg = "Restore completed: $insertedCount new, $updatedCount updated, $skippedCount skipped"
+            val msg = "Restore completed: $inserted new, $updated updated, $skipped skipped"
             Timber.tag("RESTORE_REMINDERS").i(msg)
             msg
+
         } catch (ex: Exception) {
             Timber.tag("RESTORE_REMINDERS").e(ex, "Restore failed")
             "Restore failed"

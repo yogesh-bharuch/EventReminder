@@ -1,26 +1,30 @@
 package com.example.eventreminder.sync.core
 
 /**
- * Generic abstraction over Room DAO so the sync engine remains
- * app-agnostic and works with any entity type.
+ * DAO adapter used by SyncEngine for Room operations.
  */
-interface SyncDaoAdapter<Local> {
+interface SyncDaoAdapter<Local : Any> {
 
     /**
-     * Fetch all local rows where updatedAt > updatedAfter.
-     * Used during Local → Remote sync.
+     * Return all local items where updatedAt > updatedAfter.
      */
     suspend fun getLocalsChangedAfter(updatedAfter: Long?): List<Local>
 
     /**
-     * Insert or update the given list of entities in Room.
-     * Used when applying remote changes.
+     * Insert or update a list of items.
      */
     suspend fun upsertAll(items: List<Local>)
 
     /**
-     * Mark entities as deleted by ID in Room.
-     * Used when remote Firestore documents indicate deletion.
+     * Mark items as deleted (tombstone).
      */
     suspend fun markDeletedByIds(ids: List<String>)
+
+    /**
+     * 🔥 NEW — Used in SyncEngine conflict resolution
+     *
+     * Must return the local.updatedAt for a given ID,
+     * OR null if the local row does not exist.
+     */
+    suspend fun getLocalUpdatedAt(id: String): Long?
 }

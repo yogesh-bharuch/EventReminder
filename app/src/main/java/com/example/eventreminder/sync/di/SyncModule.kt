@@ -4,13 +4,15 @@ package com.example.eventreminder.sync.di
 // Imports
 // =============================================================
 import com.example.eventreminder.data.local.AppDatabase
-import com.example.eventreminder.sync.config.ReminderSyncConfigFactory
+import com.example.eventreminder.sync.config.ReminderSyncConfig
 import com.example.eventreminder.sync.core.*
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
+import timber.log.Timber
 import javax.inject.Singleton
 
 /**
@@ -35,13 +37,13 @@ object SyncModule {
     @Provides
     @Singleton
     fun provideUserIdProvider(): UserIdProvider {
-        // TODO: Replace with your real auth system
         return UserIdProvider {
-            // Example:
-            // FirebaseAuth.getInstance().currentUser?.uid
-            "TEST_USER_ID"
+            val uid = FirebaseAuth.getInstance().currentUser?.uid
+            Timber.tag("SYNC_UID").i("Providing UID = %s", uid)
+            uid
         }
     }
+
 
     // --------------------------
     // Reminder Sync Config
@@ -52,7 +54,7 @@ object SyncModule {
         firestore: FirebaseFirestore,
         db: AppDatabase
     ): EntitySyncConfig<*> {
-        return ReminderSyncConfigFactory.create(
+        return ReminderSyncConfig.create(
             firestore = firestore,
             reminderDao = db.reminderDao()
         )

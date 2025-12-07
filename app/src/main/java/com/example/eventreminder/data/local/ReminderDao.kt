@@ -13,15 +13,16 @@ interface ReminderDao {
     @Update
     suspend fun update(reminder: EventReminder)
 
-    @Delete
-    suspend fun delete(reminder: EventReminder)
-
-    @Query("SELECT * FROM reminders ORDER BY id DESC")
+    @Query("SELECT * FROM reminders WHERE isDeleted = 0 ORDER BY id DESC")
     fun getAll(): Flow<List<EventReminder>>
 
     // Used by BootReceiver for rescheduling
-    @Query("SELECT * FROM reminders")
+    @Query("SELECT * FROM reminders WHERE isDeleted = 0")
     suspend fun getAllOnce(): List<EventReminder>
+
+    // ReminderSyncDaoAdapter to sync deleted records too
+    @Query("SELECT * FROM reminders")
+    suspend fun getAllIncludingDeletedOnce(): List<EventReminder>
 
     @Query("SELECT * FROM reminders WHERE id = :id")
     suspend fun getById(id: Long): EventReminder?
@@ -29,7 +30,15 @@ interface ReminderDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(list: List<EventReminder>)
 
-    @Query("DELETE FROM reminders WHERE id = :id")
-    suspend fun deleteById(id: Long)
+    @Query("UPDATE reminders SET isDeleted = 1 WHERE id = :id")
+    suspend fun markDeleted(id: Long)
+
+    @Query("UPDATE reminders SET updatedAt = :timestamp WHERE id = :id")
+    suspend fun updateUpdatedAt(id: Long, timestamp: Long)
+
+    @Query("SELECT updatedAt FROM reminders WHERE id = :id")
+    suspend fun getUpdatedAt(id: Long): Long?
+
+
 
 }

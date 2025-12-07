@@ -9,6 +9,7 @@ import com.example.eventreminder.data.model.ReminderTitle
 import com.example.eventreminder.data.model.RepeatRule
 import com.example.eventreminder.data.repo.ReminderRepository
 import com.example.eventreminder.scheduler.AlarmScheduler
+import com.example.eventreminder.sync.core.SyncEngine
 import com.example.eventreminder.util.BackupHelper
 import com.example.eventreminder.util.NextOccurrenceCalculator
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -33,7 +34,8 @@ import javax.inject.Inject
 @HiltViewModel
 class ReminderViewModel @Inject constructor(
     private val repo: ReminderRepository,
-    private val scheduler: AlarmScheduler
+    private val scheduler: AlarmScheduler,
+    private val syncEngine: SyncEngine
 ) : ViewModel() {
 
     // ============================================================
@@ -234,7 +236,7 @@ class ReminderViewModel @Inject constructor(
             recentlyDeleted = reminder
 
             scheduler.cancelAll(id, reminder.reminderOffsets)
-            repo.delete(reminder)
+            repo.markDelete(reminder)
 
         } catch (e: Exception) {
             Timber.e(e, "deleteEventWithUndo failed")
@@ -247,7 +249,10 @@ class ReminderViewModel @Inject constructor(
             val event = recentlyDeleted ?: return@launch
             recentlyDeleted = null
 
-            val newId = repo.insert(event)
+            // IMPORTANT: Reset soft-delete flag before restore
+            val restoredReminder = event.copy(isDeleted = false)
+
+            val newId = repo.insert(restoredReminder)
             val restored = repo.getReminder(newId) ?: return@launch
 
             val offsets = restored.reminderOffsets.ifEmpty { listOf(0L) }
@@ -281,7 +286,20 @@ class ReminderViewModel @Inject constructor(
     fun cleanupOldReminders() = viewModelScope.launch { }
     fun generatePdfReport() = viewModelScope.launch { }
     fun exportRemindersCsv() = viewModelScope.launch { }
-    fun syncRemindersWithServer() = viewModelScope.launch { }
+    fun syncRemindersWithServer() {
+        viewModelScope.launch{
+            try {
+                Timber.tag("SYNC").d("Sync button clicked")
+                _snackbarEvent.emit("Sync started…")
+                syncEngine.syncAll()
+                _snackbarEvent.emit("Sync completed")
+            }
+            catch (e: Exception) {
+                Timber.e(e, "Sync failed")
+                _snackbarEvent.emit("Sync failed: ${e.message}")
+            }
+        }
+    }
     fun backupReminders(context: Context) {
         viewModelScope.launch {
             val resultMessage = repo.exportRemindersToJson(context)
@@ -289,7 +307,6 @@ class ReminderViewModel @Inject constructor(
             Timber.tag("BACKUP").i(resultMessage)   // log again if desired
         }
     }
-
     fun restoreReminders(context: Context) {
         viewModelScope.launch {
             val resultMessage = repo.restoreRemindersFromBackup(context)

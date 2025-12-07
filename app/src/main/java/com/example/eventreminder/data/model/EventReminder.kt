@@ -23,5 +23,8 @@ data class EventReminder(
     val repeatRule: String? = null,
     val reminderOffsets: List<Long> = listOf(0L),
     val enabled: Boolean = true,
-    val backgroundUri: String? = null   // file path or content URI
+    val backgroundUri: String? = null,   // file path or content URI
+    val isDeleted: Boolean = false,
+    val updatedAt: Long = System.currentTimeMillis()
+
 )
