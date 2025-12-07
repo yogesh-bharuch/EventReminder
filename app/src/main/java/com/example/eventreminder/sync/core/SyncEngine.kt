@@ -3,7 +3,6 @@ package com.example.eventreminder.sync.core
 // =============================================================
 // Imports
 // =============================================================
-import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import kotlinx.coroutines.tasks.await
@@ -99,28 +98,22 @@ class SyncEngine(
             val docId = config.getLocalId(local)
             val docRef = collection.document(docId)
 
-            if (maxUpdatedAt == null || updatedAt > maxUpdatedAt!!) maxUpdatedAt = updatedAt
+            if (maxUpdatedAt == null || updatedAt > maxUpdatedAt!!) {
+                maxUpdatedAt = updatedAt
+            }
 
             if (config.isDeleted(local)) {
-
-                // Ensure Firestore always stores updatedAt as Timestamp, even for tombstones
-                val updatedMillis = updatedAt
-                val ts = Timestamp(
-                    updatedMillis / 1000,
-                    ((updatedMillis % 1000) * 1_000_000).toInt()
-                )
-
                 batch.set(
                     docRef,
                     mapOf(
                         "uid" to userId,
                         "id" to docId,
                         "isDeleted" to true,
-                        "updatedAt" to ts
+                        "updatedAt" to updatedAt      // LONG epoch millis
                     )
                 )
             } else {
-                batch.set(docRef, config.toRemote(local, userId))
+                batch.set(docRef, config.toRemote(local, userId)) // also LONG epoch millis
             }
         }
 
@@ -148,43 +141,26 @@ class SyncEngine(
         val lastRemoteSyncAt = meta?.lastRemoteSyncAt
         val lastLocalSyncAt = meta?.lastLocalSyncAt
 
-        // -------------------------------
-        // Use Timestamp filter (CORRECT)
-        // -------------------------------
+        // ---------------------------------------------------------
+        // Query ONLY by uid; we do updatedAt filtering + conflicts
+        // entirely on the client using plain Long comparison.
+        // ---------------------------------------------------------
         var query: Query = config.getCollectionRef()
             .whereEqualTo("uid", userId)
 
-        if (lastRemoteSyncAt != null) {
-
-            val ts = Timestamp(
-                lastRemoteSyncAt / 1000,
-                ((lastRemoteSyncAt % 1000) * 1_000_000).toInt()
-            )
-
-            Timber.tag("REMOTE_DEBUG").e("Filtering where updatedAt > %s", ts)
-            query = query.whereGreaterThan("updatedAt", ts)
-
-        } else {
-            Timber.tag("REMOTE_DEBUG").e("No lastRemoteSyncAt → FULL SCAN")
-        }
+        Timber.tag("REMOTE_DEBUG").e(
+            "Remote→Local key=%s lastRemoteSyncAt=%s",
+            config.key,
+            lastRemoteSyncAt ?: "NULL"
+        )
 
         // Fetch documents
         val snapshot = query.get().await()
 
         Timber.tag("REMOTE_DEBUG").e("Remote query returned %d docs", snapshot.size())
 
-        for (doc in snapshot.documents) {
-            val raw = doc.data?.get("updatedAt")
-            Timber.tag("REMOTE_DEBUG").e(
-                "REMOTE DOC id=%s updatedAt RAW=%s TYPE=%s",
-                doc.id,
-                raw,
-                raw?.javaClass?.simpleName
-            )
-        }
-
         if (snapshot.isEmpty) {
-            Timber.tag("REMOTE_DEBUG").e("No remote updates → EXIT")
+            Timber.tag("REMOTE_DEBUG").e("No remote docs → EXIT")
             return
         }
 
@@ -196,42 +172,47 @@ class SyncEngine(
             val data = doc.data ?: continue
             val docId = doc.id
 
-            // ------------------------------------
-            // USE HELPER to extract millis
-            // ------------------------------------
-            val remoteUpdatedAt: Long? = extractUpdatedAtMillis(data["updatedAt"])
+            val remoteUpdatedAt = extractUpdatedAtMillis(data["updatedAt"])
             val isRemoteDeleted = data["isDeleted"] as? Boolean ?: false
             val localUpdatedAt = config.getLocalUpdatedAt(docId)
 
             Timber.tag("REMOTE_DEBUG").e(
-                "PROCESS id=%s remoteUpdatedAt=%s localUpdatedAt=%s",
+                "DOC id=%s remoteUpdatedAt=%s localUpdatedAt=%s",
                 docId, remoteUpdatedAt, localUpdatedAt
             )
 
-            // ------------------------------------
-            // Correct conflict logic: LATEST_UPDATED_WINS
-            // ------------------------------------
+            // ------------------------------
+            // Conflict resolution
+            // ------------------------------
             val shouldApply = when (config.conflictStrategy) {
                 ConflictStrategy.REMOTE_WINS ->
-                    true
+                    // Always trust remote if it's newer than our last remote checkpoint
+                    lastRemoteSyncAt == null ||
+                            (remoteUpdatedAt != null && remoteUpdatedAt > lastRemoteSyncAt)
 
                 ConflictStrategy.LOCAL_WINS ->
-                    localUpdatedAt == null // ONLY override if local doesn't exist
+                    // Only apply if we have no local row AND remote is newer than checkpoint
+                    localUpdatedAt == null &&
+                            (lastRemoteSyncAt == null ||
+                                    (remoteUpdatedAt != null && remoteUpdatedAt > lastRemoteSyncAt))
 
                 ConflictStrategy.LATEST_UPDATED_WINS ->
-                    localUpdatedAt == null ||
-                            (remoteUpdatedAt != null && remoteUpdatedAt > localUpdatedAt)
+                    // Remote applies if it is newer than what we've ever pulled from cloud
+                    lastRemoteSyncAt == null ||
+                            (remoteUpdatedAt != null && remoteUpdatedAt > lastRemoteSyncAt)
             }
 
-            Timber.tag("REMOTE_DEBUG").e("shouldApply=%s", shouldApply)
+            Timber.tag("REMOTE_DEBUG").e("shouldApply=%s for id=%s", shouldApply, docId)
             if (!shouldApply) continue
 
+            // Track max remote updatedAt we've seen (for next checkpoint)
             if (remoteUpdatedAt != null &&
                 (maxRemoteUpdatedAt == null || remoteUpdatedAt > maxRemoteUpdatedAt!!)
             ) {
                 maxRemoteUpdatedAt = remoteUpdatedAt
             }
 
+            // Apply tombstone or upsert
             if (isRemoteDeleted) {
                 toDeleteIds.add(docId)
             } else {
@@ -262,11 +243,10 @@ class SyncEngine(
     }
 
     // =============================================================
-    // Helper: Normalize remote updatedAt → millis
+    // Helper: Normalize updatedAt → millis
     // =============================================================
     private fun extractUpdatedAtMillis(raw: Any?): Long? {
         return when (raw) {
-            is Timestamp -> raw.toDate().time
             is Number -> raw.toLong()
             is String -> raw.toLongOrNull()
             else -> null

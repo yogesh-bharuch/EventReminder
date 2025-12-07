@@ -22,7 +22,7 @@ import timber.log.Timber
  * Required fields:
  * - uid
  * - id
- * - updatedAt (Timestamp: epoch millis)
+ * - updatedAt (Long: epoch millis)
  * - isDeleted
  */
 object ReminderSyncConfig {
@@ -52,12 +52,7 @@ object ReminderSyncConfig {
             // ------------------------------------------------------------
             toRemote = { local, userId ->
 
-                // Convert millis -> Timestamp(seconds, nanoseconds)
                 val updatedMillis = local.updatedAt
-                val ts = Timestamp(
-                    updatedMillis / 1000,
-                    ((updatedMillis % 1000) * 1_000_000).toInt()
-                )
 
                 mapOf(
                     "uid" to userId,
@@ -72,7 +67,7 @@ object ReminderSyncConfig {
                     "backgroundUri" to local.backgroundUri,
 
                     // Sync-critical fields
-                    "updatedAt" to ts,          // MUST be Timestamp
+                    "updatedAt" to updatedMillis,     // LONG, not Timestamp
                     "isDeleted" to local.isDeleted
                 )
             },
@@ -84,7 +79,7 @@ object ReminderSyncConfig {
 
                 // Normalize remote updatedAt into epoch millis
                 val updatedAt: Long = when (val raw = data["updatedAt"]) {
-                    is Timestamp -> raw.toDate().time
+                    is Timestamp -> raw.toDate().time      // backward compatibility
                     is Number -> raw.toLong()
                     is String -> raw.toLongOrNull() ?: System.currentTimeMillis()
                     else -> System.currentTimeMillis()
@@ -136,9 +131,7 @@ object ReminderSyncConfig {
             // Deletion flag
             isDeleted = { event -> event.isDeleted },
 
-            // ------------------------------------------------------------
-            // Needed for conflict resolution inside SyncEngine
-            // ------------------------------------------------------------
+            // Needed for conflict resolution
             getLocalUpdatedAt = { id ->
                 daoAdapter.getLocalUpdatedAt(id)
             }
