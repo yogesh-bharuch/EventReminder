@@ -119,13 +119,17 @@ class SyncEngine(
 
         batch.commit().await()
 
-        syncMetadataDao.upsert(
-            SyncMetadataEntity(
-                key = config.key,
-                lastLocalSyncAt = maxUpdatedAt,
-                lastRemoteSyncAt = meta?.lastRemoteSyncAt
+        // 🔥 Write only if changed
+        if (maxUpdatedAt != meta?.lastLocalSyncAt) {
+            syncMetadataDao.upsert(
+                SyncMetadataEntity(
+                    key = config.key,
+                    lastLocalSyncAt = maxUpdatedAt,
+                    lastRemoteSyncAt = meta?.lastRemoteSyncAt
+                )
             )
-        )
+        }
+
     }
 
     // =============================================================
@@ -146,7 +150,7 @@ class SyncEngine(
         // entirely on the client using plain Long comparison.
         // ---------------------------------------------------------
         var query: Query = config.getCollectionRef()
-            .whereEqualTo("uid", userId)
+            .whereEqualTo("uid", userId).limit(500)
 
         Timber.tag("REMOTE_DEBUG").e(
             "Remote→Local key=%s lastRemoteSyncAt=%s",
@@ -230,13 +234,17 @@ class SyncEngine(
             config.daoAdapter.markDeletedByIds(toDeleteIds)
         }
 
-        syncMetadataDao.upsert(
-            SyncMetadataEntity(
-                key = config.key,
-                lastLocalSyncAt = lastLocalSyncAt,
-                lastRemoteSyncAt = maxRemoteUpdatedAt
+        // 🔥 Write only if changed
+        if (maxRemoteUpdatedAt != lastRemoteSyncAt) {
+            syncMetadataDao.upsert(
+                SyncMetadataEntity(
+                    key = config.key,
+                    lastLocalSyncAt = lastLocalSyncAt,
+                    lastRemoteSyncAt = maxRemoteUpdatedAt
+                )
             )
-        )
+        }
+
 
         Timber.tag("REMOTE_DEBUG")
             .e("SYNC COMPLETE — new lastRemoteSyncAt=%s", maxRemoteUpdatedAt)
