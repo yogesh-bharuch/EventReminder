@@ -37,3 +37,14 @@ class ReminderSyncDaoAdapter(
         return dao.getUpdatedAt(numericId)
     }
 }
+
+/*
+*✅ 4. ReminderSyncDaoAdapter.kt
+Implements SyncDaoAdapter for EventReminder.
+Provides:
+Room queries for changed reminders
+Insert/update reminders
+Soft-delete local reminders
+Fetch local updatedAt for conflict logic
+👉 This makes ReminderDao usable by the SyncEngine.
+* */

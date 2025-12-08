@@ -138,3 +138,15 @@ object ReminderSyncConfig {
         )
     }
 }
+
+
+/*
+* ✅ 2. ReminderSyncConfig.kt
+Creates the actual sync config for EventReminder entity.
+It fills EntitySyncConfig with:
+Firestore collection ("Reminders")
+How to serialize/deserialize EventReminder
+How to read/write updatedAt
+How to detect isDeleted
+DAO adapter instance
+👉 This is the Reminder-specific configuration for syncing.*/

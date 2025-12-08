@@ -17,3 +17,10 @@ interface SyncMetadataDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(entity: SyncMetadataEntity)
 }
+
+/*
+* ✅ 7. SyncMetadataDao.kt
+Room DAO to read/write sync metadata.
+Used by SyncEngine to update checkpoints.
+👉 Keeps track of where last sync left off.
+* */

@@ -261,3 +261,24 @@ class SyncEngine(
         }
     }
 }
+
+
+/*
+✅ 5. SyncEngine.kt
+💥 THE HEART OF THE ENTIRE SYNC SYSTEM
+Responsible for:
+
+A. Local → Remote (Push)
+Finds local records with updatedAt > lastLocalSyncAt
+Sends them to Firestore
+Writes tombstones if deleted
+Updates lastLocalSyncAt
+
+B. Remote → Local (Pull)
+Fetches Firestore docs for the user
+Filters by updatedAt > lastRemoteSyncAt
+Applies conflict strategy
+Inserts/updates/deletes in Room
+Updates lastRemoteSyncAt
+👉 This is the sync brain that does the actual work.
+* */

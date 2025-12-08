@@ -29,3 +29,10 @@ class SyncWorker @AssistedInject constructor(
         }
     }
 }
+
+/*
+* ✅ 10. SyncWorker.kt
+A WorkManager background worker that periodically runs:
+syncEngine.syncAll()
+👉 Allows automatic sync in background even when app not opened
+* */

@@ -94,3 +94,14 @@ object SyncModule {
         )
     }
 }
+
+/*
+* ✅ 8. SyncModule.kt (Hilt DI Module)
+Provides:
+Firestore instance
+UserIdProvider
+ReminderSyncConfig
+Global SyncConfig with entity list
+SyncEngine instance
+👉 This wires up all sync components using Hilt Dependency Injection.
+* */

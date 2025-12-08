@@ -28,3 +28,13 @@ interface SyncDaoAdapter<Local : Any> {
      */
     suspend fun getLocalUpdatedAt(id: String): Long?
 }
+
+/*
+*✅ 3. SyncDaoAdapter.kt
+Abstract interface for Room operations used by SyncEngine.
+Declares:
+getLocalsChangedAfter()
+upsertAll()
+markDeletedByIds()
+getLocalUpdatedAt()
+👉 This is a bridge between Room and SyncEngine (generic for any entity). */

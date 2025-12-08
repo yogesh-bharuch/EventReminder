@@ -14,3 +14,16 @@ data class EntitySyncConfig<Local : Any>(
     val isDeleted: (Local) -> Boolean,
     val getLocalUpdatedAt: suspend (String) -> Long?
 )
+
+/*
+* ✅ 1. EntitySyncConfig.kt
+Defines the rules for syncing one entity type (e.g., reminders).
+It tells SyncEngine:
+How to convert Local → Firestore (toRemote)
+How to convert Firestore → Local (fromRemote)
+How to get IDs & timestamps
+How to detect deleted items
+Which DAO adapter to use
+Which conflict strategy to apply
+Where in Firestore the collection lives
+👉 This is the blueprint for syncing one table.*/

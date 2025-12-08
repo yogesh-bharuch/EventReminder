@@ -25,3 +25,10 @@ object SyncMetadataModule {
         return db.syncMetadataDao()
     }
 }
+
+/*
+* ✅ 9. SyncMetadataModule.kt
+Provides:
+SyncMetadataDao
+👉 Ensures metadata DAO is injectable.
+* */

@@ -10,3 +10,12 @@ data class SyncMetadataEntity(
     val lastLocalSyncAt: Long?,
     val lastRemoteSyncAt: Long?
 )
+
+/*
+* ✅ 6. SyncMetadataEntity.kt
+Room table that stores the sync checkpoints.
+Fields:
+lastLocalSyncAt
+lastRemoteSyncAt
+👉 Helps SyncEngine do incremental sync instead of full sync.
+* */
