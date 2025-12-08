@@ -18,7 +18,7 @@ import java.time.LocalDateTime
  *  - eventDateEpoch → original event date/time (epoch millis)
  */
 data class AlarmEntry(
-    val eventId: Long,
+    val eventId: String,
     val eventTitle: String,
 
     // Original event date/time set by the user

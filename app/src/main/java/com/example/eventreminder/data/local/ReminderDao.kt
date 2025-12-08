@@ -7,38 +7,50 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface ReminderDao {
 
+    // ============================================================
+    // INSERT / UPDATE (UUID-based)
+    // EventReminder.id is a String -> UUID
+    // ============================================================
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insert(reminder: EventReminder): Long
+    suspend fun insert(reminder: EventReminder)
 
     @Update
     suspend fun update(reminder: EventReminder)
 
-    @Query("SELECT * FROM reminders WHERE isDeleted = 0 ORDER BY id DESC")
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(list: List<EventReminder>)
+
+    // ============================================================
+    // READ
+    // ============================================================
+
+    @Query("SELECT * FROM reminders WHERE isDeleted = 0 ORDER BY updatedAt DESC")
     fun getAll(): Flow<List<EventReminder>>
 
-    // Used by BootReceiver for rescheduling
     @Query("SELECT * FROM reminders WHERE isDeleted = 0")
     suspend fun getAllOnce(): List<EventReminder>
 
-    // ReminderSyncDaoAdapter to sync deleted records too
     @Query("SELECT * FROM reminders")
     suspend fun getAllIncludingDeletedOnce(): List<EventReminder>
 
     @Query("SELECT * FROM reminders WHERE id = :id")
-    suspend fun getById(id: Long): EventReminder?
+    suspend fun getById(id: String): EventReminder?
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertAll(list: List<EventReminder>)
+    // ============================================================
+    // DELETE (Soft delete)
+    // ============================================================
 
-    @Query("UPDATE reminders SET isDeleted = 1 WHERE id = :id")
-    suspend fun markDeleted(id: Long)
+    @Query("UPDATE reminders SET isDeleted = 1, updatedAt = :timestamp WHERE id = :id")
+    suspend fun markDeleted(id: String, timestamp: Long = System.currentTimeMillis())
+
+    // ============================================================
+    // TIMESTAMP HELPERS
+    // ============================================================
 
     @Query("UPDATE reminders SET updatedAt = :timestamp WHERE id = :id")
-    suspend fun updateUpdatedAt(id: Long, timestamp: Long)
+    suspend fun updateUpdatedAt(id: String, timestamp: Long)
 
     @Query("SELECT updatedAt FROM reminders WHERE id = :id")
-    suspend fun getUpdatedAt(id: Long): Long?
-
-
-
+    suspend fun getUpdatedAt(id: String): Long?
 }

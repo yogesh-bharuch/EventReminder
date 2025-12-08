@@ -14,14 +14,6 @@ import com.example.eventreminder.ui.screens.ReminderManagerScreen
 import com.example.eventreminder.ui.viewmodels.ReminderViewModel
 import com.example.firebaseloginmodule.FirebaseLoginEntry
 
-/**
- * Main Navigation Graph for the app.
- * Uses Kotlin Serialization typed routes.
- *
- * IMPORTANT:
- * - ReminderViewModel is SHARED across HomeScreen and AddEditReminderScreen
- *   by scoping it to HomeGraphRoute.
- */
 @Composable
 fun AppNavGraph(
     navController: NavHostController,
@@ -32,37 +24,22 @@ fun AppNavGraph(
         startDestination = startDestination
     ) {
 
-        // ------------------------------------------------------------
-        // 🔐 LOGIN SCREEN
-        // ------------------------------------------------------------
         composable<LoginRoute> {
             FirebaseLoginEntry(
                 onLoginSuccess = {
                     navController.navigate(HomeGraphRoute) {
-                        // Remove login from backstack
                         popUpTo(LoginRoute) { inclusive = true }
                     }
                 }
             )
         }
 
-        // ------------------------------------------------------------
-        // ⭐ SHARED REMINDER ROOT GRAPH
-        // Everything inside this navigation block shares SAME ReminderViewModel
-        // by using navController.getBackStackEntry(HomeGraphRoute)
-        // ------------------------------------------------------------
         navigation<HomeGraphRoute>(
             startDestination = HomeRoute
         ) {
 
-            // --------------------------------------------------------
-            // 🏠 HOME SCREEN (Uses shared ReminderViewModel)
-            // --------------------------------------------------------
             composable<HomeRoute> {
-                // Get graph-level ViewModelStoreOwner
                 val parentEntry = navController.getBackStackEntry(HomeGraphRoute)
-
-                // Create/Get the shared ViewModel
                 val sharedVm: ReminderViewModel = hiltViewModel(parentEntry)
 
                 HomeScreen(
@@ -71,19 +48,15 @@ fun AppNavGraph(
                 )
             }
 
-            // --------------------------------------------------------
-            // ✏️ ADD / EDIT REMINDER SCREEN (Uses shared ReminderViewModel)
-            // --------------------------------------------------------
             composable<AddEditReminderRoute> { backStackEntry ->
                 val args = backStackEntry.toRoute<AddEditReminderRoute>()
 
-                // Same shared VM as HomeScreen
                 val parentEntry = navController.getBackStackEntry(HomeGraphRoute)
                 val sharedReminderVm: ReminderViewModel = hiltViewModel(parentEntry)
 
                 AddEditReminderScreen(
                     navController = navController,
-                    eventId = args.eventId,   // null => Add mode, non-null => Edit mode
+                    eventId = args.eventId,
                     reminderVm = sharedReminderVm
                 )
             }
@@ -95,6 +68,14 @@ fun AppNavGraph(
         composable<PixelPreviewRoute> { entry ->
             val args = entry.toRoute<PixelPreviewRoute>()
             CardEditorScreen(reminderId = args.reminderId)
+        }
+
+        // ------------------------------------------------------------
+        // 🎨 idString Parallel PixelPreviewRoute
+        // ------------------------------------------------------------
+        composable<PixelPreviewRouteString> { entry ->                        // idchanged to idstring
+            val args = entry.toRoute<PixelPreviewRouteString>()               // idchanged to idstring
+            CardEditorScreen(reminderId = args.reminderIdString)        // idchanged to idstring
         }
 
         // ------------------------------------------------------------

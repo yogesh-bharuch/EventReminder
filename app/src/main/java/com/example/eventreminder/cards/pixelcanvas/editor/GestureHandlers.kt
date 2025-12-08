@@ -1,13 +1,5 @@
 package com.example.eventreminder.cards.pixelcanvas.editor
 
-// =============================================================
-// GestureHandlers.kt — Extracted gesture logic for CardEditorScreen
-// - Handles sticker drag / rotate / scale
-// - Handles avatar drag / rotate / scale
-// - Handles sticker selection + clearing
-// - Pure logic, NO UI elements
-// =============================================================
-
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateRotation
 import androidx.compose.foundation.gestures.calculateZoom
@@ -17,13 +9,7 @@ import androidx.compose.ui.unit.IntSize
 import com.example.eventreminder.cards.CardViewModel
 import com.example.eventreminder.cards.pixelcanvas.CardDataPx
 import com.example.eventreminder.cards.pixelcanvas.CardSpecPx
-import com.example.eventreminder.cards.pixelcanvas.editor.TouchAvatarUtils
-import com.example.eventreminder.cards.pixelcanvas.editor.TouchStickerUtils
-//import com.example.eventreminder.cards.pixelcanvas.StickerPx
 import com.example.eventreminder.cards.pixelcanvas.stickers.model.StickerPx
-
-
-
 
 object GestureHandlers {
 
@@ -71,8 +57,8 @@ object GestureHandlers {
                             val rot = event.calculateRotation().coerceFinite()
 
                             viewModel.updateActiveStickerPosition(
-                                dxNorm = pan.x / boxSize.width.toFloat(),
-                                dyNorm = pan.y / boxSize.height.toFloat()
+                                dx = pan.x / boxSize.width.toFloat(),
+                                dy = pan.y / boxSize.height.toFloat()
                             )
 
                             viewModel.updateActiveStickerScale(zoom)
@@ -100,13 +86,14 @@ object GestureHandlers {
 
                         // Avatar gesture loop
                         while (event.changes.any { it.pressed }) {
+
                             val pan = event.calculatePan()
                             val zoom = event.calculateZoom().coerceFinite()
                             val rot = event.calculateRotation().coerceFinite()
 
                             viewModel.updatePixelAvatarPosition(
-                                dxNorm = pan.x / boxSize.width.toFloat(),
-                                dyNorm = pan.y / boxSize.height.toFloat()
+                                dx = pan.x / boxSize.width.toFloat(),
+                                dy = pan.y / boxSize.height.toFloat()
                             )
                             viewModel.updatePixelAvatarScale(zoom)
                             viewModel.updatePixelAvatarRotation(rot)

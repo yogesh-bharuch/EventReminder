@@ -15,27 +15,35 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 fun SwipeBackgroundM3(state: SwipeToDismissBoxState) {
-    val color = when (state.targetValue) {
+
+    // Show red background ONLY while swiping toward delete
+    val showRed = when (state.dismissDirection) {
         SwipeToDismissBoxValue.StartToEnd,
-        SwipeToDismissBoxValue.EndToStart -> Color.Red.copy(alpha = 0.85f)
-        else -> Color.Transparent
+        SwipeToDismissBoxValue.EndToStart -> true
+        else -> false
+    }
+
+    val bgColor = if (showRed) Color.Red.copy(alpha = 0.85f) else Color.Transparent
+
+    val alignment = when (state.dismissDirection) {
+        SwipeToDismissBoxValue.StartToEnd -> Alignment.CenterStart
+        SwipeToDismissBoxValue.EndToStart -> Alignment.CenterEnd
+        else -> Alignment.Center
     }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(color)
-            .padding(20.dp),
-        contentAlignment = when (state.dismissDirection) {
-            SwipeToDismissBoxValue.StartToEnd -> Alignment.CenterStart
-            SwipeToDismissBoxValue.EndToStart -> Alignment.CenterEnd
-            else -> Alignment.Center
-        }
+            .background(bgColor)
+            .padding(horizontal = 20.dp),
+        contentAlignment = alignment
     ) {
-        Icon(
-            Icons.Default.Delete,
-            contentDescription = "Delete",
-            tint = Color.White
-        )
+        if (showRed) {
+            Icon(
+                Icons.Default.Delete,
+                contentDescription = "Delete",
+                tint = Color.White
+            )
+        }
     }
 }

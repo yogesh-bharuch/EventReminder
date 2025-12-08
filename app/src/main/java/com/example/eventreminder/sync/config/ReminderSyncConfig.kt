@@ -13,17 +13,7 @@ import timber.log.Timber
 /**
  * ReminderSyncConfig
  *
- * Provides EntitySyncConfig<EventReminder> for SyncEngine.
- *
- * Firestore model:
- * Collection: Reminders/
- * DocumentID: <id>
- *
- * Required fields:
- * - uid
- * - id
- * - updatedAt (Long: epoch millis)
- * - isDeleted
+ * UUID–ONLY sync configuration.
  */
 object ReminderSyncConfig {
 
@@ -42,21 +32,21 @@ object ReminderSyncConfig {
             conflictStrategy = ConflictStrategy.LATEST_UPDATED_WINS,
             daoAdapter = daoAdapter,
 
-            // Firestore collection reference
+            // Firestore collection
             getCollectionRef = {
                 firestore.collection("Reminders")
             },
 
-            // ------------------------------------------------------------
-            // Local → Remote
-            // ------------------------------------------------------------
+            // -----------------------------------------------------------------
+            // LOCAL → REMOTE (UUID)
+            // -----------------------------------------------------------------
             toRemote = { local, userId ->
 
                 val updatedMillis = local.updatedAt
 
                 mapOf(
                     "uid" to userId,
-                    "id" to local.id.toString(),
+                    "id" to local.id,                        // ⭐ UUID string
                     "title" to local.title,
                     "description" to local.description,
                     "eventEpochMillis" to local.eventEpochMillis,
@@ -67,19 +57,20 @@ object ReminderSyncConfig {
                     "backgroundUri" to local.backgroundUri,
 
                     // Sync-critical fields
-                    "updatedAt" to updatedMillis,     // LONG, not Timestamp
+                    "updatedAt" to updatedMillis,
                     "isDeleted" to local.isDeleted
                 )
             },
 
-            // ------------------------------------------------------------
-            // Remote → Local
-            // ------------------------------------------------------------
+            // -----------------------------------------------------------------
+            // REMOTE → LOCAL (UUID)
+            // Firestore document ID is ALSO UUID string now
+            // -----------------------------------------------------------------
             fromRemote = { id, data ->
 
-                // Normalize remote updatedAt into epoch millis
+                // Normalize updatedAt
                 val updatedAt: Long = when (val raw = data["updatedAt"]) {
-                    is Timestamp -> raw.toDate().time      // backward compatibility
+                    is Timestamp -> raw.toDate().time
                     is Number -> raw.toLong()
                     is String -> raw.toLongOrNull() ?: System.currentTimeMillis()
                     else -> System.currentTimeMillis()
@@ -87,7 +78,7 @@ object ReminderSyncConfig {
 
                 try {
                     EventReminder(
-                        id = id.toLong(),
+                        id = id,                                // ⭐ UUID string (NO toLong())
                         title = data["title"] as? String ?: "",
                         description = data["description"] as? String?,
                         eventEpochMillis = (data["eventEpochMillis"] as? Number)?.toLong()
@@ -104,10 +95,10 @@ object ReminderSyncConfig {
                     )
                 } catch (t: Throwable) {
 
-                    Timber.tag(TAG).e(t, "fromRemote: Failed to parse remote doc id=%s", id)
+                    Timber.tag(TAG).e(t, "fromRemote: Failed to parse remote doc id=$id")
 
                     EventReminder(
-                        id = id.toLong(),
+                        id = id,                                // fallback UUID
                         title = "",
                         description = null,
                         eventEpochMillis = System.currentTimeMillis(),
@@ -122,31 +113,18 @@ object ReminderSyncConfig {
                 }
             },
 
-            // Unique ID extractor
-            getLocalId = { event -> event.id.toString() },
+            // -----------------------------------------------------------------
+            // LOCAL UUID STRING ID
+            // -----------------------------------------------------------------
+            getLocalId = { event -> event.id },                   // ⭐ UUID string
 
-            // Local timestamp extractor
             getUpdatedAt = { event -> event.updatedAt },
 
-            // Deletion flag
             isDeleted = { event -> event.isDeleted },
 
-            // Needed for conflict resolution
-            getLocalUpdatedAt = { id ->
-                daoAdapter.getLocalUpdatedAt(id)
+            getLocalUpdatedAt = { idString ->
+                daoAdapter.getLocalUpdatedAt(idString)            // ⭐ UUID lookup
             }
         )
     }
 }
-
-
-/*
-* ✅ 2. ReminderSyncConfig.kt
-Creates the actual sync config for EventReminder entity.
-It fills EntitySyncConfig with:
-Firestore collection ("Reminders")
-How to serialize/deserialize EventReminder
-How to read/write updatedAt
-How to detect isDeleted
-DAO adapter instance
-👉 This is the Reminder-specific configuration for syncing.*/

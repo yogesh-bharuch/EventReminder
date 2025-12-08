@@ -10,7 +10,6 @@ import com.example.eventreminder.data.model.RepeatRule
 import com.example.eventreminder.data.repo.ReminderRepository
 import com.example.eventreminder.scheduler.AlarmScheduler
 import com.example.eventreminder.sync.core.SyncEngine
-import com.example.eventreminder.util.BackupHelper
 import com.example.eventreminder.util.NextOccurrenceCalculator
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
@@ -18,19 +17,9 @@ import kotlinx.coroutines.launch
 import timber.log.Timber
 import java.time.*
 import java.time.format.DateTimeFormatter
+import java.util.UUID
 import javax.inject.Inject
 
-/**
- * ReminderViewModel
- * -----------------
- * Shared between HomeScreen & AddEditReminderScreen
- * Handles:
- *  - CRUD
- *  - alarm scheduling
- *  - undo
- *  - snackbar events
- *  - grouping reminders
- */
 @HiltViewModel
 class ReminderViewModel @Inject constructor(
     private val repo: ReminderRepository,
@@ -39,9 +28,8 @@ class ReminderViewModel @Inject constructor(
 ) : ViewModel() {
 
     // ============================================================
-    // 🔔 SNACKBAR EVENTS (SharedFlow)
+    // SNACKBAR EVENTS
     // ============================================================
-
     private val _snackbarEvent = MutableSharedFlow<String>(
         replay = 0,
         extraBufferCapacity = 1
@@ -53,14 +41,11 @@ class ReminderViewModel @Inject constructor(
     }
 
     // ============================================================
-    // 🧩 UI STATE (Add/Edit Screen)
+    // UI STATE
     // ============================================================
-
     data class UiState(
         val editReminder: EventReminder? = null,
         val errorMessage: String? = null,
-
-        // Add/Edit controlled fields
         val title: ReminderTitle = ReminderTitle.EVENT,
         val description: String = "",
         val date: LocalDate = LocalDate.now(),
@@ -72,41 +57,23 @@ class ReminderViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(UiState())
     val uiState: StateFlow<UiState> = _uiState
 
-    fun resetError() {
-        _uiState.update { it.copy(errorMessage = null) }
-    }
-
-    // ------------------------------------------------------------
-    // UI field update functions
-    // ------------------------------------------------------------
-
-    fun onTitleChanged(newTitle: ReminderTitle) =
-        _uiState.update { it.copy(title = newTitle) }
-    fun onDescriptionChanged(text: String) =
-        _uiState.update { it.copy(description = text) }
-    fun onDateChanged(newDate: LocalDate) =
-        _uiState.update { it.copy(date = newDate) }
-    fun onTimeChanged(newTime: LocalTime) =
-        _uiState.update { it.copy(time = newTime) }
-    fun onOffsetsChanged(newOffsets: Set<ReminderOffset>) =
-        _uiState.update { it.copy(offsets = newOffsets) }
-    fun onRepeatChanged(rule: RepeatRule) =
-        _uiState.update { it.copy(repeat = rule) }
-    fun clearEditReminder() =
-        _uiState.update { it.copy(editReminder = null) }
-    // Clears all Add/Edit fields back to default for "Add new" mode
-    // editReminder = null, errorMessage = null, title = EVENT, description = "", date = today, time= now, offsets = emptySet(), repeat = NONE
-    fun resetAddEditForm() {
-        _uiState.value = UiState()
-    }
-
-
+    // ============================================================
+    // UI UPDATES
+    // ============================================================
+    fun resetError() = _uiState.update { it.copy(errorMessage = null) }
+    fun onTitleChanged(newTitle: ReminderTitle) = _uiState.update { it.copy(title = newTitle) }
+    fun onDescriptionChanged(text: String) = _uiState.update { it.copy(description = text) }
+    fun onDateChanged(newDate: LocalDate) = _uiState.update { it.copy(date = newDate) }
+    fun onTimeChanged(newTime: LocalTime) = _uiState.update { it.copy(time = newTime) }
+    fun onOffsetsChanged(newOffsets: Set<ReminderOffset>) = _uiState.update { it.copy(offsets = newOffsets) }
+    fun onRepeatChanged(rule: RepeatRule) = _uiState.update { it.copy(repeat = rule) }
+    fun clearEditReminder() = _uiState.update { it.copy(editReminder = null) }
+    fun resetAddEditForm() { _uiState.value = UiState() }
 
     // ============================================================
-    // 📥 LOAD REMINDER FOR EDIT MODE
+    // LOAD REMINDER (UUID)
     // ============================================================
-
-    fun load(id: Long) = viewModelScope.launch {
+    fun load(id: String) = viewModelScope.launch {
         try {
             val r = repo.getReminder(id) ?: return@launch
 
@@ -116,49 +83,45 @@ class ReminderViewModel @Inject constructor(
             _uiState.update {
                 it.copy(
                     editReminder = r,
-
                     title = ReminderTitle.entries.find { t -> t.label == r.title }
                         ?: ReminderTitle.EVENT,
-
                     description = r.description ?: "",
-
                     date = zdt.toLocalDate(),
                     time = zdt.toLocalTime(),
-
-                    offsets = r.reminderOffsets
-                        .mapNotNull { millis -> ReminderOffset.fromMillis(millis) }
-                        .toSet(),
-
+                    offsets = r.reminderOffsets.mapNotNull { ms ->
+                        ReminderOffset.fromMillis(ms)
+                    }.toSet(),
                     repeat = RepeatRule.fromKey(r.repeatRule)
                 )
             }
 
-            Timber.tag("VM_LOAD").d("Loaded reminder $id → UI fields populated")
+            Timber.tag("VM_LOAD").d("Loaded UUID=$id")
 
         } catch (e: Exception) {
-            Timber.e(e, "Failed to load reminder id=$id")
+            Timber.e(e)
             _uiState.update { it.copy(errorMessage = e.message) }
         }
     }
 
     // ============================================================
-    // 💾 UI → VM SAVE ENTRY POINT (WRAPPER)
-    // 💾 SAVE (Insert or Update) + Schedule Alarms
+    // SAVE ENTRY POINT (UUID)
     // ============================================================
-
-    // WRAPPER
-    fun onSaveClicked(title: ReminderTitle, description: String, date: LocalDate, time: LocalTime, offsets: Set<ReminderOffset>, repeatRule: RepeatRule, existingId: Long?, zoneId: ZoneId = ZoneId.systemDefault()) = viewModelScope.launch {
-
-        if (title.label.isBlank()) {
-            _uiState.update { it.copy(errorMessage = "Title cannot be empty") }
-            return@launch
-        }
+    fun onSaveClicked(
+        title: ReminderTitle,
+        description: String,
+        date: LocalDate,
+        time: LocalTime,
+        offsets: Set<ReminderOffset>,
+        repeatRule: RepeatRule,
+        existingId: String?,
+        zoneId: ZoneId = ZoneId.systemDefault()
+    ) = viewModelScope.launch {
 
         val zdt = ZonedDateTime.of(date, time, zoneId)
         val epoch = zdt.toInstant().toEpochMilli()
 
         val reminder = EventReminder(
-            id = existingId ?: 0L,
+            id = existingId ?: UUID.randomUUID().toString(),
             title = title.label,
             description = description.ifBlank { null },
             eventEpochMillis = epoch,
@@ -168,21 +131,27 @@ class ReminderViewModel @Inject constructor(
             enabled = true
         )
 
-        saveReminder(reminder) // delegates to full logic
+        saveReminder(reminder)
     }
-    // Insert or Update
+
+    // ============================================================
+    // INSERT / UPDATE (UUID)
+    // ============================================================
     fun saveReminder(reminder: EventReminder) = viewModelScope.launch {
         try {
-            val isNew = reminder.id == 0L
+            val isNew = repo.getReminder(reminder.id) == null
 
-            val id = if (isNew) repo.insert(reminder) else {
-                repo.update(reminder)
-                reminder.id
-            }
+            val savedId =
+                if (isNew) repo.insert(reminder)
+                else {
+                    repo.update(reminder)
+                    reminder.id
+                }
 
-            val saved = repo.getReminder(id)
+            val saved = repo.getReminder(savedId)
                 ?: return@launch _uiState.update { it.copy(errorMessage = "Failed to save") }
 
+            // Compute next occurrence
             val nextEvent = NextOccurrenceCalculator.nextOccurrence(
                 saved.eventEpochMillis,
                 saved.timeZone,
@@ -191,14 +160,16 @@ class ReminderViewModel @Inject constructor(
 
             val offsets = saved.reminderOffsets.ifEmpty { listOf(0L) }
 
-            scheduler.cancelAll(
-                reminderId = id,
+            // Cancel old alarms (UUID)
+            scheduler.cancelAllByString(
+                reminderIdString = savedId,
                 offsets = saved.reminderOffsets
             )
 
+            // Schedule new alarms (UUID)
             if (saved.enabled) {
-                scheduler.scheduleAll(
-                    reminderId = id,
+                scheduler.scheduleAllByString(
+                    reminderIdString = savedId,
                     title = saved.title,
                     message = saved.description ?: "",
                     repeatRule = saved.repeatRule,
@@ -207,14 +178,12 @@ class ReminderViewModel @Inject constructor(
                 )
             }
 
-            val readable = Instant.ofEpochMilli(nextEvent)
+            val formatted = Instant.ofEpochMilli(nextEvent)
                 .atZone(ZoneId.of(saved.timeZone))
                 .format(DateTimeFormatter.ofPattern("dd MMM yyyy, hh:mm a"))
 
-            val message = "${if (isNew) "Created" else "Updated"}: ${saved.title} → $readable"
-
-            Timber.tag("VM_SNACK").d("Emitting snackbar: $message")
-            _snackbarEvent.emit(message)
+            val msg = "${if (isNew) "Created" else "Updated"}: ${saved.title} → $formatted"
+            _snackbarEvent.emit(msg)
 
             resetAddEditForm()
 
@@ -225,21 +194,20 @@ class ReminderViewModel @Inject constructor(
     }
 
     // ============================================================
-    // 🗑 DELETE + UNDO SUPPORT
+    // DELETE + UNDO (UUID)
     // ============================================================
-
     private var recentlyDeleted: EventReminder? = null
 
-    fun deleteEventWithUndo(id: Long) = viewModelScope.launch {
+    fun deleteEventWithUndo(id: String) = viewModelScope.launch {
         try {
             val reminder = repo.getReminder(id) ?: return@launch
             recentlyDeleted = reminder
 
-            scheduler.cancelAll(id, reminder.reminderOffsets)
+            scheduler.cancelAllByString(id, reminder.reminderOffsets)
             repo.markDelete(reminder)
 
         } catch (e: Exception) {
-            Timber.e(e, "deleteEventWithUndo failed")
+            Timber.e(e)
             _uiState.update { it.copy(errorMessage = e.message) }
         }
     }
@@ -249,69 +217,63 @@ class ReminderViewModel @Inject constructor(
             val event = recentlyDeleted ?: return@launch
             recentlyDeleted = null
 
-            // IMPORTANT: Reset soft-delete flag before restore
-            val restoredReminder = event.copy(isDeleted = false)
+            val restored = event.copy(isDeleted = false)
 
-            val newId = repo.insert(restoredReminder)
-            val restored = repo.getReminder(newId) ?: return@launch
+            val newId = repo.insert(restored)
+            val saved = repo.getReminder(newId) ?: return@launch
 
-            val offsets = restored.reminderOffsets.ifEmpty { listOf(0L) }
+            val offsets = saved.reminderOffsets.ifEmpty { listOf(0L) }
             val nextEvent = NextOccurrenceCalculator.nextOccurrence(
-                restored.eventEpochMillis,
-                restored.timeZone,
-                restored.repeatRule
-            ) ?: restored.eventEpochMillis
+                saved.eventEpochMillis,
+                saved.timeZone,
+                saved.repeatRule
+            ) ?: saved.eventEpochMillis
 
-            if (restored.enabled) {
-                scheduler.scheduleAll(
-                    reminderId = newId,
-                    title = restored.title,
-                    message = restored.description ?: "",
-                    repeatRule = restored.repeatRule,
+            if (saved.enabled) {
+                scheduler.scheduleAllByString(
+                    reminderIdString = newId,
+                    title = saved.title,
+                    message = saved.description ?: "",
+                    repeatRule = saved.repeatRule,
                     nextEventTime = nextEvent,
                     offsets = offsets
                 )
             }
 
         } catch (e: Exception) {
-            Timber.e(e, "restoreLastDeleted failed")
+            Timber.e(e)
             _uiState.update { it.copy(errorMessage = e.message) }
         }
     }
 
     // ============================================================
-    // BOTTOM TRAY OPERATIONS (Future Enhancements)
+    // BOTTOM TRAY
     // ============================================================
+    fun cleanupOldReminders() = viewModelScope.launch {}
+    fun generatePdfReport() = viewModelScope.launch {}
+    fun exportRemindersCsv() = viewModelScope.launch {}
 
-    fun cleanupOldReminders() = viewModelScope.launch { }
-    fun generatePdfReport() = viewModelScope.launch { }
-    fun exportRemindersCsv() = viewModelScope.launch { }
-    fun syncRemindersWithServer() {
-        viewModelScope.launch{
-            try {
-                Timber.tag("SYNC").d("Sync button clicked")
-                _snackbarEvent.emit("Sync started…")
-                syncEngine.syncAll()
-                _snackbarEvent.emit("Sync completed")
-            }
-            catch (e: Exception) {
-                Timber.e(e, "Sync failed")
-                _snackbarEvent.emit("Sync failed: ${e.message}")
-            }
+    fun syncRemindersWithServer() = viewModelScope.launch {
+        try {
+            _snackbarEvent.emit("Sync started…")
+            syncEngine.syncAll()
+            _snackbarEvent.emit("Sync completed")
+        } catch (e: Exception) {
+            _snackbarEvent.emit("Sync failed: ${e.message}")
         }
     }
+
     fun backupReminders(context: Context) {
         viewModelScope.launch {
-            val resultMessage = repo.exportRemindersToJson(context)
-            _snackbarEvent.tryEmit(resultMessage)   // 🔔 show snackbar with count
-            Timber.tag("BACKUP").i(resultMessage)   // log again if desired
+            val msg = repo.exportRemindersToJson(context)
+            _snackbarEvent.tryEmit(msg)
         }
     }
+
     fun restoreReminders(context: Context) {
         viewModelScope.launch {
-            val resultMessage = repo.restoreRemindersFromBackup(context)
-            _snackbarEvent.tryEmit(resultMessage)   // 🔔 show snackbar
-            Timber.tag("RESTORE_REMINDERS").i(resultMessage)  // ✅ log again for visibility
+            val msg = repo.restoreRemindersFromBackup(context)
+            _snackbarEvent.tryEmit(msg)
         }
     }
 }

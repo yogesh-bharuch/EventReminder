@@ -23,6 +23,9 @@ class MyApp : Application(), Configuration.Provider {
     override fun onCreate() {
         super.onCreate()
 
+        // FORCE DB RESET (TEMPORARILY DURING DEVELOPMENT)
+        deleteDatabase("event_reminder_db")
+
         // 🌲 Initialize Timber for debug logging
         if (BuildConfig.DEBUG) {
             Timber.plant(Timber.DebugTree())

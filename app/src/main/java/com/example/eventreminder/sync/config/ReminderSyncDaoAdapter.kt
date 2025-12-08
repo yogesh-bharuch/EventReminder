@@ -6,45 +6,42 @@ import com.example.eventreminder.sync.core.SyncDaoAdapter
 
 /**
  * Adapter so SyncEngine can talk to Room generically.
+ * UUID-only version.
  */
 class ReminderSyncDaoAdapter(
     private val dao: ReminderDao
 ) : SyncDaoAdapter<EventReminder> {
 
     /**
-     * Return local items whose updatedAt is > updatedAfter.
-     * This automatically includes soft-deleted items because the delete
-     * operation updates updatedAt in Room.
+     * Return local items whose updatedAt > updatedAfter.
+     * Includes soft-deleted items.
      */
     override suspend fun getLocalsChangedAfter(updatedAfter: Long?): List<EventReminder> {
-        val all = dao.getAllIncludingDeletedOnce()
+        val all = dao.getAllIncludingDeletedOnce()   // DAO must now return UUID-based EventReminder
         return if (updatedAfter == null) all else all.filter { it.updatedAt > updatedAfter }
     }
 
+    /**
+     * Insert or update list of reminders.
+     */
     override suspend fun upsertAll(items: List<EventReminder>) {
-        dao.insertAll(items)
+        dao.insertAll(items)  // DAO must support UUID primary key
     }
 
+    /**
+     * Soft-delete local reminders by UUID STRING.
+     */
     override suspend fun markDeletedByIds(ids: List<String>) {
-        ids.forEach { strId ->
-            strId.toLongOrNull()?.let { dao.markDeleted(it) }
+        ids.forEach { idString ->
+            dao.markDeleted(idString)   // UUID string — NO conversion
         }
     }
 
-    /** Used by SyncEngine for LATEST_UPDATED_WINS conflict resolution. */
+    /**
+     * Used for LATEST_UPDATED_WINS conflict resolution.
+     * Returns local updatedAt for the given UUID.
+     */
     override suspend fun getLocalUpdatedAt(id: String): Long? {
-        val numericId = id.toLongOrNull() ?: return null
-        return dao.getUpdatedAt(numericId)
+        return dao.getUpdatedAt(id)     // UUID string — NO conversion
     }
 }
-
-/*
-*✅ 4. ReminderSyncDaoAdapter.kt
-Implements SyncDaoAdapter for EventReminder.
-Provides:
-Room queries for changed reminders
-Insert/update reminders
-Soft-delete local reminders
-Fetch local updatedAt for conflict logic
-👉 This makes ReminderDao usable by the SyncEngine.
-* */

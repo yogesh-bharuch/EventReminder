@@ -82,7 +82,7 @@ fun AddEditReminderScreen(
     val timePickerAutoOpen = remember { mutableStateOf(false) }
 
     val uiState by reminderVm.uiState.collectAsState()
-    val reminderId = eventId?.toLongOrNull()
+    val reminderId: String? = eventId
 
     // Load reminder
     LaunchedEffect(reminderId) {

@@ -1,14 +1,16 @@
 package com.example.eventreminder.ui.viewmodels
 
+// =============================================================
+// Imports
+// =============================================================
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.eventreminder.data.repo.ReminderRepository
 import com.example.eventreminder.util.NextOccurrenceCalculator
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
-import java.time.Instant
-import java.time.ZoneId
 import java.time.LocalDate
+import java.time.ZoneId
 import javax.inject.Inject
 
 // ===============================================================
@@ -30,14 +32,10 @@ class GroupedEventsViewModel @Inject constructor(
         repo.getAllReminders()
             .map { reminders ->
 
-                // ------------------------------------------------------------
-                // STEP 1: Filter enabled reminders only
-                // ------------------------------------------------------------
+                // Filter enabled reminders only
                 val enabled = reminders.filter { it.enabled }
 
-                // ------------------------------------------------------------
-                // STEP 2: Convert DB → UI model w/ Next Occurrence
-                // ------------------------------------------------------------
+                // Convert DB → UI model with next occurrence
                 val uiList = enabled.map { rem ->
 
                     val nextEpoch = NextOccurrenceCalculator.nextOccurrence(
@@ -46,8 +44,9 @@ class GroupedEventsViewModel @Inject constructor(
                         rem.repeatRule
                     ) ?: rem.eventEpochMillis
 
+                    // ⭐ NOW USING UUID STRING
                     EventReminderUI.from(
-                        id = rem.id,
+                        id = rem.id,                      // <-- UUID string
                         title = rem.title,
                         desc = rem.description,
                         eventMillis = nextEpoch,
@@ -58,9 +57,7 @@ class GroupedEventsViewModel @Inject constructor(
                 }
                     .sortedBy { it.eventEpochMillis }
 
-                // ------------------------------------------------------------
-                // STEP 3: Apply advanced grouping
-                // ------------------------------------------------------------
+                // Apply grouping logic
                 groupUiEvents(uiList)
             }
             .stateIn(
@@ -70,13 +67,11 @@ class GroupedEventsViewModel @Inject constructor(
             )
 
     // ============================================================
-    // NEW ADVANCED GROUPING (Today / Tomorrow / Next7 / Next30 /
-    // Upcoming / Past7 / Archives)
+    // GROUPING ENGINE
     // ============================================================
     private fun groupUiEvents(list: List<EventReminderUI>): List<GroupedUiSection> {
         if (list.isEmpty()) return emptyList()
 
-        // Thresholds
         val now = System.currentTimeMillis()
         val today = LocalDate.now()
         val zone = ZoneId.systemDefault()
@@ -97,42 +92,22 @@ class GroupedEventsViewModel @Inject constructor(
         val past7 = mutableListOf<EventReminderUI>()
         val archives = mutableListOf<EventReminderUI>()
 
-        // ------------------------------------------------------------
-        // CLASSIFY EACH REMINDER
-        // ------------------------------------------------------------
+        // Classification
         list.forEach { ui ->
-
             val t = ui.eventEpochMillis
 
             when {
-                // ------------------ FUTURE ------------------
-                t in todayStart until tomorrowStart ->
-                    todayList.add(ui)
+                t in todayStart until tomorrowStart -> todayList.add(ui)
+                t in tomorrowStart until (tomorrowStart + DAY_MILLIS) -> tomorrowList.add(ui)
+                t in next7Start until weekEnd -> next7.add(ui)
+                t in weekEnd until monthEnd -> next30.add(ui)
+                t >= monthEnd -> upcoming.add(ui)
 
-                t in tomorrowStart until (tomorrowStart + DAY_MILLIS) ->
-                    tomorrowList.add(ui)
-
-                t in next7Start until weekEnd ->
-                    next7.add(ui)
-
-                t in weekEnd until monthEnd ->
-                    next30.add(ui)
-
-                t >= monthEnd ->
-                    upcoming.add(ui)
-
-                // ------------------ PAST --------------------
-                t in past7Threshold until now ->
-                    past7.add(ui)
-
-                else ->
-                    archives.add(ui)
+                t in past7Threshold until now -> past7.add(ui)
+                else -> archives.add(ui)
             }
         }
 
-        // ------------------------------------------------------------
-        // BUILD SECTIONS (only non-empty)
-        // ------------------------------------------------------------
         val sections = mutableListOf<GroupedUiSection>()
 
         fun add(header: String, items: List<EventReminderUI>, sortDesc: Boolean = false) {
@@ -149,14 +124,11 @@ class GroupedEventsViewModel @Inject constructor(
             }
         }
 
-        // Future
         add("Today", todayList)
         add("Tomorrow", tomorrowList)
         add("Next 7 Days", next7)
         add("Next 30 Days", next30)
         add("Upcoming", upcoming)
-
-        // Past
         add("Past 7 Days", past7, sortDesc = true)
         add("Archives", archives, sortDesc = true)
 

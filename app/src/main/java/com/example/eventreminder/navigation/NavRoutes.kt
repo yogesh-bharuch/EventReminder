@@ -23,26 +23,13 @@ data class AddEditReminderRoute(
 
 @Serializable
 data class PixelPreviewRoute(
-    val reminderId: Long
+    val reminderId: String
 )
 
-
-/*
-package com.example.eventreminder.navigation
-
-import kotlinx.serialization.Serializable
-
-@Serializable object LoginRoute
-@Serializable object HomeRoute
-@Serializable object ReminderManagerRoute
-@Serializable object DebugRoute
+// ------------------------------------------------------------
+// idString parallel route
+// ------------------------------------------------------------
 @Serializable
-data class CardDebugRoute(
-    val reminderId: Long,
-    val eventType: String
+data class PixelPreviewRouteString(                      // idchanged to idstring
+    val reminderIdString: String                         // idchanged to idstring
 )
-
-@Serializable data class AddEditReminderRoute(
-    val eventId: String? = null
-)
-*/

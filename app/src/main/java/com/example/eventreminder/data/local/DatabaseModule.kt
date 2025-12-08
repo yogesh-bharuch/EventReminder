@@ -9,7 +9,7 @@ import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
 import dagger.hilt.android.qualifiers.ApplicationContext
 import com.example.eventreminder.util.NextOccurrenceCalculator
-
+import com.example.eventreminder.sync.core.SyncMetadataDao
 
 @Module
 @InstallIn(SingletonComponent::class)
@@ -25,6 +25,7 @@ object DatabaseModule {
             AppDatabase::class.java,
             "event_reminder_db"
         )
+            // ⚠️ Pre‑production only: wipes and recreates DB on schema change
             .fallbackToDestructiveMigration()
             .build()
     }
@@ -33,6 +34,11 @@ object DatabaseModule {
     @Singleton
     fun provideReminderDao(db: AppDatabase): ReminderDao =
         db.reminderDao()
+
+    @Provides
+    @Singleton
+    fun provideSyncMetadataDao(db: AppDatabase): SyncMetadataDao =
+        db.syncMetadataDao()
 
     @Provides
     @Singleton

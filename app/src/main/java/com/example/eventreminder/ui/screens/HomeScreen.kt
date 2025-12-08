@@ -217,7 +217,7 @@ fun HomeScreen(
                 Row {
                     Button(
                         onClick = {
-                            navController.navigate(PixelPreviewRoute(reminderId = 54))
+                            //navController.navigate(PixelPreviewRoute(reminderId = 54))
                         }
                     ) {
                         Text("New screen")

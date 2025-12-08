@@ -3,6 +3,7 @@ package com.example.eventreminder.ui.components.swipe
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.foundation.layout.RowScope
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -13,18 +14,25 @@ fun SwipeDismissContainer(
 ) {
     val dismissState = rememberSwipeToDismissBoxState(
         confirmValueChange = { value ->
-            if (value == SwipeToDismissBoxValue.EndToStart ||
-                value == SwipeToDismissBoxValue.StartToEnd
-            ) {
+
+            val isDelete = value == SwipeToDismissBoxValue.StartToEnd ||
+                    value == SwipeToDismissBoxValue.EndToStart
+
+            if (isDelete) {
                 onDelete()
-                false // prevent default dismiss animation
-            } else true
+                // Prevent full dismiss animation; immediately reset
+                false
+            } else {
+                true
+            }
         }
     )
 
-    // Reset red background when section collapses/expands
-    LaunchedEffect(Unit) {
-        dismissState.snapTo(SwipeToDismissBoxValue.Settled)
+    // Ensures the swipe state resets when the composable is recreated
+    LaunchedEffect(dismissState.currentValue) {
+        if (dismissState.currentValue != SwipeToDismissBoxValue.Settled) {
+            dismissState.snapTo(SwipeToDismissBoxValue.Settled)
+        }
     }
 
     SwipeToDismissBox(

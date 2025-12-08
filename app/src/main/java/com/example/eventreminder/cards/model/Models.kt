@@ -20,9 +20,9 @@ data class CardSticker(
     var rotation: Float = 0f
 )
 
-// CardData — assembled by ViewModel
+// ⬅⬅⬅ IMPORTANT: reminderId must now be String
 data class CardData(
-    val reminderId: Long,
+    val reminderId: String,                 // CHANGED
     val title: String,
     val name: String?,
     val eventKind: EventKind,

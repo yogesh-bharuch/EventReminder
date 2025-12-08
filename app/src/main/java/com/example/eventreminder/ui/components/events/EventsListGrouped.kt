@@ -52,7 +52,7 @@ private val LazyListStateSaver = mapSaver(
 fun EventsListGrouped(
     sections: List<GroupedUiSection>,
     viewModel: ReminderViewModel,
-    onClick: (Long) -> Unit,
+    onClick: (String) -> Unit,     // <-- UUID FIXED HERE
     modifier: Modifier = Modifier
 ) {
     Timber.tag(TAG).d("Rendering EventsListGrouped")

@@ -13,7 +13,7 @@ import com.example.eventreminder.sync.core.SyncMetadataEntity
         EventReminder::class,
         SyncMetadataEntity::class  // REQUIRED for sync engine
     ],
-    version = 4,                 // bump version
+    version = 1,                 // bump version
     exportSchema = false
 )
 @TypeConverters(Converters::class)

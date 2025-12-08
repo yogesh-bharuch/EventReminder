@@ -3,7 +3,6 @@ package com.example.eventreminder.cards
 // =============================================================
 // Imports
 // =============================================================
-
 import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
@@ -21,9 +20,7 @@ import com.example.eventreminder.data.repo.ReminderRepository
 import com.example.eventreminder.util.NextOccurrenceCalculator
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import timber.log.Timber
 import java.time.Instant
@@ -32,16 +29,8 @@ import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 
-// =============================================================
-// TAG
-// =============================================================
 private const val TAG = "CardViewModel"
 
-// =============================================================
-// CardViewModel (Hilt)
-// - persists background and avatar to cache & reminder DB
-// - keeps transform state for avatar
-// =============================================================
 @HiltViewModel
 class CardViewModel @Inject constructor(
     private val repo: ReminderRepository,
@@ -49,50 +38,39 @@ class CardViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
+    // =============================================================
+    // UI STATE (Card metadata)
+    // =============================================================
     private val _uiState = MutableStateFlow<CardUiState>(CardUiState.Loading)
     val uiState: StateFlow<CardUiState> = _uiState.asStateFlow()
 
-    // background (persisted)
     private val _background = MutableStateFlow<CardBackground?>(null)
     val background: StateFlow<CardBackground?> = _background.asStateFlow()
 
     private val _backgroundBitmap = MutableStateFlow<Bitmap?>(null)
-    //val backgroundBitmap: StateFlow<Bitmap?> = _backgroundBitmap.asStateFlow()
 
-
-    private val reminderIdArg: Long = savedStateHandle.get<Long>("reminderId") ?: -1L
+    // =============================================================
+    // UUID ARG — SINGLE SOURCE OF TRUTH
+    // =============================================================
+    private val reminderIdArg: String? = savedStateHandle.get<String>("reminderId")
 
     init {
-        Timber.tag(TAG).d("init reminderId=%d", reminderIdArg)
-        if (reminderIdArg == -1L) {
+        Timber.tag(TAG).d("init reminderId=%s", reminderIdArg)
+        if (reminderIdArg.isNullOrBlank()) {
             _uiState.value = CardUiState.Placeholder
         } else {
             loadReminder(reminderIdArg)
         }
     }
 
-    // -------------------------
-    // Show/Hide title in card preview
-    // -------------------------
-    /*val showTitle = MutableStateFlow(true)
-    val showName = MutableStateFlow(true)
-
-    fun toggleShowTitle(value: Boolean) {
-        showTitle.value = value
-    }
-
-    fun toggleShowName(value: Boolean) {
-        showName.value = value
-    }*/
-
-    // -------------------------
-    // Loading reminder + background
-    // -------------------------
-    fun forceLoadReminder(id: Long) {
+    fun forceLoadReminder(id: String) {
         loadReminder(id)
     }
 
-    private fun loadReminder(id: Long) {
+    // =============================================================
+    // LOAD REMINDER (UUID)
+    // =============================================================
+    private fun loadReminder(id: String) {
         viewModelScope.launch {
             _uiState.value = CardUiState.Loading
             try {
@@ -102,22 +80,20 @@ class CardViewModel @Inject constructor(
                     return@launch
                 }
 
-                // load background bitmap if persisted (backgroundUri may be file path)
-                val bgUri = reminder.backgroundUri
-                if (!bgUri.isNullOrBlank()) {
+                // Load background bitmap (if exists)
+                reminder.backgroundUri?.let { uriStr ->
                     try {
-                        val bmp = ImageUtil.loadBitmapFromPathString(bgUri)
+                        val bmp = ImageUtil.loadBitmapFromPathString(uriStr)
                         _backgroundBitmap.value = bmp
                     } catch (t: Throwable) {
                         Timber.tag(TAG).w(t, "Failed to load background")
                         _backgroundBitmap.value = null
                     }
-                } else {
-                    _backgroundBitmap.value = null
                 }
 
                 val cardData = buildCardData(reminder)
                 _uiState.value = CardUiState.Data(cardData)
+
             } catch (e: Exception) {
                 Timber.tag(TAG).e(e, "loadReminder failed")
                 _uiState.value = CardUiState.Error("Failed to load reminder.")
@@ -125,33 +101,37 @@ class CardViewModel @Inject constructor(
         }
     }
 
-    // -------------------------
-    // Build CardData
-    // -------------------------
+    // =============================================================
+    // BUILD CARD DATA (UUID OK)
+    // =============================================================
     private fun buildCardData(reminder: EventReminder): CardData {
-        val zone = try { ZoneId.of(reminder.timeZone) } catch (_: Exception) { ZoneId.systemDefault() }
+        val zone = try { ZoneId.of(reminder.timeZone) }
+        catch (_: Exception) { ZoneId.systemDefault() }
+
         val originalInstant = Instant.ofEpochMilli(reminder.eventEpochMillis)
         val originalZdt = ZonedDateTime.ofInstant(originalInstant, zone)
-        val nextEpochMillis = try {
+
+        val nextEpoch = try {
             nextCalculator.nextOccurrence(reminder.eventEpochMillis, reminder.timeZone, reminder.repeatRule)
         } catch (_: Exception) { null }
-        val nextInstant = when {
-            nextEpochMillis != null -> Instant.ofEpochMilli(nextEpochMillis)
-            originalInstant.isAfter(Instant.now()) -> originalInstant
-            else -> null
-        }
+
+        val nextInstant = nextEpoch?.let { Instant.ofEpochMilli(it) }
+            ?: originalInstant.takeIf { it.isAfter(Instant.now()) }
+
         val originalLabel = originalZdt.format(DateTimeFormatter.ofPattern("MMM d, yyyy"))
-        val nextLabel = nextInstant?.atZone(zone)?.format(DateTimeFormatter.ofPattern("EEE, MMM d, yyyy")) ?: "N/A"
+        val nextLabel = nextInstant?.atZone(zone)
+            ?.format(DateTimeFormatter.ofPattern("EEE, MMM d, yyyy")) ?: "N/A"
+
         val eventKind = mapTitleToEventKind(reminder.title)
-        val yearsLabel = when (eventKind) {
-            com.example.eventreminder.cards.model.EventKind.BIRTHDAY,
-            com.example.eventreminder.cards.model.EventKind.ANNIVERSARY ->
-                computeYearsLabel(originalZdt.toLocalDate(), nextInstant, zone)
-            else -> null
-        }
+
+        val yearsLabel =
+            if (eventKind == com.example.eventreminder.cards.model.EventKind.BIRTHDAY ||
+                eventKind == com.example.eventreminder.cards.model.EventKind.ANNIVERSARY
+            ) computeYearsLabel(originalZdt.toLocalDate(), nextInstant, zone)
+            else null
 
         return CardData(
-            reminderId = reminder.id,
+            reminderId = reminder.id,   // UUID
             title = reminder.title.ifBlank { "Event" },
             name = reminder.description,
             eventKind = eventKind,
@@ -164,8 +144,7 @@ class CardViewModel @Inject constructor(
     }
 
     private fun mapTitleToEventKind(title: String) = try {
-        val match = ReminderTitle.entries.find { it.label.equals(title, true) }
-        when (match) {
+        when (ReminderTitle.entries.find { it.label.equals(title, true) }) {
             ReminderTitle.BIRTHDAY -> com.example.eventreminder.cards.model.EventKind.BIRTHDAY
             ReminderTitle.ANNIVERSARY -> com.example.eventreminder.cards.model.EventKind.ANNIVERSARY
             else -> com.example.eventreminder.cards.model.EventKind.GENERIC
@@ -181,10 +160,9 @@ class CardViewModel @Inject constructor(
 
     private fun computeYearsLabel(originalDate: java.time.LocalDate, nextInstant: Instant?, zone: ZoneId): String? {
         return try {
-            //val compareDate = (nextInstant ?: Instant.now()).atZone(zone).toLocalDate()
-            val compareDate = (Instant.now()).atZone(zone).toLocalDate()
-            var years = compareDate.year - originalDate.year
-            if (compareDate.isBefore(originalDate.withYear(compareDate.year))) years--
+            val now = Instant.now().atZone(zone).toLocalDate()
+            var years = now.year - originalDate.year
+            if (now.isBefore(originalDate.withYear(now.year))) years--
             years.takeIf { it >= 0 }?.toString()
         } catch (e: Exception) {
             Timber.tag(TAG).w(e, "computeYearsLabel failed")
@@ -192,123 +170,71 @@ class CardViewModel @Inject constructor(
         }
     }
 
-
     // =============================================================
-    // PIXEL AVATAR SYSTEM (STEP-2) — FINAL UPDATED VERSION
-    // - SAF / PhotoPicker based avatar loader
-    // - Downscale to 720px short-side
-    // - Square center-crop for PixelRenderer
-    // - Medium-quality avatar default
-    // - Normalized transform fields (0–1 + scale + rotation)
-    // - Exposes transform as AvatarTransformPx (CardDataPx compatible)
-    // - Does NOT touch old DP-based avatar pipeline
+    // PIXEL AVATAR SYSTEM — FULL MERGE
     // =============================================================
-
-    // Pixel avatar bitmap (free-layer; like sticker)
     private val _pixelAvatarBitmap = MutableStateFlow<Bitmap?>(null)
     val pixelAvatarBitmap: StateFlow<Bitmap?> = _pixelAvatarBitmap.asStateFlow()
 
-    // Normalized center position (0..1)
     private val _pixelAvatarXNorm = MutableStateFlow(0.5f)
     private val _pixelAvatarYNorm = MutableStateFlow(0.5f)
-    val pixelAvatarXNorm: StateFlow<Float> = _pixelAvatarXNorm.asStateFlow()
-    val pixelAvatarYNorm: StateFlow<Float> = _pixelAvatarYNorm.asStateFlow()
-
-    // Scale (multiplier) and rotation (degrees)
     private val _pixelAvatarScale = MutableStateFlow(1.35f)
     private val _pixelAvatarRotationDeg = MutableStateFlow(0f)
-    val pixelAvatarScale: StateFlow<Float> = _pixelAvatarScale.asStateFlow()
-    val pixelAvatarRotationDeg: StateFlow<Float> = _pixelAvatarRotationDeg.asStateFlow()
 
-    // Quality for renderer (optional)
-    private val _pixelAvatarQuality = MutableStateFlow(1)
-    val pixelAvatarQuality: StateFlow<Int> = _pixelAvatarQuality.asStateFlow()
+    val pixelAvatarXNorm = _pixelAvatarXNorm.asStateFlow()
+    val pixelAvatarYNorm = _pixelAvatarYNorm.asStateFlow()
+    val pixelAvatarScale = _pixelAvatarScale.asStateFlow()
+    val pixelAvatarRotationDeg = _pixelAvatarRotationDeg.asStateFlow()
 
-
-    /**
-     * SAF / PhotoPicker entrypoint.
-     * Downscale via ImageUtil (maxDim=720), center-crop square (preserve symmetry), emit bitmap.
-     */
     fun onPixelAvatarImageSelected(context: Context, uri: Uri) {
-        Timber.tag(TAG).d("onPixelAvatarImageSelected: %s", uri)
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val loaded = ImageUtil.loadBitmapFromUri(context, uri, maxDim = 720)
-                if (loaded == null) {
-                    Timber.tag(TAG).w("onPixelAvatarImageSelected: decode returned null")
-                    return@launch
+                val bmp = ImageUtil.loadBitmapFromUri(context, uri, maxDim = 720)
+                if (bmp != null) {
+                    val square = ImageUtil.centerCropSquare(bmp)
+                    _pixelAvatarBitmap.value = square
+                    _pixelAvatarXNorm.value = 0.5f
+                    _pixelAvatarYNorm.value = 0.5f
+                    _pixelAvatarScale.value = 1.35f
+                    _pixelAvatarRotationDeg.value = 0f
                 }
-
-                // Keep square for easier transforms (center crop)
-                val square = ImageUtil.centerCropSquare(loaded)
-                _pixelAvatarBitmap.value = square
-
-                // Reset transforms to sensible defaults (center + 1x + 0deg)
-                _pixelAvatarXNorm.value = 0.5f
-                _pixelAvatarYNorm.value = 0.5f
-                _pixelAvatarScale.value = 1.35f
-                _pixelAvatarRotationDeg.value = 0f
-                _pixelAvatarQuality.value = 1
-
-                Timber.tag(TAG).d("Pixel avatar set -> %dx%d", square.width, square.height)
             } catch (t: Throwable) {
-                Timber.tag(TAG).e(t, "onPixelAvatarImageSelected failed")
+                Timber.tag(TAG).e(t, "Avatar load failed")
             }
         }
     }
 
-    /** Clear avatar and reset defaults */
     fun clearPixelAvatar() {
-        Timber.tag(TAG).d("clearPixelAvatar()")
         _pixelAvatarBitmap.value = null
         _pixelAvatarXNorm.value = 0.5f
         _pixelAvatarYNorm.value = 0.5f
         _pixelAvatarScale.value = 1f
         _pixelAvatarRotationDeg.value = 0f
-        _pixelAvatarQuality.value = 1
     }
 
-    /**
-     * Update normalized center position by delta normalized (0..1 = fraction of card width/height).
-     * dxNorm/dyNorm are computed in the Compose gesture layer as (pan.x / boxSize.width) etc.
-     */
-    fun updatePixelAvatarPosition(dxNorm: Float, dyNorm: Float) {
-        val newX = (_pixelAvatarXNorm.value + dxNorm).coerceIn(-0.5f, 1.5f) // constrain to a safe region:
-        val newY = (_pixelAvatarYNorm.value + dyNorm).coerceIn(-0.5f, 1.5f)
-        _pixelAvatarXNorm.value = newX
-        _pixelAvatarYNorm.value = newY
-        Timber.tag("VM_AVATAR").d("Move → x=%.3f y=%.3f", newX, newY)
+    fun updatePixelAvatarPosition(dx: Float, dy: Float) {
+        _pixelAvatarXNorm.value = (_pixelAvatarXNorm.value + dx).coerceIn(-0.5f, 1.5f)
+        _pixelAvatarYNorm.value = (_pixelAvatarYNorm.value + dy).coerceIn(-0.5f, 1.5f)
     }
 
-    /** Multiply scale by factor, clamped for safety */
-    fun updatePixelAvatarScale(scaleFactor: Float) {
-        val newScale = (_pixelAvatarScale.value * scaleFactor).coerceIn(0.1f, 8f)
-        _pixelAvatarScale.value = newScale
-        Timber.tag("VM_AVATAR").d("Scale → %.3f", newScale)
+    fun updatePixelAvatarScale(scale: Float) {
+        _pixelAvatarScale.value = (_pixelAvatarScale.value * scale).coerceIn(0.1f, 8f)
     }
 
-    /** Add delta degrees to rotation */
-    fun updatePixelAvatarRotation(deltaDeg: Float) {
-        val newRot = (_pixelAvatarRotationDeg.value + deltaDeg).mod(360f)
-        _pixelAvatarRotationDeg.value = newRot
-        Timber.tag("VM_AVATAR").d("Rotate → %.1f°", newRot)
+    fun updatePixelAvatarRotation(delta: Float) {
+        _pixelAvatarRotationDeg.value =
+            (_pixelAvatarRotationDeg.value + delta).mod(360f)
     }
-
 
     // =============================================================
-    // PIXEL STICKER SYSTEM — FINAL IMPLEMENTATION (CLEAN & VERIFIED)
+    // PIXEL STICKER SYSTEM — FULL MERGE
     // =============================================================
-
     private val _pixelStickers = MutableStateFlow<List<StickerPx>>(emptyList())
     val pixelStickers = _pixelStickers.asStateFlow()
 
     private val _activeStickerId = MutableStateFlow<Long?>(null)
     val activeStickerId = _activeStickerId.asStateFlow()
 
-    /**
-     * Add sticker from selector row (emoji, drawable, or bitmap).
-     * Automatically becomes the active sticker.
-     */
     fun addStickerFromCatalog(item: StickerCatalogItem) {
         val newSticker = StickerPx(
             id = System.currentTimeMillis(),
@@ -322,53 +248,42 @@ class CardViewModel @Inject constructor(
         )
         _pixelStickers.value = _pixelStickers.value + newSticker
         _activeStickerId.value = newSticker.id
-        Timber.tag(TAG).d("added sticker id=${newSticker.id} text=${newSticker.text} res=${newSticker.drawableResId}")
     }
 
-    /** Remove a sticker completely */
     fun removeSticker(stickerId: Long) {
         _pixelStickers.value = _pixelStickers.value.filterNot { it.id == stickerId }
         if (_activeStickerId.value == stickerId) _activeStickerId.value = null
     }
 
-    /** Mark a sticker as active for gestures */
     fun setActiveSticker(id: Long?) {
         _activeStickerId.value = id
     }
 
-    /** Pan movement (dx/dy already normalized) */
-    fun updateActiveStickerPosition(dxNorm: Float, dyNorm: Float) {
+    fun updateActiveStickerPosition(dx: Float, dy: Float) {
         val id = _activeStickerId.value ?: return
-
-        _pixelStickers.value = _pixelStickers.value.map { s ->
-            if (s.id != id) s else s.copy(
-                xNorm = (s.xNorm + dxNorm).coerceIn(-5f, 6f),
-                yNorm = (s.yNorm + dyNorm).coerceIn(-5f, 6f)
+        _pixelStickers.value = _pixelStickers.value.map {
+            if (it.id != id) it else it.copy(
+                xNorm = (it.xNorm + dx).coerceIn(-5f, 6f),
+                yNorm = (it.yNorm + dy).coerceIn(-5f, 6f)
             )
         }
     }
 
-    /** Zoom gesture → scale multiplier */
-    fun updateActiveStickerScale(scaleFactor: Float) {
+    fun updateActiveStickerScale(scale: Float) {
         val id = _activeStickerId.value ?: return
-
-        _pixelStickers.value = _pixelStickers.value.map { s ->
-            if (s.id != id) s else s.copy(
-                scale = (s.scale * scaleFactor).coerceIn(0.15f, 6f)
+        _pixelStickers.value = _pixelStickers.value.map {
+            if (it.id != id) it else it.copy(
+                scale = (it.scale * scale).coerceIn(0.15f, 6f)
             )
         }
     }
 
-    /** Rotation gesture */
-    fun updateActiveStickerRotation(deltaDeg: Float) {
+    fun updateActiveStickerRotation(delta: Float) {
         val id = _activeStickerId.value ?: return
-
-        _pixelStickers.value = _pixelStickers.value.map { s ->
-            if (s.id != id) s else s.copy(
-                rotationDeg = (s.rotationDeg + deltaDeg).mod(360f)
+        _pixelStickers.value = _pixelStickers.value.map {
+            if (it.id != id) it else it.copy(
+                rotationDeg = (it.rotationDeg + delta).mod(360f)
             )
         }
     }
-
 }
-

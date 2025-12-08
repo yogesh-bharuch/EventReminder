@@ -23,7 +23,7 @@ fun GroupedSectionContent(
     collapsed: Boolean,
     viewModel: ReminderViewModel,
     snackbarHostState: SnackbarHostState,
-    onClick: (Long) -> Unit
+    onClick: (String) -> Unit      // <-- FIXED to String UUID
 ) {
     val coroutine = rememberCoroutineScope()
 
@@ -56,7 +56,7 @@ fun GroupedSectionContent(
                 ) {
                     EventCard(
                         ui = ui,
-                        onClick = { onClick(ui.id) },
+                        onClick = { onClick(ui.id) },   // <-- ui.id is now String
                         onDelete = {
                             coroutine.launch {
                                 viewModel.deleteEventWithUndo(ui.id)

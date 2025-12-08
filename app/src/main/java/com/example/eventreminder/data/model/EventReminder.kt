@@ -3,18 +3,21 @@ package com.example.eventreminder.data.model
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import kotlinx.serialization.Serializable
-
+import java.util.UUID
 
 /**
- * EventReminder
+ * EventReminder (UUID-based)
  *
- * Supports multi-offset reminders, repeating rules, UTC storage, and enabled state.
+ * Fresh schema — UUID is the only primary key.
+ * No legacy numeric ID is kept.
  */
 @Entity(tableName = "reminders")
 @Serializable
 data class EventReminder(
-    @PrimaryKey(autoGenerate = true)
-    val id: Long = 0L,
+
+    // UUID primary key
+    @PrimaryKey
+    val id: String = UUID.randomUUID().toString(),
 
     val title: String,
     val description: String? = null,
@@ -23,8 +26,13 @@ data class EventReminder(
     val repeatRule: String? = null,
     val reminderOffsets: List<Long> = listOf(0L),
     val enabled: Boolean = true,
-    val backgroundUri: String? = null,   // file path or content URI
-    val isDeleted: Boolean = false,
-    val updatedAt: Long = System.currentTimeMillis()
 
+    // Optional background image URI for pixel cards
+    val backgroundUri: String? = null,
+
+    // Soft delete flag
+    val isDeleted: Boolean = false,
+
+    // Last modified timestamp
+    val updatedAt: Long = System.currentTimeMillis()
 )

@@ -6,36 +6,33 @@ package com.example.eventreminder.cards.pixelcanvas
 // =============================================================
 
 import android.graphics.Bitmap
-import android.graphics.Color
+import androidx.core.graphics.toColorInt
+import com.example.eventreminder.cards.pixelcanvas.stickers.model.StickerPx
 import timber.log.Timber
 import kotlin.math.roundToInt
-import com.example.eventreminder.cards.pixelcanvas.stickers.model.StickerPx
-import androidx.core.graphics.toColorInt
 
 private const val TAG = "CardDataPx"
 
 /**
  * Avatar transform stored normalized.
  * xNorm / yNorm is the center position.
- *
- * These defaults place the avatar in a safe, visible area.
  */
 data class AvatarTransformPx(
-    val xNorm: Float = 0.5f,      // center of bitmap in 0..1 space
+    val xNorm: Float = 0.5f,
     val yNorm: Float = 0.5f,
-    val scale: Float = 1f,        // multiply bitmap
-    val rotationDeg: Float = 0f   // rotate around center
+    val scale: Float = 1f,
+    val rotationDeg: Float = 0f
 )
 
 /**
- * CardDataPx – the authoritative data model used by PixelRenderer.
+ * CardDataPx – authoritative pixel-based data model.
+ * NOW using String UUID for reminderId.
  */
 data class CardDataPx(
-    val reminderId: Long,
+    val reminderId: String,               // <-- UUID now
     val titleText: String,
     val nameText: String?,
     val showTitle: Boolean = true,
-    //val titleColor: Int = "#222222".toColorInt(),
     val showName: Boolean = true,
 
     // avatar
@@ -45,10 +42,10 @@ data class CardDataPx(
     // background
     val backgroundBitmap: Bitmap? = null,
 
-    // stickers layer
+    // stickers
     val stickers: List<StickerPx> = emptyList(),
 
-    // 🔥 ACTIVE STICKER ID (for delete button inside Canvas)
+    // active sticker
     val activeStickerId: Long? = null,
 
     // labels
@@ -56,13 +53,18 @@ data class CardDataPx(
     val nextDateLabel: String = "",
     val ageOrYearsLabel: String? = null,
 
+    // text colors
     val titleColor: Int = "#222222".toColorInt(),
     val nameColor: Int = "#222222".toColorInt(),
     val originalDateColor: Int = "#222222".toColorInt()
+) {
 
-    ) {
     init {
-        Timber.tag(TAG).d("CardDataPx created for id=%d title=%s", reminderId, titleText)
+        Timber.tag(TAG).d(
+            "CardDataPx created for id=%s title=%s",
+            reminderId,
+            titleText
+        )
     }
 
     /**
