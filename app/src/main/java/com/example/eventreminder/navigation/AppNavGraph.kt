@@ -1,29 +1,77 @@
 package com.example.eventreminder.navigation
 
-import androidx.compose.runtime.Composable
+// =============================================================
+// Imports
+// =============================================================
+import androidx.compose.runtime.*
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
-import androidx.navigation.compose.navigation   // Typed Navigation API
+import androidx.navigation.compose.navigation
 import androidx.navigation.toRoute
 import com.example.eventreminder.cards.pixelcanvas.ui.CardEditorScreen
+import com.example.eventreminder.ui.components.BatteryOptimizationDialog
 import com.example.eventreminder.ui.screens.AddEditReminderScreen
 import com.example.eventreminder.ui.screens.HomeScreen
 import com.example.eventreminder.ui.screens.ReminderManagerScreen
+import com.example.eventreminder.ui.screens.SplashScreen
 import com.example.eventreminder.ui.viewmodels.ReminderViewModel
 import com.example.firebaseloginmodule.FirebaseLoginEntry
 
+// =============================================================
+// AppNavGraph
+// =============================================================
 @Composable
 fun AppNavGraph(
     navController: NavHostController,
-    startDestination: Any
+    startDestination: Any = SplashRoute   // ⭐ AUTO STARTS FROM SPLASH
 ) {
+
     NavHost(
         navController = navController,
         startDestination = startDestination
     ) {
 
+        // ------------------------------------------------------------
+        // ⭐ SPLASH SCREEN ROUTE
+        // ------------------------------------------------------------
+        composable<SplashRoute> {
+
+            var showBatteryDialog by remember { mutableStateOf(false) }
+
+            if (showBatteryDialog) {
+                BatteryOptimizationDialog(
+                    onContinue = {
+                        showBatteryDialog = false
+                        navController.navigate(SplashRoute) {
+                            popUpTo(SplashRoute) { inclusive = true }
+                        }
+                    }
+                )
+            }
+
+            SplashScreen(
+                onNavigate = { loggedIn ->
+                    if (loggedIn) {
+                        navController.navigate(HomeGraphRoute) {
+                            popUpTo(SplashRoute) { inclusive = true }
+                        }
+                    } else {
+                        navController.navigate(LoginRoute) {
+                            popUpTo(SplashRoute) { inclusive = true }
+                        }
+                    }
+                },
+                onBatteryFixRequired = {
+                    showBatteryDialog = true
+                }
+            )
+        }
+
+        // ------------------------------------------------------------
+        // LOGIN SCREEN
+        // ------------------------------------------------------------
         composable<LoginRoute> {
             FirebaseLoginEntry(
                 onLoginSuccess = {
@@ -34,13 +82,17 @@ fun AppNavGraph(
             )
         }
 
+        // ------------------------------------------------------------
+        // HOME GRAPH (Parent Navigation)
+        // ------------------------------------------------------------
         navigation<HomeGraphRoute>(
             startDestination = HomeRoute
         ) {
 
-            composable<HomeRoute> {
-                val parentEntry = navController.getBackStackEntry(HomeGraphRoute)
-                val sharedVm: ReminderViewModel = hiltViewModel(parentEntry)
+            // HOME SCREEN
+            composable<HomeRoute> { entry ->
+                val sharedVm: ReminderViewModel =
+                    hiltViewModel(viewModelStoreOwner = entry)
 
                 HomeScreen(
                     navController = navController,
@@ -48,39 +100,33 @@ fun AppNavGraph(
                 )
             }
 
-            composable<AddEditReminderRoute> { backStackEntry ->
-                val args = backStackEntry.toRoute<AddEditReminderRoute>()
-
-                val parentEntry = navController.getBackStackEntry(HomeGraphRoute)
-                val sharedReminderVm: ReminderViewModel = hiltViewModel(parentEntry)
+            // ADD / EDIT REMINDER
+            composable<AddEditReminderRoute> { entry ->
+                val args = entry.toRoute<AddEditReminderRoute>()
+                val sharedVm: ReminderViewModel =
+                    hiltViewModel(viewModelStoreOwner = entry)
 
                 AddEditReminderScreen(
                     navController = navController,
                     eventId = args.eventId,
-                    reminderVm = sharedReminderVm
+                    reminderVm = sharedVm
                 )
             }
         }
 
-        // ------------------------------------------------------------
-        // 🎨 Pixel Card Editor Screen
-        // ------------------------------------------------------------
+        // PIXEL CANVAS (LONG ID)
         composable<PixelPreviewRoute> { entry ->
             val args = entry.toRoute<PixelPreviewRoute>()
             CardEditorScreen(reminderId = args.reminderId)
         }
 
-        // ------------------------------------------------------------
-        // 🎨 idString Parallel PixelPreviewRoute
-        // ------------------------------------------------------------
-        composable<PixelPreviewRouteString> { entry ->                        // idchanged to idstring
-            val args = entry.toRoute<PixelPreviewRouteString>()               // idchanged to idstring
-            CardEditorScreen(reminderId = args.reminderIdString)        // idchanged to idstring
+        // PIXEL CANVAS (UUID)
+        composable<PixelPreviewRouteString> { entry ->
+            val args = entry.toRoute<PixelPreviewRouteString>()
+            CardEditorScreen(reminderId = args.reminderIdString)
         }
 
-        // ------------------------------------------------------------
-        // ⏰ REMINDER MANAGER SCREEN
-        // ------------------------------------------------------------
+        // REMINDER MANAGER
         composable<ReminderManagerRoute> {
             ReminderManagerScreen(
                 onBack = { navController.popBackStack() }
