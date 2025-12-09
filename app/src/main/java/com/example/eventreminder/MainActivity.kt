@@ -1,8 +1,10 @@
 package com.example.eventreminder
 
 // =============================================================
-// MainActivity — Notification → Navigation (UUID)
-// + Integrated with new SplashRoute + Battery Optimization Flow
+// MainActivity — FIXED VERSION
+// - Correct pendingNavRequest handling
+// - Prevents PixelPreview from closing immediately
+// - Works with SplashRoute and New Navigation Flow
 // =============================================================
 
 import android.content.Intent
@@ -30,7 +32,7 @@ class MainActivity : ComponentActivity() {
         const val EXTRA_EVENT_TYPE = "event_type"
     }
 
-    // This holds UUID navigation requests until NavController is ready.
+    // Acts as a one-time trigger
     private val pendingNavRequest = mutableStateOf<PendingNavRequest?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -38,42 +40,41 @@ class MainActivity : ComponentActivity() {
 
         Timber.tag(TAG).d("onCreate() — initial intent = $intent")
 
-        // Extract notification navigation request
         processIntentForNavigation(intent)
 
         setContent {
+
             val navController = rememberNavController()
 
             EventReminderTheme {
 
-                // 🔥 ALWAYS START FROM SPLASH
+                // Always starting from SplashRoute
                 AppNavGraph(
                     navController = navController,
                     startDestination = SplashRoute
                 )
 
                 // ------------------------------------------------------------
-                // AFTER Splash decides login → handle pending PixelPreview nav
+                // 🔥 CRITICAL FIX:
+                // Navigate ONLY when pendingNavRequest changes (from null → value)
+                // NOT when navController recomposes!
                 // ------------------------------------------------------------
-                LaunchedEffect(navController) {
+                LaunchedEffect(pendingNavRequest.value) {
 
-                    val req = pendingNavRequest.value
-                    if (req == null) {
-                        Timber.tag(TAG).d("No pending navigation request")
-                        return@LaunchedEffect
-                    }
+                    val req = pendingNavRequest.value ?: return@LaunchedEffect
 
-                    Timber.tag(TAG).w("PendingNavRequest detected → $req")
-                    Timber.tag(TAG).e("Navigating → PixelPreviewRouteString(UUID=${req.reminderIdString})")
+                    Timber.tag(TAG).e("Consuming PendingNavRequest → $req")
+
+                    // IMPORTANT: Clear BEFORE navigation to prevent double-trigger
+                    pendingNavRequest.value = null
 
                     navController.navigate(
-                        PixelPreviewRouteString(
-                            reminderIdString = req.reminderIdString
-                        )
-                    )
-
-                    // Consume request to avoid double navigation
-                    pendingNavRequest.value = null
+                        PixelPreviewRouteString(reminderIdString = req.reminderIdString)
+                    ) {
+                        launchSingleTop = true
+                        restoreState = false
+                        popUpTo(SplashRoute) { inclusive = false }
+                    }
                 }
             }
         }
@@ -81,16 +82,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-
         Timber.tag(TAG).d("onNewIntent() — new intent = $intent")
-
         setIntent(intent)
         processIntentForNavigation(intent)
     }
 
-    // =============================================================
-    // Extract Notification → Pixel Card Navigation Requests
-    // =============================================================
     private fun processIntentForNavigation(intent: Intent) {
         try {
             val action = intent.action
@@ -101,32 +97,22 @@ class MainActivity : ComponentActivity() {
             Timber.tag(TAG).i(
                 """
                 processIntentForNavigation():
-                    action         = $action
-                    fromNotif      = $fromNotification
-                    uuid           = $uuid
-                    eventType      = $eventType
+                    action            = $action
+                    fromNotification  = $fromNotification
+                    uuid              = $uuid
+                    eventType         = $eventType
                 """.trimIndent()
             )
 
-            // Highest priority → Open Card Quick Action
             if (action == ReminderReceiver.ACTION_OPEN_CARD && !uuid.isNullOrBlank()) {
-                Timber.tag(TAG).e("ACTION_OPEN_CARD → Navigate to card UUID=$uuid")
-
-                pendingNavRequest.value = PendingNavRequest(
-                    reminderIdString = uuid,
-                    eventType = eventType
-                )
+                Timber.tag(TAG).e("ACTION_OPEN_CARD → UUID=$uuid")
+                pendingNavRequest.value = PendingNavRequest(uuid, eventType)
                 return
             }
 
-            // Simple notification tap
             if (fromNotification && !uuid.isNullOrBlank()) {
-                Timber.tag(TAG).d("Notification tap → UUID=$uuid")
-
-                pendingNavRequest.value = PendingNavRequest(
-                    reminderIdString = uuid,
-                    eventType = eventType
-                )
+                Timber.tag(TAG).d("Normal notification tap → UUID=$uuid")
+                pendingNavRequest.value = PendingNavRequest(uuid, eventType)
             }
 
         } catch (t: Throwable) {
@@ -134,9 +120,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // =============================================================
-    // Pending Navigation Holder (UUID)
-    // =============================================================
     private data class PendingNavRequest(
         val reminderIdString: String,
         val eventType: String?
