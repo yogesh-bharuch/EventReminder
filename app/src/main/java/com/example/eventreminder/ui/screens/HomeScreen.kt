@@ -39,6 +39,7 @@ import com.example.eventreminder.navigation.AddEditReminderRoute
 import com.example.eventreminder.navigation.HomeRoute
 import com.example.eventreminder.navigation.LoginRoute
 import com.example.eventreminder.navigation.PixelPreviewRoute
+import com.example.eventreminder.navigation.PixelPreviewRouteString
 import com.example.eventreminder.navigation.ReminderManagerRoute
 import com.example.eventreminder.pdf.PdfViewModel
 import com.example.eventreminder.ui.components.HomeBottomTray
@@ -213,14 +214,29 @@ fun HomeScreen(
 
             } else {
 
-                // Button row (Pixel Preview navigation)
+                // ---------------------------------------------------------
+                // 🔍 BUTTON ROW — OPEN LAST REMINDER IN PIXEL PREVIEW
+                // ---------------------------------------------------------
                 Row {
                     Button(
                         onClick = {
-                            //navController.navigate(PixelPreviewRoute(reminderId = 54))
+                            val lastReminder = groupedSections
+                                .flatMap { it.events }
+                                .maxByOrNull { it.eventEpochMillis }
+
+                            if (lastReminder != null) {
+                                navController.navigate(PixelPreviewRouteString(reminderIdString = lastReminder.id))
+                            } else {
+                                Timber.tag("HomeScreen").w("No reminders found → cannot open PixelPreview")
+
+                                // Show a snackbar message
+                                coroutineScope.launch {
+                                    snackbarHostState.showSnackbar(message = "No reminders found to preview", duration = SnackbarDuration.Short, withDismissAction = true)
+                                }
+                            }
                         }
                     ) {
-                        Text("New screen")
+                        Text(text = "open last card in the list")
                     }
                 }
 
