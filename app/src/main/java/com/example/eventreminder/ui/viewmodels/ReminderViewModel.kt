@@ -256,12 +256,22 @@ class ReminderViewModel @Inject constructor(
     fun syncRemindersWithServer() = viewModelScope.launch {
         try {
             _snackbarEvent.emit("Sync started…")
+
+            // 🟦 Step 1: Perform full remote ↔ local sync
             syncEngine.syncAll()
+
+            // 🟩 Step 2: Re-schedule all reminders using updated synced data
+            repo.rescheduleAllAfterSync()
+
             _snackbarEvent.emit("Sync completed")
+            Timber.tag("SYNC").i("Sync + Reschedule completed successfully")
+
         } catch (e: Exception) {
             _snackbarEvent.emit("Sync failed: ${e.message}")
+            Timber.tag("SYNC").e(e, "Sync failed")
         }
     }
+
 
     fun backupReminders(context: Context) {
         viewModelScope.launch {

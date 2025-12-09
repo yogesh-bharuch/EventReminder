@@ -27,6 +27,9 @@ import com.example.eventreminder.ui.viewmodels.GroupedUiSection
 import com.example.eventreminder.ui.viewmodels.ReminderViewModel
 import timber.log.Timber
 
+// =============================================================
+// File Constants
+// =============================================================
 private const val TAG = "EventsListGrouped"
 
 // =============================================================
@@ -52,29 +55,32 @@ private val LazyListStateSaver = mapSaver(
 fun EventsListGrouped(
     sections: List<GroupedUiSection>,
     viewModel: ReminderViewModel,
-    onClick: (String) -> Unit,     // <-- UUID FIXED HERE
+    onClick: (String) -> Unit,     // UUID of reminder
     modifier: Modifier = Modifier
 ) {
-    Timber.tag(TAG).d("Rendering EventsListGrouped")
-
-    val snackbarHostState = remember { SnackbarHostState() }
+    Timber.tag(TAG).d("Rendering EventsListGrouped with ${sections.size} sections")
 
     // ------------------------------------------------------------
-    // 1) REMEMBER COLLAPSED STATES ACROSS NAVIGATION
+    // Snackbar host for child section actions
+    // ------------------------------------------------------------
+    val snackbarHostState: SnackbarHostState = remember { SnackbarHostState() }
+
+    // ------------------------------------------------------------
+    // Collapse state persistence across navigation
     // ------------------------------------------------------------
     var collapsed by rememberSaveable {
         mutableStateOf<Map<String, Boolean>>(emptyMap())
     }
 
-    // Initialize only new sections
+    // Add missing section keys (default collapsed)
     sections.forEach { section ->
-        if (!collapsed.containsKey(section.header)) {
-            collapsed = collapsed + (section.header to true)  // default collapsed
+        if (collapsed[section.header] == null) {
+            collapsed = collapsed + (section.header to true)
         }
     }
 
     // ------------------------------------------------------------
-    // 2) REMEMBER SCROLL POSITION ACROSS NAVIGATION
+    // Scroll state persistence
     // ------------------------------------------------------------
     val listState: LazyListState = rememberSaveable(
         saver = LazyListStateSaver
@@ -82,31 +88,45 @@ fun EventsListGrouped(
         LazyListState()
     }
 
-    Box(modifier.fillMaxSize()) {
+    // ------------------------------------------------------------
+    // UI Container
+    // ------------------------------------------------------------
+    Box(
+        modifier = modifier.fillMaxSize()
+    ) {
 
-        LazyColumn(state = listState) {
+        // =============================================================
+        // LazyColumn for grouped sections
+        // =============================================================
+        LazyColumn(
+            state = listState
+        ) {
 
             sections.forEach { section ->
 
-                // =============================================================
-                // STICKY HEADER (remains pinned while scrolling)
-                // =============================================================
+                // ------------------------------------------------------------
+                // Sticky header (with pill count + collapse toggle)
+                // ------------------------------------------------------------
                 stickyHeader {
-                    Surface(tonalElevation = 2.dp) {
+                    Surface(
+                        tonalElevation = 2.dp
+                    ) {
                         GroupedSectionHeader(
                             header = section.header,
+                            count = section.events.size,
                             isCollapsed = collapsed[section.header] ?: true,
                             onToggle = {
-                                val isNow = collapsed[section.header] ?: true
-                                collapsed = collapsed + (section.header to !isNow)
+                                val current = collapsed[section.header] ?: true
+                                collapsed = collapsed + (section.header to !current)
+                                Timber.tag(TAG).d("Toggled section '${section.header}' collapsed = ${!current}")
                             }
                         )
                     }
                 }
 
-                // =============================================================
-                // SECTION CONTENT
-                // =============================================================
+                // ------------------------------------------------------------
+                // Section content
+                // ------------------------------------------------------------
                 item {
                     GroupedSectionContent(
                         events = section.events,
@@ -119,9 +139,11 @@ fun EventsListGrouped(
             }
         }
 
-        // Snackbar Host
+        // ------------------------------------------------------------
+        // Snackbar host (bottom overlay)
+        // ------------------------------------------------------------
         SnackbarHost(
-            snackbarHostState,
+            hostState = snackbarHostState,
             modifier = Modifier.padding(bottom = 60.dp)
         )
     }

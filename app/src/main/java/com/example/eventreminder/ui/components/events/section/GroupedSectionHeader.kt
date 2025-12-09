@@ -3,8 +3,10 @@ package com.example.eventreminder.ui.components.events.section
 // =============================================================
 // Imports
 // =============================================================
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -12,29 +14,23 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 /**
  * -------------------------------------------------------------
  * GroupedSectionHeader
  * -------------------------------------------------------------
- * Displays the section header (Today, Tomorrow, Upcoming, etc.)
- * with:
- *  - Left: section-specific icon
- *  - Center: title
- *  - Right: expand/collapse arrow
- *
- * Responsibilities:
- *  - Toggle collapse state
- *  - Remain sticky in LazyColumn
- *  - Provide a clean clickable header row
- *
- * Called from:
- *  - EventsListGrouped
+ * Displays the sticky header for each section:
+ *   - Icon + title
+ *   - Count pill badge
+ *   - Collapse/expand arrow
  */
 @Composable
 fun GroupedSectionHeader(
     header: String,
+    count: Int,                     // ⭐ NEW
     isCollapsed: Boolean,
     onToggle: () -> Unit
 ) {
@@ -53,18 +49,18 @@ fun GroupedSectionHeader(
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
 
                 // ---------------------------------------------------------
-                // LEFT: icon + section title
+                // LEFT: icon + title + count-pill
                 // ---------------------------------------------------------
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    verticalAlignment = Alignment.CenterVertically   // ⭐ NEW: align icon + text perfectly
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-
-                Icon(
+                    Icon(
                         imageVector = iconForSection(header),
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary
@@ -75,6 +71,20 @@ fun GroupedSectionHeader(
                         style = MaterialTheme.typography.titleLarge,
                         color = MaterialTheme.colorScheme.primary
                     )
+
+                    // ⭐ COUNT PILL BADGE
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(MaterialTheme.colorScheme.primaryContainer)
+                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = count.toString(),
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
                 }
 
                 // ---------------------------------------------------------
@@ -86,9 +96,7 @@ fun GroupedSectionHeader(
                     else
                         Icons.Default.KeyboardArrowDown,               // ▼ expanded
                     contentDescription = if (isCollapsed)
-                        "Expand section"
-                    else
-                        "Collapse section",
+                        "Expand section" else "Collapse section",
                     tint = MaterialTheme.colorScheme.primary
                 )
             }
