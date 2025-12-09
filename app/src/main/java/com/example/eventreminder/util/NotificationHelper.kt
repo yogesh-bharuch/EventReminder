@@ -1,5 +1,9 @@
 package com.example.eventreminder.util
 
+// =============================================================
+// NotificationHelper — FIXED Open Card Navigation (UUID Always Sent)
+// =============================================================
+
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -16,22 +20,12 @@ import com.example.eventreminder.receivers.ReminderReceiver
 import com.example.eventreminder.ui.notification.RingtoneResolver
 import timber.log.Timber
 
-// =============================================================
-// Constants
-// =============================================================
 private const val TAG = "NotificationHelper"
 
-// Category-based channels
 private const val CH_BIRTHDAY = "channel_birthday"
 private const val CH_ANNIVERSARY = "channel_anniversary"
-private const val CH_MEDICINE = "channel_medicine"
-private const val CH_WORKOUT = "channel_workout"
 private const val CH_GENERAL = "channel_general"
 
-/**
- * NotificationHelper
- * Category-based channels + smart ringtone + actions (Open Card + Dismiss)
- */
 object NotificationHelper {
 
     fun showNotification(
@@ -42,84 +36,75 @@ object NotificationHelper {
         eventType: String = "UNKNOWN",
         extras: Map<String, Any?> = emptyMap()
     ) {
-        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val nm = context.getSystemService(NotificationManager::class.java)
 
         // ---------------------------------------------------------
-        // SMART SOUND SELECTOR
+        // Extract UUID + eventType (CRITICAL FIX)
         // ---------------------------------------------------------
-        val categorySound: Uri? = RingtoneResolver.resolve(context, title, message)
-        val defaultSound: Uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-        val finalSound = categorySound ?: defaultSound
+        val uuid = extras[ReminderReceiver.EXTRA_REMINDER_ID_STRING] as? String
+        val eventTypeExtra = extras[ReminderReceiver.EXTRA_EVENT_TYPE] as? String
 
-        Timber.tag(TAG).d("Sound resolver → $finalSound")
+        Timber.tag(TAG).d("🔥 showNotification() → uuid=$uuid eventType=$eventTypeExtra")
 
         // ---------------------------------------------------------
-        // PICK CHANNEL BY EVENT TYPE
+        // Smart sound
+        // ---------------------------------------------------------
+        val resolvedSound: Uri? = RingtoneResolver.resolve(
+            context = context,
+            title = title,
+            message = message
+        )
+        val finalSound: Uri = resolvedSound
+            ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+
+        // ---------------------------------------------------------
+        // Create channels
         // ---------------------------------------------------------
         val channelId = when (eventType.uppercase()) {
             "BIRTHDAY" -> CH_BIRTHDAY
             "ANNIVERSARY" -> CH_ANNIVERSARY
-            "MEDICINE" -> CH_ANNIVERSARY
-            "WORKOUT" -> CH_ANNIVERSARY
             else -> CH_GENERAL
         }
 
         val channelName = when (eventType.uppercase()) {
             "BIRTHDAY" -> "Birthday Reminders"
             "ANNIVERSARY" -> "Anniversary Reminders"
-            "MEDICINE" -> "Medicine Reminders"
-            "WORKOUT" -> "Workout Reminders"
             else -> "General Reminders"
         }
 
-        // ---------------------------------------------------------
-        // CREATE CHANNEL (Android O+)
-        // ---------------------------------------------------------
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-
-            val existing = nm.getNotificationChannel(channelId)
-
-            if (existing == null) {
-                val attrs = AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_NOTIFICATION)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                    .build()
-
-                val ch = NotificationChannel(
+            val channel = nm.getNotificationChannel(channelId)
+                ?: NotificationChannel(
                     channelId,
                     channelName,
                     NotificationManager.IMPORTANCE_HIGH
                 ).apply {
-                    setSound(finalSound, attrs)
-                    description = "Reminder notifications"
+                    setSound(
+                        finalSound,
+                        AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                            .build()
+                    )
                     enableVibration(true)
+                    description = "Reminder notifications"
                 }
 
-                nm.createNotificationChannel(ch)
-                Timber.tag(TAG).e("Created NEW channel=$channelId sound=$finalSound")
-
-            } else {
-                Timber.tag(TAG).e("Channel EXISTS=$channelId sound=${existing.sound}")
-            }
+            nm.createNotificationChannel(channel)
         }
 
-        // ---------------------------------------------------------
-        // TAP INTENT → OPEN MAIN ACTIVITY + ROUTE TO CARDSCREEN
-        // ---------------------------------------------------------
+        // =========================================================
+        // TAP → OPEN MAIN ACTIVITY AND NAVIGATE TO CARD
+        // ALWAYS INCLUDES UUID
+        // =========================================================
         val tapIntent = Intent(context, MainActivity::class.java).apply {
-            flags =
-                Intent.FLAG_ACTIVITY_NEW_TASK or
-                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                        Intent.FLAG_ACTIVITY_SINGLE_TOP
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP
 
-            extras.forEach { (key, value) ->
-                when (value) {
-                    is Boolean -> putExtra(key, value)
-                    is Long -> putExtra(key, value)
-                    is String -> putExtra(key, value)
-                    is Int -> putExtra(key, value)
-                }
-            }
+            putExtra(ReminderReceiver.EXTRA_FROM_NOTIFICATION, true)
+            putExtra(ReminderReceiver.EXTRA_REMINDER_ID_STRING, uuid)
+            putExtra(ReminderReceiver.EXTRA_EVENT_TYPE, eventTypeExtra)
         }
 
         val tapPI = PendingIntent.getActivity(
@@ -129,22 +114,22 @@ object NotificationHelper {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        // ---------------------------------------------------------
-        // OPEN CARD ACTION
-        // ---------------------------------------------------------
+        // =========================================================
+        // OPEN CARD ACTION (CRITICAL FIX: UUID ADDED)
+        // =========================================================
         val openIntent = Intent(context, MainActivity::class.java).apply {
             action = ReminderReceiver.ACTION_OPEN_CARD
+
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or
                     Intent.FLAG_ACTIVITY_CLEAR_TOP or
                     Intent.FLAG_ACTIVITY_SINGLE_TOP
-            extras.forEach { (key, value) ->
-                when (value) {
-                    is Boolean -> putExtra(key, value)
-                    is Long -> putExtra(key, value)
-                    is String -> putExtra(key, value)
-                    is Int -> putExtra(key, value)
-                }
-            }
+
+            // FIX: Always add required navigation extras
+            putExtra(ReminderReceiver.EXTRA_FROM_NOTIFICATION, true)
+            putExtra(ReminderReceiver.EXTRA_REMINDER_ID_STRING, uuid)
+            putExtra(ReminderReceiver.EXTRA_EVENT_TYPE, eventTypeExtra)
+
+            Timber.tag(TAG).d("🔥 OpenCard Intent → uuid=$uuid")
         }
 
         val openPI = PendingIntent.getActivity(
@@ -154,9 +139,9 @@ object NotificationHelper {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        // ---------------------------------------------------------
-        // DISMISS ACTION
-        // ---------------------------------------------------------
+        // =========================================================
+        // DISMISS
+        // =========================================================
         val dismissIntent = Intent(context, ReminderReceiver::class.java).apply {
             action = ReminderReceiver.ACTION_DISMISS
             putExtra(ReminderReceiver.EXTRA_NOTIFICATION_ID, notificationId)
@@ -169,43 +154,32 @@ object NotificationHelper {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        // ---------------------------------------------------------
-        // EMOJI + MESSAGE
-        // ---------------------------------------------------------
-        val emojiPrefix = when (eventType.uppercase()) {
+        val emoji = when (eventType.uppercase()) {
             "BIRTHDAY" -> "\uD83C\uDF89 "
-            "ANNIVERSARY" -> "\u2764\uFE0F "
+            "ANNIVERSARY" -> "❤️ "
             else -> ""
         }
 
-        val fullMessage = "$emojiPrefix$message"
+        val fullMessage = "$emoji$message"
 
-        // ---------------------------------------------------------
-        // BUILD NOTIFICATION
-        // ---------------------------------------------------------
         val builder = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
             .setContentText(message)
-            .setOngoing(true)
-            .setAutoCancel(false)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setContentIntent(tapPI)
-            .setVibrate(longArrayOf(0, 300, 200, 300))
             .setStyle(NotificationCompat.BigTextStyle().bigText(fullMessage))
+            .setOngoing(true)
+            .setContentIntent(tapPI)
             .addAction(R.drawable.ic_open, "Open Card", openPI)
             .addAction(R.drawable.ic_close, "Dismiss", dismissPI)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setVibrate(longArrayOf(0, 300, 200, 300))
 
-        // Pre-O devices → runtime sound
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
             builder.setSound(finalSound)
         }
 
-        // ---------------------------------------------------------
-        // POST NOTIFICATION
-        // ---------------------------------------------------------
         nm.notify(notificationId, builder.build())
 
-        Timber.tag(TAG).d("Notification posted → id=$notificationId channel=$channelId")
+        Timber.tag(TAG).d("📢 Notification delivered → id=$notificationId uuid=$uuid")
     }
 }

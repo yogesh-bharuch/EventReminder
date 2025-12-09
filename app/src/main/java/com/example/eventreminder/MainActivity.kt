@@ -1,5 +1,19 @@
 package com.example.eventreminder
 
+// =============================================================
+// MainActivity — Handles Notification → Navigation (UUID Only)
+// =============================================================
+// Responsibilities:
+//   • Read notification intent (tap OR Open Card action)
+//   • Save UUID navigation request until NavController is ready
+//   • Navigate to PixelPreviewRouteString safely
+//
+// Fixes added:
+//   ✓ Explicit ACTION_OPEN_CARD handling
+//   ✓ Extra logging for debugging navigation flow
+//   ✓ Ensures pendingNavRequest fires exactly once
+// =============================================================
+
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -11,6 +25,7 @@ import com.example.eventreminder.navigation.AppNavGraph
 import com.example.eventreminder.navigation.HomeGraphRoute
 import com.example.eventreminder.navigation.LoginRoute
 import com.example.eventreminder.navigation.PixelPreviewRouteString
+import com.example.eventreminder.receivers.ReminderReceiver
 import com.example.eventreminder.ui.theme.EventReminderTheme
 import com.google.firebase.auth.FirebaseAuth
 import dagger.hilt.android.AndroidEntryPoint
@@ -26,13 +41,15 @@ class MainActivity : ComponentActivity() {
         const val EXTRA_EVENT_TYPE = "event_type"
     }
 
-    // Stores a UUID navigation request until NavController is ready
+    // Holds pending navigation request (UUID-based)
     private val pendingNavRequest = mutableStateOf<PendingNavRequest?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Read initial intent (app launched from notification)
+        Timber.tag(TAG).d("onCreate() — initial intent = $intent")
+
+        // Step 1: Process initial intent
         processIntentForNavigation(intent)
 
         setContent {
@@ -43,34 +60,42 @@ class MainActivity : ComponentActivity() {
                 if (isLoggedIn) HomeGraphRoute else LoginRoute
 
             EventReminderTheme {
+
                 AppNavGraph(
                     navController = navController,
                     startDestination = startDestination
                 )
 
-                // Perform navigation once UI + NavController are ready
-                LaunchedEffect(isLoggedIn, navController) {
+                // Step 2: Consume pending navigation request
+                LaunchedEffect(key1 = isLoggedIn, key2 = navController) {
+
                     val req = pendingNavRequest.value
-
-                    if (req != null) {
-                        if (isLoggedIn) {
-                            Timber.tag(TAG).d(
-                                "Launching Pixel Card Editor → UUID=${req.reminderIdString}"
-                            )
-
-                            navController.navigate(
-                                PixelPreviewRouteString(
-                                    reminderIdString = req.reminderIdString
-                                )
-                            )
-                        } else {
-                            Timber.tag(TAG).w(
-                                "Notification tap ignored — user not logged in"
-                            )
-                        }
-
-                        pendingNavRequest.value = null
+                    if (req == null) {
+                        Timber.tag(TAG).d("No pending navigation request")
+                        return@LaunchedEffect
                     }
+
+                    Timber.tag(TAG).w("PendingNavRequest detected → $req")
+
+                    if (!isLoggedIn) {
+                        Timber.tag(TAG).w("User not logged in → navigation aborted")
+                        pendingNavRequest.value = null
+                        return@LaunchedEffect
+                    }
+
+                    // Navigate to Pixel Card Editor
+                    Timber.tag(TAG).e(
+                        "Navigating NOW → PixelPreviewRouteString(UUID=${req.reminderIdString})"
+                    )
+
+                    navController.navigate(
+                        PixelPreviewRouteString(
+                            reminderIdString = req.reminderIdString
+                        )
+                    )
+
+                    // Consume request (avoid reruns)
+                    pendingNavRequest.value = null
                 }
             }
         }
@@ -78,45 +103,62 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+
+        Timber.tag(TAG).d("onNewIntent() — new intent = $intent")
+
         setIntent(intent)
         processIntentForNavigation(intent)
     }
 
-    /**
-     * Extracts UUID navigation extras and saves them to pendingNavRequest.
-     */
+    // =============================================================
+    // Intent Processor for Notification Navigation
+    // =============================================================
     private fun processIntentForNavigation(intent: Intent) {
         try {
+            val action = intent.action
             val fromNotification = intent.getBooleanExtra(EXTRA_FROM_NOTIFICATION, false)
             val uuid = intent.getStringExtra(EXTRA_REMINDER_ID_STRING)
             val eventType = intent.getStringExtra(EXTRA_EVENT_TYPE)
 
-            Timber.tag(TAG).d(
-                "processIntentForNavigation → fromNotif=$fromNotification uuid=$uuid type=$eventType"
+            Timber.tag(TAG).i(
+                """
+                processIntentForNavigation():
+                    action         = $action
+                    fromNotif      = $fromNotification
+                    uuid           = $uuid
+                    eventType      = $eventType
+                """.trimIndent()
             )
 
-            if (fromNotification && !uuid.isNullOrBlank()) {
+            // Highest priority → Open Card action
+            if (action == ReminderReceiver.ACTION_OPEN_CARD && !uuid.isNullOrBlank()) {
+                Timber.tag(TAG).e("ACTION_OPEN_CARD detected → navigating to card UUID=$uuid")
 
-                // Store UUID request for Compose to consume later
                 pendingNavRequest.value = PendingNavRequest(
                     reminderIdString = uuid,
                     eventType = eventType
                 )
+                return
+            }
 
-                // Prevent re-triggering on configuration changes
-                intent.removeExtra(EXTRA_FROM_NOTIFICATION)
-                intent.removeExtra(EXTRA_REMINDER_ID_STRING)
-                intent.removeExtra(EXTRA_EVENT_TYPE)
+            // Normal tap on notification
+            if (fromNotification && !uuid.isNullOrBlank()) {
+                Timber.tag(TAG).d("Normal notification tap → UUID=$uuid")
+
+                pendingNavRequest.value = PendingNavRequest(
+                    reminderIdString = uuid,
+                    eventType = eventType
+                )
             }
 
         } catch (t: Throwable) {
-            Timber.tag(TAG).e(t, "Failed to parse navigation intent")
+            Timber.tag(TAG).e(t, "processIntentForNavigation → FAILED")
         }
     }
 
-    /**
-     * UUID-based navigation request holder
-     */
+    // =============================================================
+    // Pending Navigation Holder (UUID)
+    // =============================================================
     private data class PendingNavRequest(
         val reminderIdString: String,
         val eventType: String?

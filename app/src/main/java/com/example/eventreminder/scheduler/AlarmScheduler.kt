@@ -1,5 +1,20 @@
 package com.example.eventreminder.scheduler
 
+// =============================================================
+// AlarmScheduler — UUID-ONLY Version (Final Clean Implementation)
+//
+// Responsibilities:
+//  • Schedules exact alarms (UUID-based)
+//  • Cancels alarms
+//  • Builds PendingIntents with deterministic request codes
+//
+// Project Standards:
+//  • Named arguments everywhere
+//  • Section headers
+//  • Inline comments explaining each step
+//  • UUID only — Long IDs removed
+// =============================================================
+
 import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context
@@ -22,26 +37,35 @@ class AlarmScheduler @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
 
+    // System Alarm manager
     private val alarmManager = context.getSystemService(AlarmManager::class.java)
 
+    // Human-readable logging format
     private val formatter: DateTimeFormatter =
         DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss z")
 
-    // -------------------------------------------------------------------------
-    // UUID deterministic notification ID
-    // -------------------------------------------------------------------------
-    private fun generateNotificationId(idString: String, offsetMillis: Long): Int {
+    // =============================================================
+    // Deterministic UUID → Notification ID
+    // =============================================================
+    private fun generateNotificationId(
+        idString: String,
+        offsetMillis: Long
+    ): Int {
         val raw = idString.hashCode() xor offsetMillis.hashCode()
         return if (raw == Int.MIN_VALUE) Int.MAX_VALUE else kotlin.math.abs(raw)
     }
 
-    private fun requestCodeFor(idString: String, offsetMillis: Long): Int {
-        return generateNotificationId(idString, offsetMillis)
-    }
+    private fun requestCodeFor(
+        idString: String,
+        offsetMillis: Long
+    ): Int = generateNotificationId(
+        idString = idString,
+        offsetMillis = offsetMillis
+    )
 
-    // -------------------------------------------------------------------------
-    // UUID PendingIntent Builder
-    // -------------------------------------------------------------------------
+    // =============================================================
+    // Build PendingIntent (UUID version)
+    // =============================================================
     private fun buildPIString(
         reminderIdString: String,
         offsetMillis: Long,
@@ -50,9 +74,15 @@ class AlarmScheduler @Inject constructor(
         repeatRule: String?
     ): PendingIntent {
 
-        val intent = Intent(context, ReminderReceiver::class.java).apply {
+        val intent = Intent(
+            /* packageContext = */ context,
+            /* cls = */ ReminderReceiver::class.java
+        ).apply {
+
+            // Each UUID+offset has unique action
             action = "com.example.eventreminder.REMIND_${reminderIdString}_$offsetMillis"
 
+            // Required extras
             putExtra(ReminderReceiver.EXTRA_REMINDER_ID_STRING, reminderIdString)
             putExtra(ReminderReceiver.EXTRA_OFFSET_MILLIS, offsetMillis)
             putExtra(ReminderReceiver.EXTRA_TITLE, title)
@@ -61,33 +91,39 @@ class AlarmScheduler @Inject constructor(
         }
 
         return PendingIntent.getBroadcast(
-            context,
-            requestCodeFor(reminderIdString, offsetMillis),
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            /* context = */ context,
+            /* requestCode = */ requestCodeFor(idString = reminderIdString, offsetMillis = offsetMillis),
+            /* intent = */ intent,
+            /* flags = */ PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
     }
 
+    // =============================================================
+    // Retrieve existing PendingIntent (UUID version)
+    // =============================================================
     private fun getExistingPIString(
         reminderIdString: String,
         offsetMillis: Long
     ): PendingIntent? {
 
-        val intent = Intent(context, ReminderReceiver::class.java).apply {
+        val intent = Intent(
+            context,
+            ReminderReceiver::class.java
+        ).apply {
             action = "com.example.eventreminder.REMIND_${reminderIdString}_$offsetMillis"
         }
 
         return PendingIntent.getBroadcast(
-            context,
-            requestCodeFor(reminderIdString, offsetMillis),
-            intent,
-            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
+            /* context = */ context,
+            /* requestCode = */ requestCodeFor(idString = reminderIdString, offsetMillis = offsetMillis),
+            /* intent = */ intent,
+            /* flags = */ PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
         )
     }
 
-    // -------------------------------------------------------------------------
-    // UUID scheduleExact
-    // -------------------------------------------------------------------------
+    // =============================================================
+    // scheduleExactByString — Core UUID Scheduling
+    // =============================================================
     fun scheduleExactByString(
         reminderIdString: String,
         eventTriggerMillis: Long,
@@ -99,14 +135,22 @@ class AlarmScheduler @Inject constructor(
         if (alarmManager == null) return
 
         val actualTrigger = eventTriggerMillis - offsetMillis
+
+        // Skip expired offsets
         if (actualTrigger <= System.currentTimeMillis()) {
-            Timber.tag(TAG).d("⏭ Offset skipped (past) idString=$reminderIdString off=$offsetMillis")
+            Timber.tag(TAG).d("⏭ Skipped offset (past) idString=$reminderIdString off=$offsetMillis")
             return
         }
 
-        val pi = buildPIString(reminderIdString, offsetMillis, title, message, repeatRule)
+        val pi = buildPIString(
+            reminderIdString = reminderIdString,
+            offsetMillis = offsetMillis,
+            title = title,
+            message = message,
+            repeatRule = repeatRule
+        )
 
-        val formatted = try {
+        val readable = try {
             Instant.ofEpochMilli(actualTrigger)
                 .atZone(ZoneId.systemDefault())
                 .format(formatter)
@@ -115,10 +159,11 @@ class AlarmScheduler @Inject constructor(
         }
 
         Timber.tag(TAG).d(
-            "Alarm → scheduleExact (UUID) idString=$reminderIdString off=$offsetMillis at $formatted repeat=$repeatRule"
+            "⏰ scheduleExact(UUID) idString=$reminderIdString off=$offsetMillis at $readable repeat=$repeatRule"
         )
 
         try {
+            // Android 12+ restrictions
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
                 !alarmManager.canScheduleExactAlarms()
             ) {
@@ -138,15 +183,15 @@ class AlarmScheduler @Inject constructor(
                 pi
             )
 
-        } catch (se: SecurityException) {
-            Timber.tag(TAG).e(se, "SecurityException → fallback inexact")
+        } catch (ex: SecurityException) {
+            Timber.tag(TAG).e(ex, "⚠ SecurityException — fallback inexact alarm")
             alarmManager.set(AlarmManager.RTC_WAKEUP, actualTrigger, pi)
         }
     }
 
-    // -------------------------------------------------------------------------
-    // UUID scheduleAll
-    // -------------------------------------------------------------------------
+    // =============================================================
+    // scheduleAllByString — Schedules all offsets
+    // =============================================================
     fun scheduleAllByString(
         reminderIdString: String,
         title: String?,
@@ -169,25 +214,32 @@ class AlarmScheduler @Inject constructor(
             val finalTrigger = nextEventTime - offsetMillis
 
             Timber.tag(TAG).d(
-                "scheduleAll (UUID) → idString=$reminderIdString offset=$offsetMillis finalTrigger=$finalTrigger"
+                "📌 scheduleAll(UUID) → idString=$reminderIdString offset=$offsetMillis finalTrigger=$finalTrigger"
             )
         }
     }
 
-    // -------------------------------------------------------------------------
-    // UUID cancelAll
-    // -------------------------------------------------------------------------
-    fun cancelAllByString(reminderIdString: String, offsets: List<Long>) {
+    // =============================================================
+    // cancelAllByString — Cancels all offsets for a UUID reminder
+    // =============================================================
+    fun cancelAllByString(
+        reminderIdString: String,
+        offsets: List<Long>
+    ) {
         if (alarmManager == null) return
 
         offsets.forEach { offset ->
-            val pi = getExistingPIString(reminderIdString, offset)
+            val pi = getExistingPIString(
+                reminderIdString = reminderIdString,
+                offsetMillis = offset
+            )
+
             if (pi != null) {
-                Timber.tag(TAG).d("Cancel (UUID) → idString=$reminderIdString offset=$offset")
+                Timber.tag(TAG).d("❌ Cancel(UUID) → idString=$reminderIdString offset=$offset")
                 try {
                     alarmManager.cancel(pi)
-                } catch (e: Exception) {
-                    Timber.tag(TAG).e(e, "Failed cancel UUID idString=$reminderIdString offset=$offset")
+                } catch (ex: Exception) {
+                    Timber.tag(TAG).e(ex, "Failed cancel UUID: $reminderIdString offset=$offset")
                 }
             }
         }
