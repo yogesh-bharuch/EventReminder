@@ -7,14 +7,15 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
+import com.example.eventreminder.util.SessionPrefs
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.delay
 import timber.log.Timber
 
 @Composable
 fun SplashScreen(
-    onNavigate: (Boolean) -> Unit,       // true = logged in
+    onNavigateToHome: () -> Unit,        // navigate to Home
+    onNavigateToLogin: () -> Unit,       // navigate to Login
     onBatteryFixRequired: () -> Unit     // show dialog
 ) {
     val context = LocalContext.current
@@ -31,8 +32,11 @@ fun SplashScreen(
 
         delay(300) // allow FirebaseAuth to initialize properly
 
+        val firebaseUser = FirebaseAuth.getInstance().currentUser
+        val prefsUid = SessionPrefs.getUid(context)
+
         Timber.tag("AUTH_CHECK")
-            .e("Initial FirebaseAuth user = ${FirebaseAuth.getInstance().currentUser}")
+            .e("Initial FirebaseAuth user = $firebaseUser, prefsUid = $prefsUid")
 
         // -------------------- Battery Optimization --------------------
         if (isBatteryOptimized) {
@@ -42,8 +46,7 @@ fun SplashScreen(
         }
 
         // -------------------- FirebaseAuth Stabilization --------------------
-        // On OnePlus, FirebaseAuth may return null for the first 200–500ms.
-        var user = FirebaseAuth.getInstance().currentUser
+        var user = firebaseUser
         var retries = 0
 
         while (user == null && retries < 3) {
@@ -54,14 +57,19 @@ fun SplashScreen(
                 .e("Retry($retries): FirebaseAuth user = $user")
         }
 
-        val loggedIn = user != null
+        // -------------------- Final Decision --------------------
+        val loggedIn = (user != null) || (prefsUid != null)
         Timber.tag("AUTH_CHECK")
             .e("Final decision → loggedIn=$loggedIn")
 
         // -------------------- Navigate Exactly Once --------------------
         if (!hasNavigated) {
             hasNavigated = true
-            onNavigate(loggedIn)
+            if (loggedIn) {
+                onNavigateToHome()
+            } else {
+                onNavigateToLogin()
+            }
         }
     }
 

@@ -53,6 +53,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import timber.log.Timber
+import androidx.compose.ui.platform.LocalContext
+import com.example.eventreminder.util.SessionPrefs
+
 
 /**
  * HomeScreen
@@ -197,8 +200,13 @@ fun HomeScreen(
             // ---------------------------------------------------------
             Row(Modifier.padding(bottom = 8.dp)) {
                 Text("Welcome: ", fontSize = 12.sp)
-                Text(FirebaseAuth.getInstance().currentUser?.email ?: "Guest", fontSize = 10.sp)
+
+                val context = LocalContext.current
+                val email = SessionPrefs.getEmail(context) ?: "Guest"
+
+                Text(email, fontSize = 10.sp)
             }
+
 
             HorizontalDivider(thickness = 1.dp, color = Color.Gray)
             Spacer(Modifier.height(8.dp))

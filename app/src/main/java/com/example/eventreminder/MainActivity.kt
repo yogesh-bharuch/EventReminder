@@ -13,6 +13,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.compose.rememberNavController
 import com.example.eventreminder.navigation.AppNavGraph
 import com.example.eventreminder.navigation.PixelPreviewRouteString
@@ -45,11 +46,12 @@ class MainActivity : ComponentActivity() {
         setContent {
 
             val navController = rememberNavController()
-
+            val context = LocalContext.current
             EventReminderTheme {
 
                 // Always starting from SplashRoute
                 AppNavGraph(
+                    context,
                     navController = navController,
                     startDestination = SplashRoute
                 )
