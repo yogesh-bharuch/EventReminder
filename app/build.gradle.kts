@@ -72,6 +72,7 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.security.crypto)
 
     // Material Icons (Filled)
     implementation(libs.androidx.material.icons.core)

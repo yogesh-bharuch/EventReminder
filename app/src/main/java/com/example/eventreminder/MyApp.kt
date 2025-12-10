@@ -24,7 +24,7 @@ class MyApp : Application(), Configuration.Provider {
         super.onCreate()
 
         // FORCE DB RESET (TEMPORARILY DURING DEVELOPMENT)
-        //deleteDatabase("event_reminder_db")
+        deleteDatabase("event_reminder_db")
 
         // 🌲 Initialize Timber for debug logging
         if (BuildConfig.DEBUG) {
