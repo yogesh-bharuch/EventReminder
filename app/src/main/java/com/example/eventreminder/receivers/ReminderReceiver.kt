@@ -2,19 +2,7 @@ package com.example.eventreminder.receivers
 
 // =============================================================
 // ReminderReceiver — UUID-Only Reminder Trigger Handler
-// -------------------------------------------------------------
-// Responsibilities:
-//  • Receive alarm broadcasts
-//  • Show notification immediately
-//  • Handle DISMISS action
-//  • Handle OPEN_CARD action (fixed to send correct UUID key)
-//  • Reschedule repeating reminders
-//
-// Project Standards:
-//  • Named arguments
-//  • Section headers
-//  • Inline comments
-//  • UUID-only ID schema
+// Updated to record per-offset lastFiredAt (Option A Extended).
 // =============================================================
 
 import android.app.NotificationManager
@@ -40,37 +28,21 @@ private const val TAG = "ReminderReceiver"
 class ReminderReceiver : BroadcastReceiver() {
 
     companion object {
-
-        // Payload
         const val EXTRA_TITLE = "extra_title"
         const val EXTRA_MESSAGE = "extra_message"
         const val EXTRA_REPEAT_RULE = "extra_repeat_rule"
         const val EXTRA_OFFSET_MILLIS = "offsetMillis"
-
-        // Metadata
         const val EXTRA_FROM_NOTIFICATION = "from_notification"
         const val EXTRA_EVENT_TYPE = "event_type"
-
-        // Actions
         const val ACTION_DISMISS = "com.example.eventreminder.ACTION_DISMISS"
         const val ACTION_OPEN_CARD = "com.example.eventreminder.ACTION_OPEN_CARD"
-
-        // Notification
         const val EXTRA_NOTIFICATION_ID = "extra_notification_id"
-
-        // UUID key — MUST MATCH MainActivity
         const val EXTRA_REMINDER_ID_STRING = "reminder_id_string"
     }
 
-    // =============================================================
-    // Injected Dependencies
-    // =============================================================
     @Inject lateinit var repo: ReminderRepository
     @Inject lateinit var scheduler: AlarmScheduler
 
-    // =============================================================
-    // Entry Point
-    // =============================================================
     override fun onReceive(context: Context, intent: Intent) {
 
         Timber.tag(TAG).i("Receiver fired → action=${intent.action}")
@@ -92,9 +64,7 @@ class ReminderReceiver : BroadcastReceiver() {
         // OPEN_CARD Action
         // ---------------------------------------------------------
         if (intent.action == ACTION_OPEN_CARD) {
-
             val idString = intent.getStringExtra(EXTRA_REMINDER_ID_STRING)
-
             if (idString.isNullOrBlank()) {
                 Timber.tag(TAG).e("❌ ACTION_OPEN_CARD but UUID missing")
                 return
@@ -107,10 +77,9 @@ class ReminderReceiver : BroadcastReceiver() {
             Timber.tag(TAG).d("📬 ACTION_OPEN_CARD → Forwarding UUID=$idString")
 
             val activityIntent = Intent(context, MainActivity::class.java).apply {
-                flags =
-                    Intent.FLAG_ACTIVITY_NEW_TASK or
-                            Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                            Intent.FLAG_ACTIVITY_SINGLE_TOP
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP
 
                 putExtra(EXTRA_FROM_NOTIFICATION, true)
                 putExtra(EXTRA_REMINDER_ID_STRING, idString)
@@ -125,7 +94,6 @@ class ReminderReceiver : BroadcastReceiver() {
         // NORMAL ALARM TRIGGER
         // ---------------------------------------------------------
         val idString = intent.getStringExtra(EXTRA_REMINDER_ID_STRING)
-
         if (idString.isNullOrBlank()) {
             Timber.tag(TAG).e("❌ Alarm received but missing UUID")
             return
@@ -140,7 +108,7 @@ class ReminderReceiver : BroadcastReceiver() {
 
         val eventType = inferEventType(title = title, message = message)
 
-        // Create deterministic notification ID
+        // Deterministic Notification ID
         val notificationId = generateNotificationIdFromString(idString, offsetMillis)
 
         // Show notification
@@ -157,16 +125,30 @@ class ReminderReceiver : BroadcastReceiver() {
             )
         )
 
+        // Record lastFiredAt for this reminderId+offset to avoid duplicate on boot
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                repo.upsertLastFiredAt(
+                    reminderId = idString,
+                    offsetMillis = offsetMillis,
+                    ts = System.currentTimeMillis()
+                )
+                Timber.tag(TAG).d("Recorded lastFiredAt → id=$idString offset=$offsetMillis")
+            } catch (t: Throwable) {
+                Timber.tag(TAG).e(t, "Failed to record lastFiredAt for $idString offset=$offsetMillis")
+            }
+        }
+
         // ---------------------------------------------------------
         // Reschedule repeating reminders
         // ---------------------------------------------------------
+        if (repeatRule.isNullOrEmpty()) {
+            Timber.tag(TAG).d("No repeat → done")
+            return
+        }
+
         CoroutineScope(Dispatchers.IO).launch {
             val reminder = repo.getReminder(idString) ?: return@launch
-
-            if (reminder.repeatRule.isNullOrEmpty()) {
-                Timber.tag(TAG).d("No repeat → done")
-                return@launch
-            }
 
             val nextEvent = NextOccurrenceCalculator.nextOccurrence(
                 eventEpochMillis = reminder.eventEpochMillis,
@@ -189,20 +171,11 @@ class ReminderReceiver : BroadcastReceiver() {
         }
     }
 
-    // =============================================================
-    // Deterministic Notification ID
-    // =============================================================
-    private fun generateNotificationIdFromString(
-        idString: String,
-        offsetMillis: Long
-    ): Int {
+    private fun generateNotificationIdFromString(idString: String, offsetMillis: Long): Int {
         val raw = idString.hashCode() xor offsetMillis.hashCode()
         return if (raw == Int.MIN_VALUE) Int.MAX_VALUE else kotlin.math.abs(raw)
     }
 
-    // =============================================================
-    // Event Type Resolver
-    // =============================================================
     private fun inferEventType(title: String, message: String): String {
         val text = "$title $message".lowercase()
         return when {

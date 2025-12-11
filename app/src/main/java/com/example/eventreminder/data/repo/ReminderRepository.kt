@@ -2,19 +2,20 @@ package com.example.eventreminder.data.repo
 
 // ============================================================
 // ReminderRepository — Clean Architecture (UUID Only)
-//
 // Responsibilities:
 //  • Pure data access layer (Room only)
 //  • NO scheduling, NO business logic, NO alarms
 //  • Ensures DB writes are committed (read-after-write verification)
 //  • Returns IDs and entities for ViewModel to process
 //
-// Alarm scheduling MUST be performed ONLY inside ViewModel.
+// This update adds per-offset fire-state helpers (lastFiredAt storage).
 // ============================================================
 
 import android.content.Context
 import com.example.eventreminder.data.local.ReminderDao
+import com.example.eventreminder.data.local.ReminderFireStateDao
 import com.example.eventreminder.data.model.EventReminder
+import com.example.eventreminder.data.model.ReminderFireStateEntity
 import com.example.eventreminder.util.BackupHelper
 import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.encodeToString
@@ -28,13 +29,13 @@ private const val TAG = "ReminderRepository"
 
 @Singleton
 class ReminderRepository @Inject constructor(
-    private val dao: ReminderDao
+    private val dao: ReminderDao,
+    private val fireStateDao: ReminderFireStateDao
 ) {
 
     // ============================================================
     // READ API (UUID Only)
     // ============================================================
-
     fun getAllReminders(): Flow<List<EventReminder>> =
         dao.getAll()
 
@@ -45,9 +46,30 @@ class ReminderRepository @Inject constructor(
         dao.getById(id)
 
     // ============================================================
+    // FIRE STATE HELPERS (Per-offset lastFiredAt)
+    // ============================================================
+    suspend fun getLastFiredAt(reminderId: String, offsetMillis: Long): Long? =
+        fireStateDao.getLastFiredAt(reminderId, offsetMillis)
+
+    suspend fun upsertLastFiredAt(reminderId: String, offsetMillis: Long, ts: Long) {
+        val entity = ReminderFireStateEntity(
+            reminderId = reminderId,
+            offsetMillis = offsetMillis,
+            lastFiredAt = ts
+        )
+        fireStateDao.upsert(entity)
+        Timber.tag(TAG).d("Upserted FireState → id=$reminderId offset=$offsetMillis ts=$ts")
+    }
+
+    suspend fun getAllFireStatesForReminder(reminderId: String) =
+        fireStateDao.getAllForReminder(reminderId)
+
+    suspend fun deleteFireStatesForReminder(reminderId: String) =
+        fireStateDao.deleteForReminder(reminderId)
+
+    // ============================================================
     // INSERT (UUID)
     // ============================================================
-
     suspend fun insert(reminder: EventReminder): String {
         Timber.tag(TAG).i("insert id=${reminder.id}")
 
@@ -70,7 +92,6 @@ class ReminderRepository @Inject constructor(
     // ============================================================
     // UPDATE (UUID)
     // ============================================================
-
     suspend fun update(reminder: EventReminder) {
         Timber.tag(TAG).i("update id=${reminder.id}")
 
@@ -90,7 +111,6 @@ class ReminderRepository @Inject constructor(
     // ============================================================
     // DELETE (Soft delete)
     // ============================================================
-
     suspend fun markDelete(reminder: EventReminder) {
         Timber.tag(TAG).i("delete id=${reminder.id}")
 
@@ -100,14 +120,13 @@ class ReminderRepository @Inject constructor(
         dao.markDeleted(reminder.id)
         dao.update(deleted)
 
-        // ❌ No alarm cancellation here — ViewModel handles this.
+        // ❌ No alarm cancellation here — ViewModel handles it.
     }
 
     // ============================================================
     // FETCH NON-DELETED ENABLED REMINDERS
     // Used by sync + BOOT restoration
     // ============================================================
-
     suspend fun getNonDeletedEnabled(): List<EventReminder> {
         return getAllOnce().filter { it.enabled && !it.isDeleted }
     }
@@ -115,7 +134,6 @@ class ReminderRepository @Inject constructor(
     // ============================================================
     // BACKUP JSON EXPORT
     // ============================================================
-
     suspend fun exportRemindersToJson(context: Context): String {
         val reminders = getAllOnce()
         val json = Json.encodeToString(reminders)
@@ -128,7 +146,6 @@ class ReminderRepository @Inject constructor(
     // ============================================================
     // BACKUP RESTORE (UUID)
     // ============================================================
-
     suspend fun restoreRemindersFromBackup(context: Context): String {
         val file = File(context.filesDir, "reminders_backup.json")
         if (!file.exists()) return "No backup file found"
