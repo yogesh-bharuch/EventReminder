@@ -1,46 +1,26 @@
 package com.example.eventreminder.ui.screens
 
+// =============================================================
+// Imports
+// =============================================================
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.media.MediaPlayer
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.SnackbarDuration
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.example.eventreminder.R
-import com.example.eventreminder.navigation.AddEditReminderRoute
-import com.example.eventreminder.navigation.HomeRoute
-import com.example.eventreminder.navigation.LoginRoute
-import com.example.eventreminder.navigation.PixelPreviewRoute
-import com.example.eventreminder.navigation.PixelPreviewRouteString
-import com.example.eventreminder.navigation.ReminderManagerRoute
+import com.example.eventreminder.navigation.*
 import com.example.eventreminder.pdf.PdfViewModel
 import com.example.eventreminder.ui.components.HomeBottomTray
 import com.example.eventreminder.ui.components.events.EventsListGrouped
@@ -53,58 +33,52 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import timber.log.Timber
-import androidx.compose.ui.platform.LocalContext
-import com.example.eventreminder.util.SessionPrefs
 
+// =============================================================
+// Constants
+// =============================================================
+private const val TAG = "HomeScreen"
 
-/**
- * HomeScreen
- * ----------
- * - Displays grouped reminders
- * - Hosts the FAB to create new reminders
- * - Collects snackbar events emitted after Add/Edit Reminder actions
- * - Uses the SAME shared ReminderViewModel (scoped to HomeGraphRoute)
- */
+// =============================================================
+// HomeScreen Composable
+// =============================================================
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     navController: NavController,
-    reminderVm: ReminderViewModel,      // ⭐ Shared VM injected from NavGraph
+    reminderVm: ReminderViewModel,
     pdfviewModel: PdfViewModel = hiltViewModel()
 ) {
-    val TAG = "HomeScreen"
-    Timber.tag(TAG).d("Rendering HomeScreen with VM: $reminderVm")
+    Timber.tag(TAG).d("Rendering HomeScreen")
+    Timber.tag("TRACE").e("🏠 HomeScreen composed/recomposed")
 
     val context = LocalContext.current
+    val activity = context as Activity
 
     // ---------------------------------------------------------
-    // 🔔 SNACKBAR HOST
-    // Collects snackbar events when Add/EditReminderScreen sends them
+    // Snackbar Host (ViewModel → HomeScreen)
     // ---------------------------------------------------------
     val snackbarHostState = remember { SnackbarHostState() }
-    LaunchedEffect(snackbarHostState) {
-        Timber.tag("HOME_SNACK").d("Collector ACTIVE")
+    val coroutineScope = rememberCoroutineScope()
+
+    LaunchedEffect(Unit) {
+        Timber.tag(TAG).d("Home snackbar collector active")
 
         reminderVm.snackbarEvent.collectLatest { message ->
-            Timber.tag("HOME_SNACK").d("Received: $message")
-
-            snackbarHostState.showSnackbar(
-                message = message,
-                duration = SnackbarDuration.Short     // ⭐ SHORT DURATION
-            )
-
-            reminderVm.clearSnackbar() // ⭐ Consume event to prevent replay
+            Timber.tag(TAG).d("Snackbar message received → $message")
+            snackbarHostState.showSnackbar(message = message)
+            reminderVm.clearSnackbar()
         }
     }
 
     // ---------------------------------------------------------
-    // 🔙 DOUBLE BACK TO EXIT
+    // Double Back Press to Exit App
     // ---------------------------------------------------------
     var backPressedOnce by remember { mutableStateOf(false) }
 
     BackHandler {
         if (backPressedOnce) {
-            (context as? Activity)?.finish()
+            activity.finish()
         } else {
             backPressedOnce = true
             Toast.makeText(context, "Press back again to exit", Toast.LENGTH_SHORT).show()
@@ -119,112 +93,126 @@ fun HomeScreen(
     }
 
     // ---------------------------------------------------------
-    // 🗂 GROUPED EVENTS VIEWMODEL (local VM)
+    // Grouped Events
     // ---------------------------------------------------------
     val groupedVm: GroupedEventsViewModel = hiltViewModel()
     val groupedSections by groupedVm.groupedEvents.collectAsState()
 
     // ---------------------------------------------------------
-    // 📄 PDF OPEN EVENT
+    // PDF Open Handler
     // ---------------------------------------------------------
     LaunchedEffect(Unit) {
         pdfviewModel.openPdfEvent.collect { uri ->
-            Timber.d("PDF URI → $uri")
+            Timber.tag(TAG).d("Opening PDF → $uri")
+
             val intent = Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(uri, "application/pdf")
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
+
             try {
                 context.startActivity(intent)
             } catch (e: Exception) {
-                Timber.tag("HomeScreen").e(e, "Unable to open PDF")
+                Timber.tag(TAG).e(e, "Unable to open PDF")
             }
         }
     }
 
-    val coroutineScope = rememberCoroutineScope()
 
-    // ---------------------------------------------------------
-    // 🏠 MAIN SCAFFOLD
-    // ---------------------------------------------------------
+    // =============================================================
+    // MAIN SCAFFOLD
+    // =============================================================
     HomeScaffold(
         snackbarHostState = snackbarHostState,
+
+        // FAB
         onNewEventClick = {
-            // Navigate with no ID → Add Mode
             navController.navigate(AddEditReminderRoute())
         },
+
+        // Sign Out (FirebaseAuth only)
         onSignOut = {
+            Timber.tag(TAG).i("Logout clicked — signing out Firebase user")
             FirebaseAuth.getInstance().signOut()
             navController.navigate(LoginRoute) {
                 popUpTo(HomeRoute) { inclusive = true }
             }
         },
-        onManageRemindersClick = { navController.navigate(ReminderManagerRoute) },
 
-        // Bottom tray with utility actions
+        onManageRemindersClick = {
+            navController.navigate(ReminderManagerRoute)
+        },
+
         bottomBar = {
             HomeBottomTray(
                 onCleanupClick = {
-                    coroutineScope.launch { reminderVm.cleanupOldReminders() }
+                    coroutineScope.launch {
+                        reminderVm.cleanupOldReminders()
+                        snackbarHostState.showSnackbar("Old reminders cleaned")
+                    }
                 },
                 onGeneratePdfClick = {
-                    coroutineScope.launch { pdfviewModel.runTodo3RealReport() }
+                    coroutineScope.launch {
+                        pdfviewModel.runTodo3RealReport()
+                        snackbarHostState.showSnackbar("PDF generated")
+                    }
                 },
                 onExportClick = {
-                    coroutineScope.launch { reminderVm.exportRemindersCsv() }
+                    coroutineScope.launch {
+                        reminderVm.exportRemindersCsv()
+                        snackbarHostState.showSnackbar("Export complete")
+                    }
                 },
                 onSyncClick = {
-                    coroutineScope.launch { reminderVm.syncRemindersWithServer() }
+                    coroutineScope.launch {
+                        reminderVm.syncRemindersWithServer()
+                        snackbarHostState.showSnackbar("Sync requested")
+                    }
                 },
                 onBackupClick = {
-                    coroutineScope.launch { reminderVm.backupReminders(context) }
+                    coroutineScope.launch {
+                        reminderVm.backupReminders(context)
+                        snackbarHostState.showSnackbar("Backup completed")
+                    }
                 },
                 onRestoreClick = {
-                    coroutineScope.launch { reminderVm.restoreReminders(context) }
+                    coroutineScope.launch {
+                        reminderVm.restoreReminders(context)
+                        snackbarHostState.showSnackbar("Restore completed")
+                    }
                 }
             )
         }
     ) { modifier ->
 
-        // ---------------------------------------------------------
-        // 📄 MAIN BODY CONTENT
-        // ---------------------------------------------------------
+        // =============================================================
+        // SCREEN BODY CONTENT
+        // =============================================================
         Column(
             modifier = modifier
                 .fillMaxSize()
                 .padding(8.dp)
         ) {
 
-            // ---------------------------------------------------------
-            // HEADER
-            // ---------------------------------------------------------
+            // HEADER — Show FirebaseEmail only
+            val email = FirebaseAuth.getInstance().currentUser?.email ?: "Guest"
+
             Row(Modifier.padding(bottom = 8.dp)) {
                 Text("Welcome: ", fontSize = 12.sp)
-
-                val context = LocalContext.current
-                val email = SessionPrefs.getEmail(context) ?: "Guest"
-
                 Text(email, fontSize = 10.sp)
             }
-
 
             HorizontalDivider(thickness = 1.dp, color = Color.Gray)
             Spacer(Modifier.height(8.dp))
 
-            //SoundTestButtons(context)
-
-            // ---------------------------------------------------------
-            // EMPTY STATE OR REMINDER LIST
-            // ---------------------------------------------------------
+            // Empty State or List
             if (groupedSections.isEmpty()) {
 
                 BirthdayEmptyState()
 
             } else {
 
-                // ---------------------------------------------------------
-                // 🔍 BUTTON ROW — OPEN LAST REMINDER IN PIXEL PREVIEW
-                // ---------------------------------------------------------
+                // Button → Open Last Reminder
                 Row {
                     Button(
                         onClick = {
@@ -233,29 +221,30 @@ fun HomeScreen(
                                 .maxByOrNull { it.eventEpochMillis }
 
                             if (lastReminder != null) {
-                                navController.navigate(PixelPreviewRouteString(reminderIdString = lastReminder.id))
+                                navController.navigate(
+                                    PixelPreviewRouteString(reminderIdString = lastReminder.id)
+                                )
                             } else {
-                                Timber.tag("HomeScreen").w("No reminders found → cannot open PixelPreview")
-
-                                // Show a snackbar message
                                 coroutineScope.launch {
-                                    snackbarHostState.showSnackbar(message = "No reminders found to preview", duration = SnackbarDuration.Short, withDismissAction = true)
+                                    snackbarHostState.showSnackbar("No reminders found")
                                 }
                             }
                         }
                     ) {
-                        Text(text = "open last card in the list")
+                        Text("Open last card")
                     }
                 }
 
                 Spacer(Modifier.height(10.dp))
 
-                // Grouped Event List
+                // Events List
                 EventsListGrouped(
                     sections = groupedSections,
                     viewModel = reminderVm,
                     onClick = { id ->
-                        navController.navigate(AddEditReminderRoute(id.toString()))
+                        navController.navigate(
+                            AddEditReminderRoute(eventId = id)
+                        )
                     },
                     modifier = Modifier.weight(1f)
                 )
@@ -265,8 +254,9 @@ fun HomeScreen(
 }
 
 
-
-
+// =============================================================
+// Sound Test Buttons
+// =============================================================
 @Composable
 fun SoundTestButtons(context: Context) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -278,24 +268,10 @@ fun SoundTestButtons(context: Context) {
             }
         }
 
-        Button(onClick = { play(R.raw.birthday) }) {
-            Text("Play Birthday Sound")
-        }
-
-        Button(onClick = { play(R.raw.anniversary) }) {
-            Text("Play Anniversary Sound")
-        }
-
-        Button(onClick = { play(R.raw.medicine) }) {
-            Text("Play Medicine Sound")
-        }
-
-        Button(onClick = { play(R.raw.meeting) }) {
-            Text("Play Meeting Sound")
-        }
-
-        Button(onClick = { play(R.raw.workout) }) {
-            Text("Play Workout Sound")
-        }
+        Button(onClick = { play(R.raw.birthday) }) { Text("Play Birthday Sound") }
+        Button(onClick = { play(R.raw.anniversary) }) { Text("Play Anniversary Sound") }
+        Button(onClick = { play(R.raw.medicine) }) { Text("Play Medicine Sound") }
+        Button(onClick = { play(R.raw.meeting) }) { Text("Play Meeting Sound") }
+        Button(onClick = { play(R.raw.workout) }) { Text("Play Workout Sound") }
     }
 }

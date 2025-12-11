@@ -1,10 +1,11 @@
 package com.example.eventreminder
 
 // =============================================================
-// MainActivity — FIXED VERSION
-// - Correct pendingNavRequest handling
-// - Prevents PixelPreview from closing immediately
-// - Works with SplashRoute and New Navigation Flow
+// MainActivity
+// - ALWAYS starts at SplashRoute (auth gate)
+// - FIXED warm-start navigation using stable Compose state key
+// - Handles notification deep links without bypassing login
+// - PixelPreview navigation occurs ONLY after NavHost is mounted
 // =============================================================
 
 import android.content.Intent
@@ -13,70 +14,92 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.compose.rememberNavController
 import com.example.eventreminder.navigation.AppNavGraph
 import com.example.eventreminder.navigation.PixelPreviewRouteString
 import com.example.eventreminder.navigation.SplashRoute
-import com.example.eventreminder.receivers.ReminderReceiver
 import com.example.eventreminder.ui.theme.EventReminderTheme
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.delay
 import timber.log.Timber
+
+private const val TAG = "MainActivity"
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
     private companion object {
-        const val TAG = "NotificationNav"
         const val EXTRA_FROM_NOTIFICATION = "from_notification"
         const val EXTRA_REMINDER_ID_STRING = "reminder_id_string"
         const val EXTRA_EVENT_TYPE = "event_type"
     }
 
-    // Acts as a one-time trigger
-    private val pendingNavRequest = mutableStateOf<PendingNavRequest?>(null)
+    // IMPORTANT — stable Compose state used as LaunchedEffect key
+    private var pendingReminderId by mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        Timber.tag(TAG).d("onCreate() — initial intent = $intent")
+        Timber.tag(TAG).d("onCreate — initial intent = $intent")
 
-        processIntentForNavigation(intent)
+        // Extract pending ID for Compose key
+        pendingReminderId = intent.getStringExtra(EXTRA_REMINDER_ID_STRING)
 
         setContent {
 
             val navController = rememberNavController()
             val context = LocalContext.current
+
             EventReminderTheme {
 
-                // Always starting from SplashRoute
+                // Always start at SplashRoute (auth gate)
                 AppNavGraph(
-                    context,
+                    context = context,
                     navController = navController,
                     startDestination = SplashRoute
                 )
 
-                // ------------------------------------------------------------
-                // 🔥 CRITICAL FIX:
-                // Navigate ONLY when pendingNavRequest changes (from null → value)
-                // NOT when navController recomposes!
-                // ------------------------------------------------------------
-                LaunchedEffect(pendingNavRequest.value) {
+                // =============================================================
+                // FIXED: Notification navigation uses a stable Compose key
+                // =============================================================
+                LaunchedEffect(key1 = pendingReminderId) {
 
-                    val req = pendingNavRequest.value ?: return@LaunchedEffect
-
-                    Timber.tag(TAG).e("Consuming PendingNavRequest → $req")
-
-                    // IMPORTANT: Clear BEFORE navigation to prevent double-trigger
-                    pendingNavRequest.value = null
-
-                    navController.navigate(
-                        PixelPreviewRouteString(reminderIdString = req.reminderIdString)
-                    ) {
-                        launchSingleTop = true
-                        restoreState = false
-                        popUpTo(SplashRoute) { inclusive = false }
+                    if (pendingReminderId == null) {
+                        Timber.tag(TAG).d("LaunchedEffect: No pending reminder → return")
+                        return@LaunchedEffect
                     }
+
+                    // Wait for Splash → Home navigation to complete
+                    delay(350)
+
+                    val uuid = pendingReminderId
+                    val fromNotification =
+                        this@MainActivity.intent.getBooleanExtra(EXTRA_FROM_NOTIFICATION, false)
+
+                    Timber.tag(TAG).i(
+                        "LaunchedEffect(pendingReminderId=$pendingReminderId) → fromNotification=$fromNotification"
+                    )
+
+                    if (fromNotification && !uuid.isNullOrBlank()) {
+                        Timber.tag(TAG).i("Navigating to PixelPreview → UUID=$uuid")
+
+                        navController.navigate(
+                            PixelPreviewRouteString(reminderIdString = uuid)
+                        ) {
+                            launchSingleTop = true
+                        }
+                    }
+
+                    // Avoid duplicate triggers
+                    this@MainActivity.intent.removeExtra(EXTRA_FROM_NOTIFICATION)
+                    this@MainActivity.intent.removeExtra(EXTRA_REMINDER_ID_STRING)
+                    this@MainActivity.intent.removeExtra(EXTRA_EVENT_TYPE)
+
+                    // Clear state key
+                    pendingReminderId = null
                 }
             }
         }
@@ -84,46 +107,15 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        Timber.tag(TAG).d("onNewIntent() — new intent = $intent")
+
+        Timber.tag(TAG).d("onNewIntent → $intent")
+
+        // Replace activity intent so extras are updated
         setIntent(intent)
-        processIntentForNavigation(intent)
-    }
 
-    private fun processIntentForNavigation(intent: Intent) {
-        try {
-            val action = intent.action
-            val fromNotification = intent.getBooleanExtra(EXTRA_FROM_NOTIFICATION, false)
-            val uuid = intent.getStringExtra(EXTRA_REMINDER_ID_STRING)
-            val eventType = intent.getStringExtra(EXTRA_EVENT_TYPE)
-
-            Timber.tag(TAG).i(
-                """
-                processIntentForNavigation():
-                    action            = $action
-                    fromNotification  = $fromNotification
-                    uuid              = $uuid
-                    eventType         = $eventType
-                """.trimIndent()
-            )
-
-            if (action == ReminderReceiver.ACTION_OPEN_CARD && !uuid.isNullOrBlank()) {
-                Timber.tag(TAG).e("ACTION_OPEN_CARD → UUID=$uuid")
-                pendingNavRequest.value = PendingNavRequest(uuid, eventType)
-                return
-            }
-
-            if (fromNotification && !uuid.isNullOrBlank()) {
-                Timber.tag(TAG).d("Normal notification tap → UUID=$uuid")
-                pendingNavRequest.value = PendingNavRequest(uuid, eventType)
-            }
-
-        } catch (t: Throwable) {
-            Timber.tag(TAG).e(t, "processIntentForNavigation → FAILED")
+        // Update Compose state key (THIS TRIGGERS LaunchedEffect)
+        pendingReminderId = intent.getStringExtra(EXTRA_REMINDER_ID_STRING)?.also {
+            Timber.tag(TAG).i("Updated pendingReminderId → $it")
         }
     }
-
-    private data class PendingNavRequest(
-        val reminderIdString: String,
-        val eventType: String?
-    )
 }

@@ -1,5 +1,13 @@
 package com.example.eventreminder.ui.screens
 
+// =============================================================
+// SplashScreen — FirebaseAuth Is the ONLY Source of Truth
+// - Handles OEM-delayed Firebase initialization (OnePlus/Samsung/ColorOS)
+// - Never opens PixelPreview here (auth gate only)
+// - Allows HomeScreen to consume pending notification request AFTER auth
+// - Navigates Home/Login exactly once
+// =============================================================
+
 import android.os.PowerManager
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -7,73 +15,100 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import com.example.eventreminder.util.SessionPrefs
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.delay
 import timber.log.Timber
 
+private const val TAG = "SplashScreen"
+
 @Composable
 fun SplashScreen(
-    onNavigateToHome: () -> Unit,        // navigate to Home
-    onNavigateToLogin: () -> Unit,       // navigate to Login
-    onBatteryFixRequired: () -> Unit     // show dialog
+    onNavigateToHome: () -> Unit,        // Navigate to Home graph
+    onNavigateToLogin: () -> Unit,       // Navigate to Login graph
+    onBatteryFixRequired: () -> Unit     // Show battery optimization dialog
 ) {
     val context = LocalContext.current
     var hasNavigated by remember { mutableStateOf(false) }
 
-    // -------- Correct Battery Optimization Check --------
+    // ➜ LOG HERE: detect if Splash recomposes
+    Timber.tag(TAG).e("⚠️ SplashScreen COMPOSED / RECOMPOSED (hasNavigated=$hasNavigated)")
+
+
+    // ------------------------------------------------------------
+    // Battery Optimization Check
+    // ------------------------------------------------------------
     val isBatteryOptimized = remember {
         val pm = context.getSystemService(PowerManager::class.java)
-        // TRUE means battery optimization is ON (bad)
         pm?.isIgnoringBatteryOptimizations(context.packageName) == false
     }
 
     LaunchedEffect(Unit) {
 
-        delay(300) // allow FirebaseAuth to initialize properly
+        Timber.tag(TAG).d("Splash started → waiting for Firebase to initialize")
 
-        val firebaseUser = FirebaseAuth.getInstance().currentUser
-        val prefsUid = SessionPrefs.getUid(context)
+        // OEMs like OnePlus delay FirebaseAuth hydration
+        delay(300)
 
-        Timber.tag("AUTH_CHECK")
-            .e("Initial FirebaseAuth user = $firebaseUser, prefsUid = $prefsUid")
+        // ------------------------------------------------------------
+        // Get initial auth state
+        // ------------------------------------------------------------
+        var user = FirebaseAuth.getInstance().currentUser
+        Timber.tag(TAG).d("Initial FirebaseAuth user = $user")
 
-        // -------------------- Battery Optimization --------------------
+        // ------------------------------------------------------------
+        // Battery Optimization Warning
+        // ------------------------------------------------------------
         if (isBatteryOptimized) {
-            Timber.tag("BATTERY").w("Device is optimizing battery → blocking navigation")
+            Timber.tag(TAG).w("Battery optimization detected → showing dialog")
             onBatteryFixRequired()
             return@LaunchedEffect
         }
 
-        // -------------------- FirebaseAuth Stabilization --------------------
-        var user = firebaseUser
+        // ------------------------------------------------------------
+        // Retry Loop for Slow FirebaseAuth Initialization
+        // Some OEMs need up to 2–3 seconds
+        // ------------------------------------------------------------
         var retries = 0
-
-        while (user == null && retries < 3) {
+        while (user == null && retries < 20) {
             delay(150)
             retries++
             user = FirebaseAuth.getInstance().currentUser
-            Timber.tag("AUTH_CHECK")
-                .e("Retry($retries): FirebaseAuth user = $user")
+            Timber.tag(TAG).d("Retry($retries): FirebaseAuth user = $user")
         }
 
-        // -------------------- Final Decision --------------------
-        val loggedIn = (user != null) || (prefsUid != null)
-        Timber.tag("AUTH_CHECK")
-            .e("Final decision → loggedIn=$loggedIn")
+        val isLoggedIn = user != null
+        Timber.tag(TAG).i("Final isLoggedIn = $isLoggedIn")
 
-        // -------------------- Navigate Exactly Once --------------------
+        // ------------------------------------------------------------
+        // NOTE:
+        // *SplashScreen NEVER handles PixelPreview navigation directly*
+        // Why?
+        // 1. Must not bypass login if logged out
+        // 2. Must let HomeScreen open PixelPreview only AFTER HomeGraph loaded
+        //
+        // MainActivity keeps the intent, and HomeScreen (or HomeGraph VM)
+        // will read Activity.intent and decide to open PixelPreview safely.
+        // ------------------------------------------------------------
+
+        // ------------------------------------------------------------
+        // Navigate Exactly Once
+        // ------------------------------------------------------------
         if (!hasNavigated) {
             hasNavigated = true
-            if (loggedIn) {
+
+            if (isLoggedIn) {
+                Timber.tag(TAG).i("Splash → HOME")
                 onNavigateToHome()
             } else {
+                Timber.tag(TAG).i("Splash → LOGIN")
                 onNavigateToLogin()
             }
         }
     }
 
-    // ------------------------ UI ------------------------
+    // ------------------------------------------------------------
+    // UI — Simple centered logo/text
+    // ------------------------------------------------------------
     Box(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center

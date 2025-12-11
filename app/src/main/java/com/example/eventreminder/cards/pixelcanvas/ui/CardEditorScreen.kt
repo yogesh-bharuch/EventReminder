@@ -55,8 +55,8 @@ private const val TAG = "PixelCardPreviewScreen"
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CardEditorScreen(reminderId: String) {   // ⭐ now UUID String
-
-    Timber.tag(TAG).d("CardEditorScreen Loaded id=%s", reminderId)
+    Timber.tag(TAG).e("🃏 PixelPreview COMPOSED (ID=$reminderId)")
+    Timber.tag("TRACE").d("CardEditorScreen Loaded id=%s", reminderId)
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
