@@ -5,16 +5,24 @@ package com.example.eventreminder.receivers
 // =============================================================
 //
 // Responsibilities:
-//  - Restore all active reminders after BOOT_COMPLETED / PACKAGE_REPLACED
-//  - Detect missed reminders (one-time + recurring)
-//  - Fire missed notifications immediately
-//  - Reschedule next alarms via AlarmScheduler (UUID-only)
+//  • Restore all ACTIVE reminders after BOOT_COMPLETED / PACKAGE_REPLACED
+//  • Detect missed reminders (one-time & recurring)
+//  • Immediately fire missed notifications
+//  • Compute next occurrence using NextOccurrenceCalculator
+//  • Re-schedule alarms using AlarmScheduler.scheduleAllByString()
+//  • No DB writes / no repository-side scheduling
 //
-// Project Standards Followed:
-//  - Named arguments ✓
-//  - Section headers ✓
-//  - Inline comments ✓
-//  - UUID-only reminder IDs ✓
+// Rules:
+//  • One-time reminders: fire once if missed, then DO NOT reschedule
+//  • Recurring reminders: fire missed event once, then schedule the next
+//  • Offsets: always applied the same way as ViewModel
+//
+// Project Standards:
+//  • Named arguments ✓
+//  • Section headers ✓
+//  • Inline comments ✓
+//  • UUID-only reminder IDs ✓
+//  • Timber TAG logging ✓
 // =============================================================
 
 import android.content.BroadcastReceiver
@@ -38,7 +46,7 @@ private const val TAG = "BootReceiver"
 class BootReceiver : BroadcastReceiver() {
 
     // =============================================================
-    // Injected Dependencies
+    // Inject Repository (DB-only) + AlarmScheduler (UUID scheduling)
     // =============================================================
     @Inject lateinit var repo: ReminderRepository
     @Inject lateinit var scheduler: AlarmScheduler
@@ -47,37 +55,28 @@ class BootReceiver : BroadcastReceiver() {
         context: Context,
         intent: Intent
     ) {
-        // =============================================================
-        // BOOT / PACKAGE REPLACED Detection
-        // =============================================================
         val isBootEvent =
             intent.action == Intent.ACTION_BOOT_COMPLETED ||
                     intent.action == Intent.ACTION_MY_PACKAGE_REPLACED
 
         if (!isBootEvent) return
 
-        Timber.tag(TAG).i("BOOT_COMPLETED → Restoring all UUID reminders…")
+        Timber.tag(TAG).i("BOOT_COMPLETED → Restoring all reminders…")
 
         CoroutineScope(Dispatchers.IO).launch {
 
             try {
                 // =============================================================
-                // Load all reminders (enabled + disabled)
+                // Load all reminders (enabled + not deleted)
                 // =============================================================
-                val reminders = repo.getAllOnce()
+                val reminders = repo.getNonDeletedEnabled()
                 val now = Instant.now().toEpochMilli()
 
                 reminders.forEach { reminder ->
 
                     // ---------------------------------------------------------
-                    // Skip disabled reminders
+                    // Offsets → default to 0 if empty
                     // ---------------------------------------------------------
-                    if (!reminder.enabled) {
-                        Timber.tag(TAG).d("Skipping disabled → id=${reminder.id}")
-                        return@forEach
-                    }
-
-                    // Offsets: if none → use 0
                     val offsets = reminder.reminderOffsets.ifEmpty { listOf(0L) }
 
                     offsets.forEach { offsetMillis ->
@@ -85,106 +84,100 @@ class BootReceiver : BroadcastReceiver() {
                         val scheduledTrigger = reminder.eventEpochMillis - offsetMillis
                         val isMissed = scheduledTrigger < now
 
-                        // Deterministic notification ID
-                        val notificationId =
-                            generateNotificationIdFromString(
-                                idString = reminder.id,
-                                offsetMillis = offsetMillis
-                            )
-
-                        val eventType =
-                            inferEventType(
-                                title = reminder.title,
-                                message = reminder.description
-                            )
-
-                        // =============================================================
-                        // HANDLE MISSED ONE-TIME REMINDER
-                        // =============================================================
-                        if (isMissed && reminder.repeatRule.isNullOrEmpty()) {
-
-                            NotificationHelper.showNotification(
+                        // For missed reminders → fire immediately
+                        if (isMissed) {
+                            fireMissedNotification(
                                 context = context,
-                                notificationId = notificationId,
+                                reminderId = reminder.id,
                                 title = reminder.title,
                                 message = reminder.description.orEmpty(),
-                                eventType = eventType,
-                                extras = mapOf(
-                                    ReminderReceiver.EXTRA_FROM_NOTIFICATION to true,
-                                    ReminderReceiver.EXTRA_REMINDER_ID_STRING to reminder.id,
-                                    ReminderReceiver.EXTRA_EVENT_TYPE to eventType
+                                offsetMillis = offsetMillis
+                            )
+                        }
+
+                        // ---------------------------------------------------------
+                        // Compute next occurrence (ViewModel uses same logic)
+                        // ---------------------------------------------------------
+                        val nextEventTime =
+                            if (reminder.repeatRule.isNullOrEmpty()) {
+                                // ONE-TIME:
+                                // • missed → do NOT reschedule
+                                // • future → schedule normally
+                                if (isMissed) null else reminder.eventEpochMillis
+                            } else {
+                                // RECURRING:
+                                // Compute next cycle (may be same day if not missed)
+                                NextOccurrenceCalculator.nextOccurrence(
+                                    eventEpochMillis = reminder.eventEpochMillis,
+                                    zoneIdStr = reminder.timeZone,
+                                    repeatRule = reminder.repeatRule
                                 )
-                            )
+                            }
 
+                        if (nextEventTime == null) {
                             Timber.tag(TAG).d(
-                                "Missed ONE-TIME fired → id=${reminder.id} offset=$offsetMillis"
+                                "One-time missed & consumed → no reschedule (id=${reminder.id})"
                             )
-
                             return@forEach
                         }
 
-                        // =============================================================
-                        // HANDLE MISSED RECURRING REMINDER
-                        // =============================================================
-                        val nextTrigger = if (isMissed) {
-
-                            // Fire immediately
-                            NotificationHelper.showNotification(
-                                context = context,
-                                notificationId = notificationId,
-                                title = reminder.title,
-                                message = reminder.description.orEmpty(),
-                                eventType = eventType,
-                                extras = mapOf(
-                                    ReminderReceiver.EXTRA_FROM_NOTIFICATION to true,
-                                    ReminderReceiver.EXTRA_REMINDER_ID_STRING to reminder.id,
-                                    ReminderReceiver.EXTRA_EVENT_TYPE to eventType
-                                )
-                            )
-
-                            Timber.tag(TAG).d(
-                                "Missed RECURRING fired → id=${reminder.id} offset=$offsetMillis"
-                            )
-
-                            // Compute next valid event time
-                            NextOccurrenceCalculator.nextOccurrence(
-                                eventEpochMillis = reminder.eventEpochMillis,
-                                zoneIdStr = reminder.timeZone,
-                                repeatRule = reminder.repeatRule
-                            )?.minus(offsetMillis)
-                                ?: return@forEach
-
-                        } else {
-                            // Not missed → Use original schedule
-                            scheduledTrigger
-                        }
-
-                        // =============================================================
-                        // RESCHEDULE NEXT TRIGGER (UUID ONLY)
-                        // =============================================================
-                        scheduler.scheduleExactByString(
+                        // ---------------------------------------------------------
+                        // Reschedule using ViewModel-consistent API
+                        // ---------------------------------------------------------
+                        scheduler.scheduleAllByString(
                             reminderIdString = reminder.id,
-                            eventTriggerMillis = nextTrigger + offsetMillis,
-                            offsetMillis = offsetMillis,
                             title = reminder.title,
                             message = reminder.description.orEmpty(),
-                            repeatRule = reminder.repeatRule
+                            repeatRule = reminder.repeatRule,
+                            nextEventTime = nextEventTime,
+                            offsets = listOf(offsetMillis)
                         )
 
                         Timber.tag(TAG).d(
-                            "Scheduled UUID: id=${reminder.id}, next=${nextTrigger + offsetMillis}, offset=$offsetMillis"
+                            "Rescheduled UUID → id=${reminder.id}, next=$nextEventTime, offset=$offsetMillis"
                         )
                     }
                 }
 
             } catch (t: Throwable) {
-                Timber.tag(TAG).e(t, "BOOT RESTORE FAILED")
+                Timber.tag(TAG).e(t, "BOOT restore FAILED")
             }
         }
     }
 
     // =============================================================
+    // Fire Missed Notification (One-Time or Recurring)
+    // =============================================================
+    private fun fireMissedNotification(
+        context: Context,
+        reminderId: String,
+        title: String,
+        message: String,
+        offsetMillis: Long
+    ) {
+        val notificationId =
+            generateNotificationIdFromString(reminderId, offsetMillis)
+
+        NotificationHelper.showNotification(
+            context = context,
+            notificationId = notificationId,
+            title = title,
+            message = message,
+            eventType = inferEventType(title, message),
+            extras = mapOf(
+                ReminderReceiver.EXTRA_REMINDER_ID_STRING to reminderId,
+                ReminderReceiver.EXTRA_FROM_NOTIFICATION to true
+            )
+        )
+
+        Timber.tag(TAG).d(
+            "Missed → Fired immediately (id=$reminderId offset=$offsetMillis)"
+        )
+    }
+
+    // =============================================================
     // Deterministic UUID → Notification ID
+    // Matches AlarmScheduler hashing
     // =============================================================
     private fun generateNotificationIdFromString(
         idString: String,
@@ -195,7 +188,7 @@ class BootReceiver : BroadcastReceiver() {
     }
 
     // =============================================================
-    // Event Category Detection
+    // Event Category Detection (for NotificationHelper)
     // =============================================================
     private fun inferEventType(
         title: String,

@@ -37,7 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.delay
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -55,6 +55,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.runtime.rememberCoroutineScope
 import com.example.eventreminder.navigation.PixelPreviewRoute
 import kotlinx.coroutines.launch
+import timber.log.Timber
 
 
 // =============================================================
@@ -77,6 +78,7 @@ fun AddEditReminderScreen(
     val offsetFocus = remember { FocusRequester() }
     val repeatFocus = remember { FocusRequester() }
     val saveFocus = remember { FocusRequester() }
+    val scope = rememberCoroutineScope()
 
     // Auto-open time dialog after date
     val timePickerAutoOpen = remember { mutableStateOf(false) }
@@ -266,20 +268,28 @@ fun AddEditReminderScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .focusRequester(saveFocus),
+
                     onSave = {
-                        reminderVm.onSaveClicked(
-                            title = uiState.title,
-                            description = uiState.description,
-                            date = uiState.date,
-                            time = uiState.time,
-                            offsets = uiState.offsets,
-                            repeatRule = uiState.repeat,
-                            existingId = reminderId
-                        )
-                        navController.popBackStack()
+                        scope.launch {
+                            Timber.tag("SaveReminderLogs").d("🔵 UI → Save clicked (existingId=$reminderId)")
+
+                            reminderVm.onSaveClicked(
+                                title = uiState.title,
+                                description = uiState.description,
+                                date = uiState.date,
+                                time = uiState.time,
+                                offsets = uiState.offsets,
+                                repeatRule = uiState.repeat,
+                                existingId = reminderId
+                            )
+
+                            delay(350) // smoother, enough time to emit snackbar
+                            navController.popBackStack()
+                        }
                     }
                 )
             }
+
 
         }
     }

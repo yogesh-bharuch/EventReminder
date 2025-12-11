@@ -49,8 +49,7 @@ fun HomeScreen(
     reminderVm: ReminderViewModel,
     pdfviewModel: PdfViewModel = hiltViewModel()
 ) {
-    Timber.tag(TAG).d("Rendering HomeScreen")
-    Timber.tag("TRACE").e("🏠 HomeScreen composed/recomposed")
+    Timber.tag(TAG).d("HomeScreen composed")
 
     val context = LocalContext.current
     val activity = context as Activity
@@ -61,13 +60,15 @@ fun HomeScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
 
-    LaunchedEffect(Unit) {
-        Timber.tag(TAG).d("Home snackbar collector active")
+    LaunchedEffect(reminderVm) {
+        Timber.tag("SaveReminderLogs").d("📥 HomeScreen collector STARTED")
 
         reminderVm.snackbarEvent.collectLatest { message ->
-            Timber.tag(TAG).d("Snackbar message received → $message")
-            snackbarHostState.showSnackbar(message = message)
-            reminderVm.clearSnackbar()
+            Timber.tag("SaveReminderLogs").d("🔔 Snackbar collected → $message")
+
+            snackbarHostState.showSnackbar(message)
+
+            Timber.tag("SaveReminderLogs").d("🔔 Snackbar shown")
         }
     }
 
@@ -118,21 +119,18 @@ fun HomeScreen(
         }
     }
 
-
     // =============================================================
     // MAIN SCAFFOLD
     // =============================================================
     HomeScaffold(
         snackbarHostState = snackbarHostState,
 
-        // FAB
         onNewEventClick = {
             navController.navigate(AddEditReminderRoute())
         },
 
-        // Sign Out (FirebaseAuth only)
         onSignOut = {
-            Timber.tag(TAG).i("Logout clicked — signing out Firebase user")
+            Timber.tag(TAG).d("Signing out")
             FirebaseAuth.getInstance().signOut()
             navController.navigate(LoginRoute) {
                 popUpTo(HomeRoute) { inclusive = true }
@@ -194,7 +192,7 @@ fun HomeScreen(
                 .padding(8.dp)
         ) {
 
-            // HEADER — Show FirebaseEmail only
+            // HEADER — Show Firebase Email only
             val email = FirebaseAuth.getInstance().currentUser?.email ?: "Guest"
 
             Row(Modifier.padding(bottom = 8.dp)) {
@@ -252,7 +250,6 @@ fun HomeScreen(
         }
     }
 }
-
 
 // =============================================================
 // Sound Test Buttons

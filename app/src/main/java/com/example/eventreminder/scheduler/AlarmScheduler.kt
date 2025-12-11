@@ -212,7 +212,8 @@ class AlarmScheduler @Inject constructor(
             )
 
             val finalTrigger = nextEventTime - offsetMillis
-
+            Timber.tag("SaveReminderLogs")
+                .d("🟢 ScheduleAlarm → id=$reminderIdString offset=$offsetMillis finalTrigger=$finalTrigger")
             Timber.tag(TAG).d(
                 "📌 scheduleAll(UUID) → idString=$reminderIdString offset=$offsetMillis finalTrigger=$finalTrigger"
             )
@@ -226,9 +227,11 @@ class AlarmScheduler @Inject constructor(
         reminderIdString: String,
         offsets: List<Long>
     ) {
+
         if (alarmManager == null) return
 
         offsets.forEach { offset ->
+            Timber.tag("SaveReminderLogs").d("🔴 CancelAlarm → id=$reminderIdString offset=$offset")
             val pi = getExistingPIString(
                 reminderIdString = reminderIdString,
                 offsetMillis = offset

@@ -89,7 +89,7 @@ class ReminderReceiver : BroadcastReceiver() {
         }
 
         // ---------------------------------------------------------
-        // OPEN_CARD Action (clicking notification button)
+        // OPEN_CARD Action
         // ---------------------------------------------------------
         if (intent.action == ACTION_OPEN_CARD) {
 
@@ -106,13 +106,11 @@ class ReminderReceiver : BroadcastReceiver() {
 
             Timber.tag(TAG).d("📬 ACTION_OPEN_CARD → Forwarding UUID=$idString")
 
-            val activityIntent = Intent(
-                context,
-                MainActivity::class.java
-            ).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or
-                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                        Intent.FLAG_ACTIVITY_SINGLE_TOP
+            val activityIntent = Intent(context, MainActivity::class.java).apply {
+                flags =
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                            Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                            Intent.FLAG_ACTIVITY_SINGLE_TOP
 
                 putExtra(EXTRA_FROM_NOTIFICATION, true)
                 putExtra(EXTRA_REMINDER_ID_STRING, idString)
@@ -142,11 +140,8 @@ class ReminderReceiver : BroadcastReceiver() {
 
         val eventType = inferEventType(title = title, message = message)
 
-        // Deterministic Notification ID
-        val notificationId = generateNotificationIdFromString(
-            idString = idString,
-            offsetMillis = offsetMillis
-        )
+        // Create deterministic notification ID
+        val notificationId = generateNotificationIdFromString(idString, offsetMillis)
 
         // Show notification
         NotificationHelper.showNotification(
@@ -157,16 +152,16 @@ class ReminderReceiver : BroadcastReceiver() {
             eventType = eventType,
             extras = mapOf(
                 EXTRA_FROM_NOTIFICATION to true,
-                EXTRA_REMINDER_ID_STRING to idString,   // MUST MATCH MainActivity
+                EXTRA_REMINDER_ID_STRING to idString,
                 EXTRA_EVENT_TYPE to eventType
             )
         )
 
         // ---------------------------------------------------------
-        // Reschedule if repeating
+        // Reschedule repeating reminders
         // ---------------------------------------------------------
         CoroutineScope(Dispatchers.IO).launch {
-            val reminder = repo.getReminder(id = idString) ?: return@launch
+            val reminder = repo.getReminder(idString) ?: return@launch
 
             if (reminder.repeatRule.isNullOrEmpty()) {
                 Timber.tag(TAG).d("No repeat → done")

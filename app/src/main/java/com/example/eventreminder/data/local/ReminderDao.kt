@@ -9,11 +9,10 @@ interface ReminderDao {
 
     // ============================================================
     // INSERT / UPDATE (UUID-based)
-    // EventReminder.id is a String -> UUID
     // ============================================================
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insert(reminder: EventReminder)
+    suspend fun insert(reminder: EventReminder): Long
 
     @Update
     suspend fun update(reminder: EventReminder)
@@ -38,7 +37,7 @@ interface ReminderDao {
     suspend fun getById(id: String): EventReminder?
 
     // ============================================================
-    // DELETE (Soft delete)
+    // DELETE
     // ============================================================
 
     @Query("UPDATE reminders SET isDeleted = 1, updatedAt = :timestamp WHERE id = :id")

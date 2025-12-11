@@ -1,9 +1,20 @@
 package com.example.eventreminder.data.repo
 
+// ============================================================
+// ReminderRepository — Clean Architecture (UUID Only)
+//
+// Responsibilities:
+//  • Pure data access layer (Room only)
+//  • NO scheduling, NO business logic, NO alarms
+//  • Ensures DB writes are committed (read-after-write verification)
+//  • Returns IDs and entities for ViewModel to process
+//
+// Alarm scheduling MUST be performed ONLY inside ViewModel.
+// ============================================================
+
 import android.content.Context
 import com.example.eventreminder.data.local.ReminderDao
 import com.example.eventreminder.data.model.EventReminder
-import com.example.eventreminder.scheduler.AlarmScheduler
 import com.example.eventreminder.util.BackupHelper
 import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.encodeToString
@@ -17,8 +28,7 @@ private const val TAG = "ReminderRepository"
 
 @Singleton
 class ReminderRepository @Inject constructor(
-    private val dao: ReminderDao,
-    private val alarmScheduler: AlarmScheduler
+    private val dao: ReminderDao
 ) {
 
     // ============================================================
@@ -43,10 +53,18 @@ class ReminderRepository @Inject constructor(
 
         val updated = reminder.copy(updatedAt = System.currentTimeMillis())
 
+        // Room returns rowId: Long (ignored)
         dao.insert(updated)
-        schedule(updated)
 
-        return updated.id
+        // Ensure DB commit visible before returning
+        val verified = dao.getById(updated.id)
+        if (verified == null) {
+            Timber.tag(TAG).e("❌ Insert verification FAILED for id=${updated.id}")
+        } else {
+            Timber.tag(TAG).i("✔ Insert verified for id=${updated.id}")
+        }
+
+        return updated.id // ALWAYS return UUID
     }
 
     // ============================================================
@@ -57,12 +75,20 @@ class ReminderRepository @Inject constructor(
         Timber.tag(TAG).i("update id=${reminder.id}")
 
         val updated = reminder.copy(updatedAt = System.currentTimeMillis())
+
         dao.update(updated)
-        reschedule(updated)
+
+        // Ensure DB commit visible before returning
+        val verified = dao.getById(updated.id)
+        if (verified == null) {
+            Timber.tag(TAG).e("❌ Update verification FAILED for id=${updated.id}")
+        } else {
+            Timber.tag(TAG).i("✔ Update verified for id=${updated.id}")
+        }
     }
 
     // ============================================================
-    // DELETE (UUID)
+    // DELETE (Soft delete)
     // ============================================================
 
     suspend fun markDelete(reminder: EventReminder) {
@@ -74,68 +100,16 @@ class ReminderRepository @Inject constructor(
         dao.markDeleted(reminder.id)
         dao.update(deleted)
 
-        cancel(deleted)
+        // ❌ No alarm cancellation here — ViewModel handles this.
     }
 
     // ============================================================
-    // INTERNAL SCHEDULING HELPERS (UUID)
+    // FETCH NON-DELETED ENABLED REMINDERS
+    // Used by sync + BOOT restoration
     // ============================================================
 
-    private fun schedule(reminder: EventReminder) {
-        if (!reminder.enabled) return
-
-        alarmScheduler.scheduleAllByString(
-            reminderIdString = reminder.id,
-            title = reminder.title,
-            message = reminder.description ?: "",
-            repeatRule = reminder.repeatRule,
-            nextEventTime = reminder.eventEpochMillis,
-            offsets = reminder.reminderOffsets
-        )
-    }
-
-    private fun cancel(reminder: EventReminder) {
-        alarmScheduler.cancelAllByString(
-            reminderIdString = reminder.id,
-            offsets = reminder.reminderOffsets
-        )
-    }
-
-    private fun reschedule(reminder: EventReminder) {
-        cancel(reminder)
-        schedule(reminder)
-    }
-
-    // ============================================================
-    // RESCHEDULE ALL AFTER SYNC (UUID)
-    // ============================================================
-    /**
-     * Called after Firestore Sync — ensures all alarms match the latest state.
-     * Equivalent behavior to BootReceiver restore, without reboot.
-     */
-    suspend fun rescheduleAllAfterSync() {
-        Timber.tag(TAG).i("Rescheduling ALL reminders after sync…")
-
-        val reminders = getAllOnce()
-
-        reminders.forEach { reminder ->
-
-            // Skip disabled or deleted reminders
-            if (!reminder.enabled || reminder.isDeleted) {
-                Timber.tag(TAG).d("Skip disabled/deleted → id=${reminder.id}")
-                return@forEach
-            }
-
-            // Cancel OLD alarms
-            cancel(reminder)
-
-            // Schedule NEW alarms using current fields
-            schedule(reminder)
-
-            Timber.tag(TAG).d("Re-scheduled UUID reminder → id=${reminder.id}")
-        }
-
-        Timber.tag(TAG).i("Reschedule-all complete → ${reminders.size} processed")
+    suspend fun getNonDeletedEnabled(): List<EventReminder> {
+        return getAllOnce().filter { it.enabled && !it.isDeleted }
     }
 
     // ============================================================

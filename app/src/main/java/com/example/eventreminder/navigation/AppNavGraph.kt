@@ -32,8 +32,7 @@ fun AppNavGraph(
     navController: NavHostController,
     startDestination: Any = SplashRoute
 ) {
-
-    Timber.tag("TRACE").e("🔄 NavHost composed → start=$startDestination")
+    Timber.tag(TAG).d("NavHost started at = $startDestination")
 
     NavHost(
         navController = navController,
@@ -44,8 +43,6 @@ fun AppNavGraph(
         // SPLASH ROUTE
         // =============================================================
         composable<SplashRoute> {
-
-            Timber.tag("TRACE").e("📍 Composing → SplashRoute")
 
             var showBatteryDialog by remember { mutableStateOf(false) }
 
@@ -62,19 +59,19 @@ fun AppNavGraph(
 
             SplashScreen(
                 onNavigateToHome = {
-                    Timber.tag(TAG).i("Splash → HomeGraphRoute")
+                    Timber.tag(TAG).d("Splash → Navigate to HomeGraph")
                     navController.navigate(route = HomeGraphRoute) {
                         popUpTo(route = SplashRoute) { inclusive = true }
                     }
                 },
                 onNavigateToLogin = {
-                    Timber.tag(TAG).i("Splash → LoginRoute")
+                    Timber.tag(TAG).d("Splash → Navigate to LoginRoute")
                     navController.navigate(route = LoginRoute) {
                         popUpTo(route = SplashRoute) { inclusive = true }
                     }
                 },
                 onBatteryFixRequired = {
-                    Timber.tag(TAG).w("Battery optimization detected")
+                    Timber.tag(TAG).w("Battery optimization is ON")
                     showBatteryDialog = true
                 }
             )
@@ -85,12 +82,9 @@ fun AppNavGraph(
         // =============================================================
         composable<LoginRoute> {
 
-            Timber.tag("TRACE").e("📍 Composing → LoginRoute")
-
             FirebaseLoginEntry(
                 onLoginSuccess = {
-                    Timber.tag(TAG).i("Firebase login success")
-
+                    Timber.tag(TAG).d("Login successful → Navigating to HomeGraph")
                     navController.navigate(route = HomeGraphRoute) {
                         popUpTo(route = LoginRoute) { inclusive = true }
                     }
@@ -101,18 +95,21 @@ fun AppNavGraph(
         // =============================================================
         // HOME GRAPH
         // =============================================================
-        navigation<HomeGraphRoute>(
-            startDestination = HomeRoute
+        navigation(
+            startDestination = HomeRoute::class,
+            route = HomeGraphRoute::class
         ) {
 
-            Timber.tag("TRACE").e("📍 Composing → HomeGraphRoute")
+            // -------------------------------------------------------------
+            // MUST be inside the navigation block AND a composable scope
+            // -------------------------------------------------------------
+            composable<HomeRoute> { backStackEntry ->
 
-            // ---------------- HOME SCREEN ----------------
-            composable<HomeRoute> { entry ->
-                Timber.tag("TRACE").e("📍 Composing → HomeRoute")
-
-                val sharedVm: ReminderViewModel =
-                    hiltViewModel(viewModelStoreOwner = entry)
+                // Shared VM for whole HomeGraph
+                val parentEntry = remember(backStackEntry) {
+                    navController.getBackStackEntry(HomeGraphRoute::class)
+                }
+                val sharedVm: ReminderViewModel = hiltViewModel(parentEntry)
 
                 HomeScreen(
                     navController = navController,
@@ -120,13 +117,17 @@ fun AppNavGraph(
                 )
             }
 
-            // ---------------- ADD / EDIT REMINDER ----------------
-            composable<AddEditReminderRoute> { entry ->
-                Timber.tag("TRACE").e("📍 Composing → AddEditReminderRoute")
+            // -------------------------------------------------------------
+            // ADD / EDIT SCREEN
+            // -------------------------------------------------------------
+            composable<AddEditReminderRoute> { backStackEntry ->
 
-                val args = entry.toRoute<AddEditReminderRoute>()
-                val sharedVm: ReminderViewModel =
-                    hiltViewModel(viewModelStoreOwner = entry)
+                val parentEntry = remember(backStackEntry) {
+                    navController.getBackStackEntry(HomeGraphRoute::class)
+                }
+                val sharedVm: ReminderViewModel = hiltViewModel(parentEntry)
+
+                val args = backStackEntry.toRoute<AddEditReminderRoute>()
 
                 AddEditReminderScreen(
                     navController = navController,
@@ -135,33 +136,30 @@ fun AppNavGraph(
                 )
             }
 
-            // =============================================================
-            // PIXEL CANVAS — LONG ID (inside HomeGraph)
-            // =============================================================
-            composable<PixelPreviewRoute> { entry ->
-                Timber.tag("TRACE").e("📍 Composing → PixelPreviewRoute (LONG ID)")
-
-                val args = entry.toRoute<PixelPreviewRoute>()
+            // -------------------------------------------------------------
+            // PIXEL CANVAS (Long ID)
+            // -------------------------------------------------------------
+            composable<PixelPreviewRoute> { backStackEntry ->
+                val args = backStackEntry.toRoute<PixelPreviewRoute>()
                 CardEditorScreen(reminderId = args.reminderId)
             }
 
-            // =============================================================
-            // PIXEL CANVAS — UUID VERSION (inside HomeGraph)
-            // =============================================================
-            composable<PixelPreviewRouteString> { entry ->
-                Timber.tag("TRACE").e("📍 Composing → PixelPreviewRouteString (UUID)")
-
-                val args = entry.toRoute<PixelPreviewRouteString>()
+            // -------------------------------------------------------------
+            // PIXEL CANVAS (UUID)
+            // -------------------------------------------------------------
+            composable<PixelPreviewRouteString> { backStackEntry ->
+                val args = backStackEntry.toRoute<PixelPreviewRouteString>()
                 CardEditorScreen(reminderId = args.reminderIdString)
             }
         }
+
+
+
 
         // =============================================================
         // REMINDER MANAGER ROUTE
         // =============================================================
         composable<ReminderManagerRoute> {
-            Timber.tag("TRACE").e("📍 Composing → ReminderManagerRoute")
-
             ReminderManagerScreen(
                 onBack = { navController.popBackStack() }
             )

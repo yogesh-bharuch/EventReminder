@@ -1,11 +1,11 @@
 package com.example.eventreminder
 
 // =============================================================
-// MainActivity
-// - ALWAYS starts at SplashRoute (auth gate)
-// - FIXED warm-start navigation using stable Compose state key
-// - Handles notification deep links without bypassing login
-// - PixelPreview navigation occurs ONLY after NavHost is mounted
+// MainActivity (Final Clean Version)
+// - Always starts at SplashRoute (auth gate)
+// - Handles notification deep links (cold + warm start)
+// - Uses stable Compose key for safe navigation
+// - Minimal, clean debug logs only
 // =============================================================
 
 import android.content.Intent
@@ -13,12 +13,13 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.compose.rememberNavController
 import com.example.eventreminder.navigation.AppNavGraph
+import com.example.eventreminder.navigation.HomeGraphRoute
 import com.example.eventreminder.navigation.PixelPreviewRouteString
 import com.example.eventreminder.navigation.SplashRoute
 import com.example.eventreminder.ui.theme.EventReminderTheme
@@ -37,16 +38,15 @@ class MainActivity : ComponentActivity() {
         const val EXTRA_EVENT_TYPE = "event_type"
     }
 
-    // IMPORTANT — stable Compose state used as LaunchedEffect key
+    // Stable state key for LaunchedEffect
     private var pendingReminderId by mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        Timber.tag(TAG).d("onCreate — initial intent = $intent")
-
-        // Extract pending ID for Compose key
+        // Extract pending reminder (if launched from notification)
         pendingReminderId = intent.getStringExtra(EXTRA_REMINDER_ID_STRING)
+        Timber.tag(TAG).d("onCreate → pendingReminderId=$pendingReminderId")
 
         setContent {
 
@@ -55,37 +55,40 @@ class MainActivity : ComponentActivity() {
 
             EventReminderTheme {
 
-                // Always start at SplashRoute (auth gate)
+                // Always start at SplashRoute — decides Login vs Home
                 AppNavGraph(
                     context = context,
                     navController = navController,
                     startDestination = SplashRoute
                 )
 
-                // =============================================================
-                // FIXED: Notification navigation uses a stable Compose key
-                // =============================================================
-                LaunchedEffect(key1 = pendingReminderId) {
-
-                    if (pendingReminderId == null) {
-                        Timber.tag(TAG).d("LaunchedEffect: No pending reminder → return")
-                        return@LaunchedEffect
-                    }
-
-                    // Wait for Splash → Home navigation to complete
-                    delay(350)
+                // ---------------------------------------------------------
+                // Notification → PixelPreview Navigation Handler
+                // ---------------------------------------------------------
+                LaunchedEffect(pendingReminderId) {
 
                     val uuid = pendingReminderId
+                    if (uuid == null) return@LaunchedEffect
+
+                    // Allow Splash → Home navigation to settle
+                    delay(350)
+
                     val fromNotification =
-                        this@MainActivity.intent.getBooleanExtra(EXTRA_FROM_NOTIFICATION, false)
+                        intent.getBooleanExtra(EXTRA_FROM_NOTIFICATION, false)
 
-                    Timber.tag(TAG).i(
-                        "LaunchedEffect(pendingReminderId=$pendingReminderId) → fromNotification=$fromNotification"
-                    )
+                    if (fromNotification && uuid.isNotBlank()) {
 
-                    if (fromNotification && !uuid.isNullOrBlank()) {
-                        Timber.tag(TAG).i("Navigating to PixelPreview → UUID=$uuid")
+                        Timber.tag(TAG).d("Navigate PixelPreview → UUID=$uuid")
 
+                        // Step 1 — Ensure HomeGraph is active
+                        navController.navigate(HomeGraphRoute) {
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+
+                        delay(120) // Let HomeGraph mount
+
+                        // Step 2 — Navigate to PixelPreview inside HomeGraph
                         navController.navigate(
                             PixelPreviewRouteString(reminderIdString = uuid)
                         ) {
@@ -93,12 +96,11 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    // Avoid duplicate triggers
-                    this@MainActivity.intent.removeExtra(EXTRA_FROM_NOTIFICATION)
-                    this@MainActivity.intent.removeExtra(EXTRA_REMINDER_ID_STRING)
-                    this@MainActivity.intent.removeExtra(EXTRA_EVENT_TYPE)
+                    // Prevent multiple triggers
+                    intent.removeExtra(EXTRA_REMINDER_ID_STRING)
+                    intent.removeExtra(EXTRA_FROM_NOTIFICATION)
+                    intent.removeExtra(EXTRA_EVENT_TYPE)
 
-                    // Clear state key
                     pendingReminderId = null
                 }
             }
@@ -108,14 +110,10 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
 
-        Timber.tag(TAG).d("onNewIntent → $intent")
-
-        // Replace activity intent so extras are updated
+        // Replace Activity intent (required for new notification taps)
         setIntent(intent)
 
-        // Update Compose state key (THIS TRIGGERS LaunchedEffect)
-        pendingReminderId = intent.getStringExtra(EXTRA_REMINDER_ID_STRING)?.also {
-            Timber.tag(TAG).i("Updated pendingReminderId → $it")
-        }
+        pendingReminderId = intent.getStringExtra(EXTRA_REMINDER_ID_STRING)
+        Timber.tag(TAG).d("onNewIntent → pendingReminderId=$pendingReminderId")
     }
 }
