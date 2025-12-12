@@ -26,11 +26,12 @@ import com.example.eventreminder.ui.components.events.section.GroupedSectionHead
 import com.example.eventreminder.ui.viewmodels.GroupedUiSection
 import com.example.eventreminder.ui.viewmodels.ReminderViewModel
 import timber.log.Timber
+import com.example.eventreminder.logging.DELETE_TAG
+
 
 // =============================================================
 // File Constants
 // =============================================================
-private const val TAG = "EventsListGrouped"
 
 // =============================================================
 // LazyListState Saver (scroll position persistence)
@@ -58,7 +59,7 @@ fun EventsListGrouped(
     onClick: (String) -> Unit,     // UUID of reminder
     modifier: Modifier = Modifier
 ) {
-    Timber.tag(TAG).d("Rendering EventsListGrouped with ${sections.size} sections")
+    Timber.tag(DELETE_TAG).d("Rendering EventsListGrouped with ${sections.size} sections")
 
     // ------------------------------------------------------------
     // Snackbar host for child section actions
@@ -118,7 +119,7 @@ fun EventsListGrouped(
                             onToggle = {
                                 val current = collapsed[section.header] ?: true
                                 collapsed = collapsed + (section.header to !current)
-                                Timber.tag(TAG).d("Toggled section '${section.header}' collapsed = ${!current}")
+                                Timber.tag(DELETE_TAG).d("Toggled section '${section.header}' collapsed = ${!current}")
                             }
                         )
                     }

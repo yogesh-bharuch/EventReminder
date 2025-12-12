@@ -24,8 +24,10 @@ import timber.log.Timber
 import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
+import com.example.eventreminder.logging.DELETE_TAG
 
 private const val TAG = "ReminderRepository"
+
 
 @Singleton
 class ReminderRepository @Inject constructor(
@@ -112,15 +114,44 @@ class ReminderRepository @Inject constructor(
     // DELETE (Soft delete)
     // ============================================================
     suspend fun markDelete(reminder: EventReminder) {
-        Timber.tag(TAG).i("delete id=${reminder.id}")
+        Timber.tag(DELETE_TAG).d("🟥 markDelete() START id=${reminder.id}")
 
         val ts = System.currentTimeMillis()
         val deleted = reminder.copy(isDeleted = true, updatedAt = ts)
 
-        dao.markDeleted(reminder.id)
-        dao.update(deleted)
+        // ------------------------------------------------------------
+        // Step 4 — Log state before deletion
+        // ------------------------------------------------------------
+        Timber.tag(DELETE_TAG).d(
+            "🔍 Original → id=${reminder.id}, " +
+                    "isDeleted=${reminder.isDeleted}, updatedAt=${reminder.updatedAt}"
+        )
 
-        // ❌ No alarm cancellation here — ViewModel handles it.
+        Timber.tag(DELETE_TAG).d(
+            "📝 Marking as deleted → new isDeleted=${deleted.isDeleted}, updatedAt=${deleted.updatedAt}"
+        )
+
+        try {
+            // DB write #1
+            Timber.tag(DELETE_TAG).d("📌 DAO markDeleted(id=${reminder.id})")
+            dao.markDeleted(reminder.id)
+
+            // DB write #2
+            Timber.tag(DELETE_TAG).d("📌 DAO update(deleted copy)")
+            dao.update(deleted)
+
+            Timber.tag(DELETE_TAG).d("✔ markDelete() SUCCESS id=${reminder.id}")
+
+        } catch (t: Throwable) {
+            Timber.tag(DELETE_TAG).e(t, "❌ markDelete() FAILED id=${reminder.id}")
+            throw t
+        }
+
+        Timber.tag(DELETE_TAG).d(
+            "ℹ ViewModel handled alarm cancellation. Repo performs only DB update."
+        )
+
+        Timber.tag(DELETE_TAG).d("🟥 markDelete() END id=${reminder.id}")
     }
 
     // ============================================================

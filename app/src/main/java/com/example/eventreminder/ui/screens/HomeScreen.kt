@@ -29,10 +29,13 @@ import com.example.eventreminder.ui.components.home.HomeScaffold
 import com.example.eventreminder.ui.viewmodels.GroupedEventsViewModel
 import com.example.eventreminder.ui.viewmodels.ReminderViewModel
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseUser
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import timber.log.Timber
+import com.example.eventreminder.logging.SAVE_TAG
 
 // =============================================================
 // Constants
@@ -61,14 +64,14 @@ fun HomeScreen(
     val coroutineScope = rememberCoroutineScope()
 
     LaunchedEffect(reminderVm) {
-        Timber.tag("SaveReminderLogs").d("📥 HomeScreen collector STARTED")
+        Timber.tag(SAVE_TAG).d("📥 HomeScreen collector STARTED")
 
         reminderVm.snackbarEvent.collectLatest { message ->
-            Timber.tag("SaveReminderLogs").d("🔔 Snackbar collected → $message")
+            Timber.tag(SAVE_TAG).d("🔔 Snackbar collected → $message")
 
             snackbarHostState.showSnackbar(message)
 
-            Timber.tag("SaveReminderLogs").d("🔔 Snackbar shown")
+            Timber.tag(SAVE_TAG).d("🔔 Snackbar shown")
         }
     }
 
@@ -92,6 +95,14 @@ fun HomeScreen(
             backPressedOnce = false
         }
     }
+
+    // debug bottom tray action
+    LaunchedEffect(Unit) {
+        reminderVm.navigateToDebug.collect {
+            navController.navigate(SchedulingDebugRoute)
+        }
+    }
+
 
     // ---------------------------------------------------------
     // Grouped Events
@@ -124,11 +135,9 @@ fun HomeScreen(
     // =============================================================
     HomeScaffold(
         snackbarHostState = snackbarHostState,
-
         onNewEventClick = {
             navController.navigate(AddEditReminderRoute())
         },
-
         onSignOut = {
             Timber.tag(TAG).d("Signing out")
             FirebaseAuth.getInstance().signOut()
@@ -136,7 +145,6 @@ fun HomeScreen(
                 popUpTo(HomeRoute) { inclusive = true }
             }
         },
-
         onManageRemindersClick = {
             navController.navigate(ReminderManagerRoute)
         },
@@ -146,7 +154,7 @@ fun HomeScreen(
                 onCleanupClick = {
                     coroutineScope.launch {
                         reminderVm.cleanupOldReminders()
-                        snackbarHostState.showSnackbar("Old reminders cleaned")
+                        //snackbarHostState.showSnackbar("Old reminders cleaned")
                     }
                 },
                 onGeneratePdfClick = {

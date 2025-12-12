@@ -17,7 +17,7 @@ import com.example.eventreminder.data.model.ReminderOffset
 import com.example.eventreminder.data.model.ReminderTitle
 import com.example.eventreminder.data.model.RepeatRule
 import com.example.eventreminder.data.repo.ReminderRepository
-import com.example.eventreminder.scheduler.AlarmScheduler
+import com.example.eventreminder.scheduler.ReminderSchedulingEngine
 import com.example.eventreminder.sync.core.SyncEngine
 import com.example.eventreminder.util.NextOccurrenceCalculator
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -30,16 +30,22 @@ import java.util.UUID
 import javax.inject.Inject
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.receiveAsFlow
+import com.example.eventreminder.logging.DELETE_TAG
+import com.example.eventreminder.logging.SAVE_TAG
+
 
 private const val TAG = "ReminderViewModel"
-private const val SAVE_TAG = "SaveReminderLogs"
+
+
 
 @HiltViewModel
 class ReminderViewModel @Inject constructor(
     private val repo: ReminderRepository,
-    private val scheduler: AlarmScheduler,
+    private val schedulingEngine: ReminderSchedulingEngine,
     private val syncEngine: SyncEngine
 ) : ViewModel() {
+
+    private val deleteInProgress = mutableSetOf<String>()
 
     // SNACKBAR EVENTS — one-shot channel (no replay after rotation)
     private val _snackbarEvent = Channel<String>(capacity = Channel.BUFFERED)
@@ -151,7 +157,7 @@ class ReminderViewModel @Inject constructor(
     // - suspend function (no nested launch)
     // - single DB read to determine isNew
     // - repository is expected to guarantee read-after-write verification
-    // - ViewModel responsible for scheduling/cancelling alarms only
+    // - ViewModel delegates scheduling to ReminderSchedulingEngine
     // ============================================================
     private suspend fun saveReminder(reminder: EventReminder) {
         Timber.tag(SAVE_TAG).d("🟠 saveReminder() START id=${reminder.id}")
@@ -188,7 +194,10 @@ class ReminderViewModel @Inject constructor(
                 return
             }
 
-            // Compute next occurrence (view-model responsibility)
+            // Delegate scheduling to the centralized engine (cancels & schedules internally)
+            schedulingEngine.processSavedReminder(saved)
+
+            // Compute next occurrence for snackbar display (view-model responsibility)
             val nextEvent = NextOccurrenceCalculator.nextOccurrence(
                 saved.eventEpochMillis,
                 saved.timeZone,
@@ -196,28 +205,6 @@ class ReminderViewModel @Inject constructor(
             ) ?: saved.eventEpochMillis
 
             Timber.tag(SAVE_TAG).d("🟠 nextOccurrence=$nextEvent")
-
-            val offsets = saved.reminderOffsets.ifEmpty { listOf(0L) }
-
-            // Cancel OLD alarms (only here in ViewModel)
-            Timber.tag(SAVE_TAG).d("🟠 Canceling old alarms for $savedId …")
-            scheduler.cancelAllByString(
-                reminderIdString = savedId,
-                offsets = saved.reminderOffsets
-            )
-
-            // Schedule NEW alarms (only here in ViewModel)
-            if (saved.enabled) {
-                Timber.tag(SAVE_TAG).d("🟠 Scheduling alarms → offsets=$offsets")
-                scheduler.scheduleAllByString(
-                    reminderIdString = savedId,
-                    title = saved.title,
-                    message = saved.description ?: "",
-                    repeatRule = saved.repeatRule,
-                    nextEventTime = nextEvent,
-                    offsets = offsets
-                )
-            }
 
             val formatted = Instant.ofEpochMilli(nextEvent)
                 .atZone(ZoneId.of(saved.timeZone))
@@ -246,19 +233,49 @@ class ReminderViewModel @Inject constructor(
     private var recentlyDeleted: EventReminder? = null
 
     fun deleteEventWithUndo(id: String) = viewModelScope.launch {
+        // -------------------------------------------------------
+        // DUPLICATE DELETE GUARD
+        // -------------------------------------------------------
+        if (deleteInProgress.contains(id)) {
+            Timber.tag(DELETE_TAG)
+                .d("⛔ Duplicate delete ignored id=$id (already in progress)")
+            return@launch
+        }
+        deleteInProgress.add(id)
+
+        Timber.tag(DELETE_TAG).d("🟥 deleteEventWithUndo() START id=$id")
+
         try {
-            val reminder = repo.getReminder(id) ?: return@launch
+            val reminder = repo.getReminder(id)
+            if (reminder == null) {
+                Timber.tag(DELETE_TAG).e("❌ Reminder not found id=$id")
+                return@launch
+            }
+
             recentlyDeleted = reminder
 
-            // Cancel alarms before marking deleted (ViewModel responsibility)
-            scheduler.cancelAllByString(reminderIdString = id, offsets = reminder.reminderOffsets)
-            repo.markDelete(reminder)
+            // -------------------------------------------------------
+            // STEP 1: Cancel alarms + clear fire-state (ENGINE)
+            // -------------------------------------------------------
+            Timber.tag(DELETE_TAG).d("➡️ processDelete() via SchedulingEngine id=$id")
+            schedulingEngine.processDelete(reminder)
+            Timber.tag(DELETE_TAG).d("✔ SchedulingEngine.processDelete completed id=$id")
 
-            Timber.tag(SAVE_TAG).d("🟠 Deleted (soft) id=$id")
+            // -------------------------------------------------------
+            // STEP 2: Soft-delete in DB
+            // -------------------------------------------------------
+            Timber.tag(DELETE_TAG).d("➡️ Soft delete (repo.markDelete) id=$id")
+            repo.markDelete(reminder)
+            Timber.tag(DELETE_TAG).d("✔ Soft delete committed id=$id")
+
+            Timber.tag(DELETE_TAG).d("🟥 deleteEventWithUndo() END id=$id")
 
         } catch (e: Exception) {
-            Timber.tag(TAG).e(e, "Failed to delete reminder id=$id")
+            Timber.tag(DELETE_TAG).e(e, "❌ Exception during delete pipeline id=$id")
             _uiState.update { it.copy(errorMessage = e.message) }
+        } finally {
+            // ALWAYS REMOVE GUARD
+            deleteInProgress.remove(id)
         }
     }
 
@@ -267,34 +284,27 @@ class ReminderViewModel @Inject constructor(
             val event = recentlyDeleted ?: return@launch
             recentlyDeleted = null
 
-            val restored = event.copy(isDeleted = false, updatedAt = System.currentTimeMillis())
+            val restored = event.copy(
+                isDeleted = false,
+                updatedAt = System.currentTimeMillis()
+            )
 
-            // Insert restored and schedule from ViewModel
-            val newId = repo.insert(restored)
-            val saved = repo.getReminder(newId) ?: return@launch
+            Timber.tag(DELETE_TAG).d("↩ Restoring deleted reminder id=${restored.id}")
 
-            val offsets = saved.reminderOffsets.ifEmpty { listOf(0L) }
-            val nextEvent = NextOccurrenceCalculator.nextOccurrence(
-                saved.eventEpochMillis,
-                saved.timeZone,
-                saved.repeatRule
-            ) ?: saved.eventEpochMillis
+            // --------------------------------------------
+            // STEP 1 — Write restored version to DB
+            // --------------------------------------------
+            repo.update(restored)
 
-            if (saved.enabled) {
-                scheduler.scheduleAllByString(
-                    reminderIdString = newId,
-                    title = saved.title,
-                    message = saved.description ?: "",
-                    repeatRule = saved.repeatRule,
-                    nextEventTime = nextEvent,
-                    offsets = offsets
-                )
-            }
+            // --------------------------------------------
+            // STEP 2 — Re-schedule alarms for SAME ID
+            // --------------------------------------------
+            schedulingEngine.processSavedReminder(restored)
 
-            Timber.tag(SAVE_TAG).d("🟠 Restored deleted reminder id=$newId")
+            Timber.tag(SAVE_TAG).d("🟢 Undo restore complete → id=${restored.id}")
 
         } catch (e: Exception) {
-            Timber.tag(TAG).e(e, "Failed to restore last deleted reminder")
+            Timber.tag(DELETE_TAG).e(e, "❌ Failed to restore last deleted reminder")
             _uiState.update { it.copy(errorMessage = e.message) }
         }
     }
@@ -302,13 +312,26 @@ class ReminderViewModel @Inject constructor(
     // ============================================================
     // BOTTOM TRAY (placeholders)
     // ============================================================
-    fun cleanupOldReminders() = viewModelScope.launch {}
+
+    // ============================================================
+    // DEBUG / CLEANUP — triggers navigation event
+    // ============================================================
+    private val _navigateToDebug = Channel<Unit>(capacity = Channel.BUFFERED)
+    val navigateToDebug = _navigateToDebug.receiveAsFlow()
+
+    fun cleanupOldReminders() {
+        viewModelScope.launch {
+            _navigateToDebug.send(Unit)
+        }
+    }
+
+    // generate pdf tray
     fun generatePdfReport() = viewModelScope.launch {}
     fun exportRemindersCsv() = viewModelScope.launch {}
 
     // ============================================================
     // SYNC + RESCHEDULE
-    // - Repo is DB-only. ViewModel must reschedule alarms after sync.
+    // - Repo is DB-only. ViewModel delegates rescheduling to engine after sync.
     // ============================================================
     fun syncRemindersWithServer() = viewModelScope.launch {
         try {
@@ -323,25 +346,8 @@ class ReminderViewModel @Inject constructor(
             Timber.tag("SYNC").i("Rescheduling ${reminders.size} reminders after sync")
 
             reminders.forEach { reminder ->
-                // Cancel previous then schedule new using nextOccurrence
-                scheduler.cancelAllByString(reminderIdString = reminder.id, offsets = reminder.reminderOffsets)
-
-                val nextEvent = NextOccurrenceCalculator.nextOccurrence(
-                    reminder.eventEpochMillis,
-                    reminder.timeZone,
-                    reminder.repeatRule
-                ) ?: reminder.eventEpochMillis
-
-                if (reminder.enabled) {
-                    scheduler.scheduleAllByString(
-                        reminderIdString = reminder.id,
-                        title = reminder.title,
-                        message = reminder.description ?: "",
-                        repeatRule = reminder.repeatRule,
-                        nextEventTime = nextEvent,
-                        offsets = reminder.reminderOffsets.ifEmpty { listOf(0L) }
-                    )
-                }
+                // Delegate cancel+schedule to engine (processSavedReminder does cancel+schedule)
+                schedulingEngine.processSavedReminder(reminder)
             }
 
             _snackbarEvent.trySend("Sync completed")

@@ -76,7 +76,7 @@ fun HomeBottomTray(
         ) {
             item {
                 ActionChip(
-                    label = "Cleanup",
+                    label = "Debug", //"Cleanup",
                     icon = Icons.Default.CleaningServices,
                     onClick = {
                         Timber.tag(TAG).d("Cleanup clicked")

@@ -1,8 +1,9 @@
 package com.example.eventreminder.receivers
 
 // =============================================================
-// ReminderReceiver — UUID-Only Reminder Trigger Handler
-// Updated to record per-offset lastFiredAt (Option A Extended).
+// ReminderReceiver — Clean Engine-Driven Trigger Handler (UUID)
+// All scheduling, repeat-handling, and fire-state writes are now
+// delegated to ReminderSchedulingEngine.
 // =============================================================
 
 import android.app.NotificationManager
@@ -11,15 +12,13 @@ import android.content.Context
 import android.content.Intent
 import com.example.eventreminder.MainActivity
 import com.example.eventreminder.data.repo.ReminderRepository
-import com.example.eventreminder.scheduler.AlarmScheduler
-import com.example.eventreminder.util.NextOccurrenceCalculator
+import com.example.eventreminder.scheduler.ReminderSchedulingEngine
 import com.example.eventreminder.util.NotificationHelper
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import timber.log.Timber
-import java.time.Instant
 import javax.inject.Inject
 
 private const val TAG = "ReminderReceiver"
@@ -41,7 +40,7 @@ class ReminderReceiver : BroadcastReceiver() {
     }
 
     @Inject lateinit var repo: ReminderRepository
-    @Inject lateinit var scheduler: AlarmScheduler
+    @Inject lateinit var schedulingEngine: ReminderSchedulingEngine
 
     override fun onReceive(context: Context, intent: Intent) {
 
@@ -72,7 +71,7 @@ class ReminderReceiver : BroadcastReceiver() {
 
             val title = intent.getStringExtra(EXTRA_TITLE) ?: ""
             val message = intent.getStringExtra(EXTRA_MESSAGE) ?: ""
-            val eventType = inferEventType(title = title, message = message)
+            val eventType = inferEventType(title, message)
 
             Timber.tag(TAG).d("📬 ACTION_OPEN_CARD → Forwarding UUID=$idString")
 
@@ -106,12 +105,12 @@ class ReminderReceiver : BroadcastReceiver() {
         val repeatRule = intent.getStringExtra(EXTRA_REPEAT_RULE)
         val offsetMillis = intent.getLongExtra(EXTRA_OFFSET_MILLIS, 0L)
 
-        val eventType = inferEventType(title = title, message = message)
+        val eventType = inferEventType(title, message)
 
-        // Deterministic Notification ID
+        // Create deterministic notification ID
         val notificationId = generateNotificationIdFromString(idString, offsetMillis)
 
-        // Show notification
+        // SHOW NOTIFICATION (no fire-state update here anymore)
         NotificationHelper.showNotification(
             context = context,
             notificationId = notificationId,
@@ -125,49 +124,17 @@ class ReminderReceiver : BroadcastReceiver() {
             )
         )
 
-        // Record lastFiredAt for this reminderId+offset to avoid duplicate on boot
+        // ---------------------------------------------------------
+        // Delegate fire-state update + repeat scheduling to ENGINE
+        // ---------------------------------------------------------
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                repo.upsertLastFiredAt(
-                    reminderId = idString,
-                    offsetMillis = offsetMillis,
-                    ts = System.currentTimeMillis()
+                schedulingEngine.processRepeatTrigger(
+                    reminderId = idString
                 )
-                Timber.tag(TAG).d("Recorded lastFiredAt → id=$idString offset=$offsetMillis")
             } catch (t: Throwable) {
-                Timber.tag(TAG).e(t, "Failed to record lastFiredAt for $idString offset=$offsetMillis")
+                Timber.tag(TAG).e(t, "Engine repeat-trigger failed for $idString")
             }
-        }
-
-        // ---------------------------------------------------------
-        // Reschedule repeating reminders
-        // ---------------------------------------------------------
-        if (repeatRule.isNullOrEmpty()) {
-            Timber.tag(TAG).d("No repeat → done")
-            return
-        }
-
-        CoroutineScope(Dispatchers.IO).launch {
-            val reminder = repo.getReminder(idString) ?: return@launch
-
-            val nextEvent = NextOccurrenceCalculator.nextOccurrence(
-                eventEpochMillis = reminder.eventEpochMillis,
-                zoneIdStr = reminder.timeZone,
-                repeatRule = reminder.repeatRule
-            ) ?: return@launch
-
-            val offsets = reminder.reminderOffsets.ifEmpty { listOf(0L) }
-
-            scheduler.scheduleAllByString(
-                reminderIdString = idString,
-                title = reminder.title,
-                message = reminder.description ?: "",
-                repeatRule = reminder.repeatRule,
-                nextEventTime = nextEvent,
-                offsets = offsets
-            )
-
-            Timber.tag(TAG).d("Rescheduled → next=${Instant.ofEpochMilli(nextEvent)}")
         }
     }
 

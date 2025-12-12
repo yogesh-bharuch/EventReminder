@@ -12,6 +12,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.navigation
 import androidx.navigation.toRoute
 import com.example.eventreminder.cards.pixelcanvas.ui.CardEditorScreen
+import com.example.eventreminder.debug.ui.SchedulingDebugScreen
+import com.example.eventreminder.debug.ui.SchedulingDebugViewModel
 import com.example.eventreminder.ui.components.BatteryOptimizationDialog
 import com.example.eventreminder.ui.screens.AddEditReminderScreen
 import com.example.eventreminder.ui.screens.HomeScreen
@@ -151,6 +153,21 @@ fun AppNavGraph(
                 val args = backStackEntry.toRoute<PixelPreviewRouteString>()
                 CardEditorScreen(reminderId = args.reminderIdString)
             }
+
+            // -------------------------------------------------------------
+            // 🔥 SCHEDULING DEBUG SCREEN (Developer Tool)
+            // -------------------------------------------------------------
+            composable<SchedulingDebugRoute> { backStackEntry ->
+
+                // Using the same parentEntry pattern ensures Shared VM scope
+                val parentEntry = remember(backStackEntry) {
+                    navController.getBackStackEntry(HomeGraphRoute::class)
+                }
+
+                val debugVm: SchedulingDebugViewModel = hiltViewModel(parentEntry)
+
+                SchedulingDebugScreen(viewModel = debugVm)
+            }
         }
 
 
@@ -161,8 +178,15 @@ fun AppNavGraph(
         // =============================================================
         composable<ReminderManagerRoute> {
             ReminderManagerScreen(
-                onBack = { navController.popBackStack() }
+                onBack = { navController.popBackStack() },
+                onOpenDebug = { navController.navigate(SchedulingDebugRoute) }
             )
         }
+
+        /*composable<ReminderManagerRoute> {
+            ReminderManagerScreen(
+                onBack = { navController.popBackStack() }
+            )
+        }*/
     }
 }

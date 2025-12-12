@@ -29,6 +29,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 import javax.inject.Singleton
+import com.example.eventreminder.logging.SAVE_TAG
 
 private const val TAG = "AlarmScheduler"
 
@@ -212,10 +213,8 @@ class AlarmScheduler @Inject constructor(
             )
 
             val finalTrigger = nextEventTime - offsetMillis
-            Timber.tag("SaveReminderLogs")
-                .d("🟢 ScheduleAlarm → id=$reminderIdString offset=$offsetMillis finalTrigger=$finalTrigger")
-            Timber.tag(TAG).d(
-                "📌 scheduleAll(UUID) → idString=$reminderIdString offset=$offsetMillis finalTrigger=$finalTrigger"
+            Timber.tag(SAVE_TAG).d("🟢 ScheduleAlarm → id=$reminderIdString offset=$offsetMillis finalTrigger=$finalTrigger")
+            Timber.tag(TAG).d("📌 scheduleAll(UUID) → idString=$reminderIdString offset=$offsetMillis finalTrigger=$finalTrigger"
             )
         }
     }
@@ -227,24 +226,43 @@ class AlarmScheduler @Inject constructor(
         reminderIdString: String,
         offsets: List<Long>
     ) {
+        Timber.tag("DeleteReminderLogs").d("🛑 cancelAllByString() START id=$reminderIdString offsets=$offsets")
 
-        if (alarmManager == null) return
+        // if (alarmManager == null) return
+        if (alarmManager == null) {
+            Timber.tag("DeleteReminderLogs").e("❌ AlarmManager is NULL — cannot cancel alarms id=$reminderIdString")
+            return
+        }
 
         offsets.forEach { offset ->
-            Timber.tag("SaveReminderLogs").d("🔴 CancelAlarm → id=$reminderIdString offset=$offset")
+            // High-level delete pipeline log
+            Timber.tag("DeleteReminderLogs").d("🔴 Attempting cancel → id=$reminderIdString offset=$offset")
+
+            // Save reminder pipeline visibility
+            Timber.tag(SAVE_TAG).d("🔴 CancelAlarm → id=$reminderIdString offset=$offset")
+
+            // Fetch existing PendingIntent
             val pi = getExistingPIString(
                 reminderIdString = reminderIdString,
                 offsetMillis = offset
             )
 
-            if (pi != null) {
-                Timber.tag(TAG).d("❌ Cancel(UUID) → idString=$reminderIdString offset=$offset")
-                try {
-                    alarmManager.cancel(pi)
-                } catch (ex: Exception) {
-                    Timber.tag(TAG).e(ex, "Failed cancel UUID: $reminderIdString offset=$offset")
-                }
+            if (pi == null) {
+                Timber.tag(TAG).d("⚠ No PendingIntent found → id=$reminderIdString offset=$offset (nothing to cancel)")
+                return@forEach
+            }
+
+            Timber.tag(TAG).d("❌ Cancel(UUID) → idString=$reminderIdString offset=$offset")
+
+            try {
+                alarmManager.cancel(pi)
+                Timber.tag("DeleteReminderLogs").d("✔ Cancelled alarm → id=$reminderIdString offset=$offset")
+            } catch (ex: Exception) {
+                Timber.tag("DeleteReminderLogs").e(ex, "❌ Failed to cancel → id=$reminderIdString offset=$offset")
             }
         }
+
+        Timber.tag("DeleteReminderLogs").d("🛑 cancelAllByString() END id=$reminderIdString")
     }
+
 }

@@ -56,6 +56,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import com.example.eventreminder.navigation.PixelPreviewRoute
 import kotlinx.coroutines.launch
 import timber.log.Timber
+import com.example.eventreminder.logging.SAVE_TAG
 
 
 // =============================================================
@@ -271,7 +272,7 @@ fun AddEditReminderScreen(
 
                     onSave = {
                         scope.launch {
-                            Timber.tag("SaveReminderLogs").d("🔵 UI → Save clicked (existingId=$reminderId)")
+                            Timber.tag(SAVE_TAG).d("🔵 UI → Save clicked (existingId=$reminderId)")
 
                             reminderVm.onSaveClicked(
                                 title = uiState.title,

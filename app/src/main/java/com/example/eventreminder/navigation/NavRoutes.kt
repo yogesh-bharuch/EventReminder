@@ -36,3 +36,6 @@ data class PixelPreviewRoute(
 data class PixelPreviewRouteString(                      // idchanged to idstring
     val reminderIdString: String                         // idchanged to idstring
 )
+
+@Serializable
+data object SchedulingDebugRoute
