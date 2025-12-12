@@ -78,12 +78,7 @@ class SyncEngine(
         val changedLocals = config.daoAdapter.getLocalsChangedAfter(lastLocalSyncAt)
 
         if (syncConfig.loggingEnabled) {
-            Timber.tag(TAG).i(
-                "Local→Remote [%s] lastLocalSyncAt=%s changed=%d",
-                config.key,
-                lastLocalSyncAt ?: -1,
-                changedLocals.size
-            )
+            Timber.tag(TAG).i("Local→Remote [%s] lastLocalSyncAt=%s changed=%d", config.key, lastLocalSyncAt ?: -1, changedLocals.size)
         }
 
         if (changedLocals.isEmpty()) return
@@ -94,43 +89,76 @@ class SyncEngine(
         var maxUpdatedAt = lastLocalSyncAt
 
         for (local in changedLocals) {
+
             val updatedAt = config.getUpdatedAt(local)
             val docId = config.getLocalId(local)
             val docRef = collection.document(docId)
 
+            // Track max updated timestamp for checkpoint
             if (maxUpdatedAt == null || updatedAt > maxUpdatedAt!!) {
                 maxUpdatedAt = updatedAt
             }
 
+            // ------------------------------------------------------------------
+            // ① READ REMOTE STATE BEFORE DECIDING TO UPLOAD  (critical fix)
+            // ------------------------------------------------------------------
+            val remoteSnapshot = docRef.get().await()
+            val remote = remoteSnapshot.data
+            val remoteDeleted = remote?.get("isDeleted") as? Boolean ?: false
+            val remoteUpdatedAt = (remote?.get("updatedAt") as? Number)?.toLong()
+
+            // ------------------------------------------------------------------
+            // ② CASE: REMOTE IS TOMBSTONE → NEVER OVERWRITE IT
+            // ------------------------------------------------------------------
+            if (remoteDeleted) {
+                Timber.tag(TAG).w("Skipping upload for %s because REMOTE has TOMBSTONE id=%s", config.key, docId)
+                continue
+            }
+
+            // ------------------------------------------------------------------
+            // ③ CASE: LOCAL IS DELETED
+            // Upload tombstone only if it is newer than remoteUpdatedAt
+            // ------------------------------------------------------------------
             if (config.isDeleted(local)) {
+
+                // Tombstone already uploaded earlier → skip
+                if (lastLocalSyncAt != null && updatedAt <= lastLocalSyncAt) {
+                    Timber.tag(TAG).d("Skip tombstone re-upload id=%s updatedAt=%s <= lastLocalSyncAt=%s", docId, updatedAt, lastLocalSyncAt)
+                    continue
+                }
+
+                // Upload new tombstone
                 batch.set(
                     docRef,
-                    mapOf(
-                        "uid" to userId,
-                        "id" to docId,
-                        "isDeleted" to true,
-                        "updatedAt" to updatedAt      // LONG epoch millis
-                    )
+                    mapOf("uid" to userId, "id" to docId, "isDeleted" to true, "updatedAt" to updatedAt)
                 )
-            } else {
-                batch.set(docRef, config.toRemote(local, userId)) // also LONG epoch millis
+                continue
             }
+
+            // ------------------------------------------------------------------
+            // ④ CASE: REMOTE EXISTS & REMOTE IS NEWER → LOCAL IS OUTDATED → SKIP
+            // ------------------------------------------------------------------
+            if (remoteUpdatedAt != null && remoteUpdatedAt > updatedAt) {
+                Timber.tag(TAG).d("Skipping upload for id=%s because remote is newer (remote=%s > local=%s)", docId, remoteUpdatedAt, updatedAt)
+                continue
+            }
+
+            // ------------------------------------------------------------------
+            // ⑤ Normal upload (local update is newer)
+            // ------------------------------------------------------------------
+            batch.set(docRef, config.toRemote(local, userId))
         }
 
         batch.commit().await()
 
-        // 🔥 Write only if changed
+        // Update checkpoint if changed
         if (maxUpdatedAt != meta?.lastLocalSyncAt) {
             syncMetadataDao.upsert(
-                SyncMetadataEntity(
-                    key = config.key,
-                    lastLocalSyncAt = maxUpdatedAt,
-                    lastRemoteSyncAt = meta?.lastRemoteSyncAt
-                )
+                SyncMetadataEntity(key = config.key, lastLocalSyncAt = maxUpdatedAt, lastRemoteSyncAt = meta?.lastRemoteSyncAt)
             )
         }
-
     }
+
 
     // =============================================================
     // Remote → Local
@@ -152,11 +180,7 @@ class SyncEngine(
         var query: Query = config.getCollectionRef()
             .whereEqualTo("uid", userId).limit(500)
 
-        Timber.tag("REMOTE_DEBUG").e(
-            "Remote→Local key=%s lastRemoteSyncAt=%s",
-            config.key,
-            lastRemoteSyncAt ?: "NULL"
-        )
+        Timber.tag("REMOTE_DEBUG").e("Remote→Local key=%s lastRemoteSyncAt=%s", config.key, lastRemoteSyncAt ?: "NULL")
 
         // Fetch documents
         val snapshot = query.get().await()
@@ -180,10 +204,25 @@ class SyncEngine(
             val isRemoteDeleted = data["isDeleted"] as? Boolean ?: false
             val localUpdatedAt = config.getLocalUpdatedAt(docId)
 
-            Timber.tag("REMOTE_DEBUG").e(
-                "DOC id=%s remoteUpdatedAt=%s localUpdatedAt=%s",
-                docId, remoteUpdatedAt, localUpdatedAt
-            )
+            Timber.tag("REMOTE_DEBUG").e("DOC id=%s remoteUpdatedAt=%s localUpdatedAt=%s", docId, remoteUpdatedAt, localUpdatedAt)
+
+            // =====================================================
+            // 🔥 TOMBOSTONE SPECIAL CASE — ALWAYS APPLY DELETE
+            // =====================================================
+            if (isRemoteDeleted) {
+                Timber.tag("REMOTE_DEBUG").e("REMOTE TOMBSTONE → ALWAYS DELETE id=%s", docId)
+
+                toDeleteIds.add(docId)
+
+                // Track updatedAt for checkpoint
+                if (remoteUpdatedAt != null &&
+                    (maxRemoteUpdatedAt == null || remoteUpdatedAt > maxRemoteUpdatedAt!!)
+                ) {
+                    maxRemoteUpdatedAt = remoteUpdatedAt
+                }
+
+                continue
+            }
 
             // ------------------------------
             // Conflict resolution
@@ -246,8 +285,7 @@ class SyncEngine(
         }
 
 
-        Timber.tag("REMOTE_DEBUG")
-            .e("SYNC COMPLETE — new lastRemoteSyncAt=%s", maxRemoteUpdatedAt)
+        Timber.tag("REMOTE_DEBUG").e("SYNC COMPLETE — new lastRemoteSyncAt=%s", maxRemoteUpdatedAt)
     }
 
     // =============================================================

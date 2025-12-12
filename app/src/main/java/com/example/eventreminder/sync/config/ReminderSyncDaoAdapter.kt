@@ -30,10 +30,13 @@ class ReminderSyncDaoAdapter(
 
     /**
      * Soft-delete local reminders by UUID STRING.
+     *
+     * IMPORTANT: Use markDeletedRemote to avoid bumping updatedAt when applying a remote tombstone.
      */
     override suspend fun markDeletedByIds(ids: List<String>) {
         ids.forEach { idString ->
-            dao.markDeleted(idString)   // UUID string — NO conversion
+            //dao.markDeleted(idString)   // UUID string — NO conversion
+            dao.markDeletedRemote(idString)   // Apply remote tombstone without changing updatedAt
         }
     }
 

@@ -40,8 +40,22 @@ interface ReminderDao {
     // DELETE
     // ============================================================
 
+    /**
+     * Local soft-delete: sets isDeleted=1 and updates updatedAt so local change will be pushed.
+     * Used when the user deletes within this device.
+     */
     @Query("UPDATE reminders SET isDeleted = 1, updatedAt = :timestamp WHERE id = :id")
     suspend fun markDeleted(id: String, timestamp: Long = System.currentTimeMillis())
+
+    /**
+     * Remote tombstone application:
+     * Marks isDeleted=1 but DOES NOT modify updatedAt.
+     * Use this when applying a delete coming FROM the cloud.
+     *
+     * This prevents creating a new local updatedAt that would re-trigger a Local→Remote push.
+     */
+    @Query("UPDATE reminders SET isDeleted = 1 WHERE id = :id")
+    suspend fun markDeletedRemote(id: String)
 
     // ============================================================
     // TIMESTAMP HELPERS
