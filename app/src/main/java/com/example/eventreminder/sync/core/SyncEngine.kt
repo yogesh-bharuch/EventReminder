@@ -68,6 +68,20 @@ class SyncEngine(
     // =============================================================
     // Local → Remote
     // =============================================================
+    /**
+     * Local → Remote Sync
+     *
+     * STRATEGY:
+     * - Push local changes to Firestore
+     * - Push tombstones for deleted records
+     * - NEVER overwrite an existing remote tombstone
+     * - NEVER resurrect a deleted record
+     *
+     * IMPORTANT RULE:
+     *   If Firestore already has isDeleted=true for a document,
+     *   that document is FINAL and must NEVER be overwritten,
+     *   even if local.updatedAt is newer.
+     */
     private suspend fun <Local : Any> syncLocalToRemote(
         userId: String,
         config: EntitySyncConfig<Local>
@@ -75,122 +89,150 @@ class SyncEngine(
         val meta = syncMetadataDao.get(config.key)
         val lastLocalSyncAt = meta?.lastLocalSyncAt
 
+        // Fetch local rows changed since last sync (includes deleted rows)
         val changedLocals = config.daoAdapter.getLocalsChangedAfter(lastLocalSyncAt)
-
-        if (syncConfig.loggingEnabled) {
-            Timber.tag(TAG).i("Local→Remote [%s] lastLocalSyncAt=%s changed=%d", config.key, lastLocalSyncAt ?: -1, changedLocals.size)
-        }
-
         if (changedLocals.isEmpty()) return
 
         val batch = firestore.batch()
         val collection = config.getCollectionRef()
-
         var maxUpdatedAt = lastLocalSyncAt
 
         for (local in changedLocals) {
 
-            val updatedAt = config.getUpdatedAt(local)
+            val localUpdatedAt = config.getUpdatedAt(local)
             val docId = config.getLocalId(local)
             val docRef = collection.document(docId)
 
-            // Track max updated timestamp for checkpoint
-            if (maxUpdatedAt == null || updatedAt > maxUpdatedAt!!) {
-                maxUpdatedAt = updatedAt
+            // Track checkpoint
+            if (maxUpdatedAt == null || localUpdatedAt > maxUpdatedAt!!) {
+                maxUpdatedAt = localUpdatedAt
             }
 
-            // ------------------------------------------------------------------
-            // ① READ REMOTE STATE BEFORE DECIDING TO UPLOAD  (critical fix)
-            // ------------------------------------------------------------------
+            // ------------------------------------------------------------
+            // 🔥 CRITICAL GUARD: READ REMOTE STATE
+            // ------------------------------------------------------------
             val remoteSnapshot = docRef.get().await()
-            val remote = remoteSnapshot.data
-            val remoteDeleted = remote?.get("isDeleted") as? Boolean ?: false
-            val remoteUpdatedAt = (remote?.get("updatedAt") as? Number)?.toLong()
+            val remoteData = remoteSnapshot.data
+            val remoteDeleted = remoteData?.get("isDeleted") as? Boolean ?: false
+            val remoteUpdatedAt = (remoteData?.get("updatedAt") as? Number)?.toLong()
 
-            // ------------------------------------------------------------------
-            // ② CASE: REMOTE IS TOMBSTONE → NEVER OVERWRITE IT
-            // ------------------------------------------------------------------
+            /**
+             * RULE #1 — Remote tombstone is FINAL
+             *
+             * If Firestore already has isDeleted=true,
+             * DO NOT upload anything — EVER.
+             *
+             * This guards against:
+             * - Device-2 editing after device-1 deleted
+             * - Resurrection bugs
+             */
             if (remoteDeleted) {
-                Timber.tag(TAG).w("Skipping upload for %s because REMOTE has TOMBSTONE id=%s", config.key, docId)
+                Timber.tag(TAG).w(
+                    "Skip upload: REMOTE TOMBSTONE EXISTS id=%s",
+                    docId
+                )
                 continue
             }
 
-            // ------------------------------------------------------------------
-            // ③ CASE: LOCAL IS DELETED
-            // Upload tombstone only if it is newer than remoteUpdatedAt
-            // ------------------------------------------------------------------
+            /**
+             * RULE #2 — Local tombstone upload
+             *
+             * Upload a tombstone ONLY IF:
+             * - This deletion has not already been synced
+             */
             if (config.isDeleted(local)) {
 
-                // Tombstone already uploaded earlier → skip
-                if (lastLocalSyncAt != null && updatedAt <= lastLocalSyncAt) {
-                    Timber.tag(TAG).d("Skip tombstone re-upload id=%s updatedAt=%s <= lastLocalSyncAt=%s", docId, updatedAt, lastLocalSyncAt)
+                // Tombstone already pushed earlier → skip re-upload
+                if (lastLocalSyncAt != null && localUpdatedAt <= lastLocalSyncAt) {
+                    Timber.tag(TAG).d(
+                        "Skip tombstone re-upload id=%s (already synced)",
+                        docId
+                    )
                     continue
                 }
 
                 // Upload new tombstone
                 batch.set(
                     docRef,
-                    mapOf("uid" to userId, "id" to docId, "isDeleted" to true, "updatedAt" to updatedAt)
+                    mapOf(
+                        "uid" to userId,
+                        "id" to docId,
+                        "isDeleted" to true,
+                        "updatedAt" to localUpdatedAt
+                    )
                 )
                 continue
             }
 
-            // ------------------------------------------------------------------
-            // ④ CASE: REMOTE EXISTS & REMOTE IS NEWER → LOCAL IS OUTDATED → SKIP
-            // ------------------------------------------------------------------
-            if (remoteUpdatedAt != null && remoteUpdatedAt > updatedAt) {
-                Timber.tag(TAG).d("Skipping upload for id=%s because remote is newer (remote=%s > local=%s)", docId, remoteUpdatedAt, updatedAt)
+            /**
+             * RULE #3 — Remote newer than local
+             *
+             * If Firestore has a newer version,
+             * local is stale → skip upload
+             */
+            if (remoteUpdatedAt != null && remoteUpdatedAt > localUpdatedAt) {
+                Timber.tag(TAG).d(
+                    "Skip upload: remote newer id=%s (remote=%s > local=%s)",
+                    docId, remoteUpdatedAt, localUpdatedAt
+                )
                 continue
             }
 
-            // ------------------------------------------------------------------
-            // ⑤ Normal upload (local update is newer)
-            // ------------------------------------------------------------------
+            /**
+             * RULE #4 — Normal update
+             *
+             * Local update is newer → push to Firestore
+             */
             batch.set(docRef, config.toRemote(local, userId))
         }
 
         batch.commit().await()
 
-        // Update checkpoint if changed
+        // Advance checkpoint ONLY if changed
         if (maxUpdatedAt != meta?.lastLocalSyncAt) {
             syncMetadataDao.upsert(
-                SyncMetadataEntity(key = config.key, lastLocalSyncAt = maxUpdatedAt, lastRemoteSyncAt = meta?.lastRemoteSyncAt)
+                SyncMetadataEntity(
+                    key = config.key,
+                    lastLocalSyncAt = maxUpdatedAt,
+                    lastRemoteSyncAt = meta?.lastRemoteSyncAt
+                )
             )
         }
     }
 
 
+
     // =============================================================
     // Remote → Local
     // =============================================================
+    /**
+     * Remote → Local Sync
+     *
+     * STRATEGY:
+     * - Pull Firestore documents for the user
+     * - Apply REMOTE TOMBSTONES FIRST
+     * - Tombstones ALWAYS delete locally
+     * - Conflict strategies NEVER override deletes
+     *
+     * GOLDEN RULE:
+     *   If Firestore says isDeleted=true,
+     *   local record MUST be deleted — always.
+     */
     private suspend fun <Local : Any> syncRemoteToLocal(
         userId: String,
         config: EntitySyncConfig<Local>
     ) {
-        Timber.tag("REMOTE_DEBUG").e("ENTERED syncRemoteToLocal()")
-
         val meta = syncMetadataDao.get(config.key)
         val lastRemoteSyncAt = meta?.lastRemoteSyncAt
         val lastLocalSyncAt = meta?.lastLocalSyncAt
 
-        // ---------------------------------------------------------
-        // Query ONLY by uid; we do updatedAt filtering + conflicts
-        // entirely on the client using plain Long comparison.
-        // ---------------------------------------------------------
-        var query: Query = config.getCollectionRef()
-            .whereEqualTo("uid", userId).limit(500)
+        val snapshot = config.getCollectionRef()
+            .whereEqualTo("uid", userId)
+            .limit(500)
+            .get()
+            .await()
 
-        Timber.tag("REMOTE_DEBUG").e("Remote→Local key=%s lastRemoteSyncAt=%s", config.key, lastRemoteSyncAt ?: "NULL")
-
-        // Fetch documents
-        val snapshot = query.get().await()
-
-        Timber.tag("REMOTE_DEBUG").e("Remote query returned %d docs", snapshot.size())
-
-        if (snapshot.isEmpty) {
-            Timber.tag("REMOTE_DEBUG").e("No remote docs → EXIT")
-            return
-        }
+        if (snapshot.isEmpty) return
 
         val toUpsert = mutableListOf<Local>()
         val toDeleteIds = mutableListOf<String>()
@@ -204,76 +246,65 @@ class SyncEngine(
             val isRemoteDeleted = data["isDeleted"] as? Boolean ?: false
             val localUpdatedAt = config.getLocalUpdatedAt(docId)
 
-            Timber.tag("REMOTE_DEBUG").e("DOC id=%s remoteUpdatedAt=%s localUpdatedAt=%s", docId, remoteUpdatedAt, localUpdatedAt)
-
-            // =====================================================
-            // 🔥 TOMBOSTONE SPECIAL CASE — ALWAYS APPLY DELETE
-            // =====================================================
+            /**
+             * 🔥 RULE #1 — REMOTE TOMBSTONE
+             *
+             * ALWAYS apply delete locally.
+             * Conflict strategy is IGNORED.
+             */
             if (isRemoteDeleted) {
-                Timber.tag("REMOTE_DEBUG").e("REMOTE TOMBSTONE → ALWAYS DELETE id=%s", docId)
+
+                Timber.tag("REMOTE_DEBUG")
+                    .e("REMOTE TOMBSTONE → delete local id=%s", docId)
 
                 toDeleteIds.add(docId)
 
-                // Track updatedAt for checkpoint
                 if (remoteUpdatedAt != null &&
                     (maxRemoteUpdatedAt == null || remoteUpdatedAt > maxRemoteUpdatedAt!!)
                 ) {
                     maxRemoteUpdatedAt = remoteUpdatedAt
                 }
-
                 continue
             }
 
-            // ------------------------------
-            // Conflict resolution
-            // ------------------------------
+            /**
+             * RULE #2 — Conflict resolution for NON-deleted records
+             */
             val shouldApply = when (config.conflictStrategy) {
                 ConflictStrategy.REMOTE_WINS ->
-                    // Always trust remote if it's newer than our last remote checkpoint
                     lastRemoteSyncAt == null ||
                             (remoteUpdatedAt != null && remoteUpdatedAt > lastRemoteSyncAt)
 
                 ConflictStrategy.LOCAL_WINS ->
-                    // Only apply if we have no local row AND remote is newer than checkpoint
                     localUpdatedAt == null &&
                             (lastRemoteSyncAt == null ||
                                     (remoteUpdatedAt != null && remoteUpdatedAt > lastRemoteSyncAt))
 
                 ConflictStrategy.LATEST_UPDATED_WINS ->
-                    // Remote applies if it is newer than what we've ever pulled from cloud
                     lastRemoteSyncAt == null ||
                             (remoteUpdatedAt != null && remoteUpdatedAt > lastRemoteSyncAt)
             }
 
-            Timber.tag("REMOTE_DEBUG").e("shouldApply=%s for id=%s", shouldApply, docId)
             if (!shouldApply) continue
 
-            // Track max remote updatedAt we've seen (for next checkpoint)
             if (remoteUpdatedAt != null &&
                 (maxRemoteUpdatedAt == null || remoteUpdatedAt > maxRemoteUpdatedAt!!)
             ) {
                 maxRemoteUpdatedAt = remoteUpdatedAt
             }
 
-            // Apply tombstone or upsert
-            if (isRemoteDeleted) {
-                toDeleteIds.add(docId)
-            } else {
-                toUpsert.add(config.fromRemote(docId, data))
-            }
+            // Normal upsert
+            toUpsert.add(config.fromRemote(docId, data))
         }
 
         if (toUpsert.isNotEmpty()) {
-            Timber.tag("REMOTE_DEBUG").e("Upserting %d records → ROOM", toUpsert.size)
             config.daoAdapter.upsertAll(toUpsert)
         }
 
         if (toDeleteIds.isNotEmpty()) {
-            Timber.tag("REMOTE_DEBUG").e("Deleting %d records → ROOM", toDeleteIds.size)
             config.daoAdapter.markDeletedByIds(toDeleteIds)
         }
 
-        // 🔥 Write only if changed
         if (maxRemoteUpdatedAt != lastRemoteSyncAt) {
             syncMetadataDao.upsert(
                 SyncMetadataEntity(
@@ -283,10 +314,8 @@ class SyncEngine(
                 )
             )
         }
-
-
-        Timber.tag("REMOTE_DEBUG").e("SYNC COMPLETE — new lastRemoteSyncAt=%s", maxRemoteUpdatedAt)
     }
+
 
     // =============================================================
     // Helper: Normalize updatedAt → millis
