@@ -115,11 +115,11 @@ class ReminderViewModel @Inject constructor(
         }
     }
 
-    // ============================================================
+    /*// ============================================================
     // SAVE ENTRY POINT (UUID)
     // - This launches a coroutine and then calls suspend saveReminder()
     // - saveReminder is a suspend function (no nested launches)
-    // ============================================================
+    // ============================================================*/
     fun onSaveClicked(
         title: ReminderTitle,
         description: String,
@@ -152,13 +152,13 @@ class ReminderViewModel @Inject constructor(
         saveReminder(reminder)
     }
 
-    // ============================================================
+    /*// ============================================================
     // INSERT / UPDATE (UUID)
     // - suspend function (no nested launch)
     // - single DB read to determine isNew
     // - repository is expected to guarantee read-after-write verification
     // - ViewModel delegates scheduling to ReminderSchedulingEngine
-    // ============================================================
+    // ============================================================ */
     private suspend fun saveReminder(reminder: EventReminder) {
         Timber.tag(SAVE_TAG).d("🟠 saveReminder() START id=${reminder.id}")
 

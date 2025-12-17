@@ -1,6 +1,6 @@
 package com.example.eventreminder.data.repo
 
-// ============================================================
+/*// ============================================================
 // ReminderRepository — Clean Architecture (UUID Only)
 // Responsibilities:
 //  • Pure data access layer (Room only)
@@ -9,7 +9,7 @@ package com.example.eventreminder.data.repo
 //  • Returns IDs and entities for ViewModel to process
 //
 // This update adds per-offset fire-state helpers (lastFiredAt storage).
-// ============================================================
+// ============================================================*/
 
 import android.content.Context
 import com.example.eventreminder.data.local.ReminderDao
@@ -154,6 +154,13 @@ class ReminderRepository @Inject constructor(
         Timber.tag(DELETE_TAG).d("🟥 markDelete() END id=${reminder.id}")
     }
 
+    // ---------------------------------------------------------
+    // To clean up db, One-time DB normalization from "" to null
+    // ---------------------------------------------------------
+    suspend fun normalizeRepeatRules() {
+        dao.normalizeRepeatRule()
+    }
+
     // ============================================================
     // FETCH NON-DELETED ENABLED REMINDERS
     // Used by sync + BOOT restoration
@@ -237,4 +244,63 @@ class ReminderRepository @Inject constructor(
             "Restore failed"
         }
     }
+
+    // ============================================================
+    // UPDATE (Scheduler / Lifecycle support)
+    // ============================================================
+    suspend fun updateEnabled(
+        id: String,
+        enabled: Boolean,
+        updatedAt: Long
+    ) {
+        Timber.tag(TAG).i("updateEnabled() id=$id enabled=$enabled updatedAt=$updatedAt")
+
+        dao.updateEnabled(
+            id = id,
+            enabled = enabled,
+            updatedAt = updatedAt
+        )
+
+        // Optional verification (matches your repo style)
+        val verified = dao.getById(id)
+        if (verified == null) {
+            Timber.tag(TAG).e("❌ updateEnabled verification FAILED id=$id")
+        } else {
+            Timber.tag(TAG).i("✔ updateEnabled verified id=$id enabled=${verified.enabled}")
+        }
+    }
+
+    // ============================================================
+    // GARBAGE COLLECTION (Tombstones)
+    // ============================================================
+
+    /**
+     * Returns tombstone reminders older than the given cutoff time.
+     *
+     * Used by manual tombstone GC only.
+     */
+    suspend fun getDeletedBefore(cutoffEpochMillis: Long): List<EventReminder> {
+
+        Timber.tag(TAG).d(
+            "getDeletedBefore() cutoffEpochMillis=$cutoffEpochMillis"
+        )
+
+        return dao.getDeletedBefore(cutoffEpochMillis = cutoffEpochMillis)
+    }
+
+    /**
+     * Permanently deletes reminders by UUID.
+     *
+     * ⚠️ Destructive — used only by manual tombstone GC.
+     */
+    suspend fun hardDeleteByIds(ids: List<String>) {
+        Timber.tag(TAG).w("hardDeleteByIds() count=${ids.size}")
+
+        if (ids.isEmpty()) return
+
+        dao.hardDeleteByIds(ids = ids)
+    }
+
+
+
 }

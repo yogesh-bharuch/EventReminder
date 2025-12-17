@@ -66,4 +66,33 @@ interface ReminderDao {
 
     @Query("SELECT updatedAt FROM reminders WHERE id = :id")
     suspend fun getUpdatedAt(id: String): Long?
+
+    // ============================================================
+    // GARBAGE COLLECTION (Tombstones)
+    // ============================================================
+
+    @Query(" UPDATE reminders SET enabled = :enabled, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun updateEnabled(id: String, enabled: Boolean, updatedAt: Long)
+
+    /**
+     * Returns tombstone reminders older than the given cutoff time.
+     *
+     * Used by manual tombstone garbage collection.
+     */
+    @Query(" SELECT * FROM reminders WHERE isDeleted = 1 AND updatedAt < :cutoffEpochMillis")
+    suspend fun getDeletedBefore(cutoffEpochMillis: Long): List<EventReminder>
+
+    /**
+     * Permanently deletes reminders by UUID.
+     *
+     * ⚠️ Destructive — used only by manual tombstone GC.
+     */
+    @Query(" DELETE FROM reminders WHERE id IN (:ids)")
+    suspend fun hardDeleteByIds(ids: List<String>)
+
+    // ---------------------------------------------------------
+    // Normalize repeatRule: "" → NULL for cleanup/consistency
+    // ---------------------------------------------------------
+    @Query(" UPDATE reminders SET repeatRule = NULL WHERE repeatRule = '' ")
+    suspend fun normalizeRepeatRule()
 }
