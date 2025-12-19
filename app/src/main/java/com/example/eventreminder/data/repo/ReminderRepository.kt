@@ -111,45 +111,29 @@ class ReminderRepository @Inject constructor(
     }
 
     // ============================================================
-    // DELETE (Soft delete)
+    // DELETE (Soft delete — SINGLE SOURCE OF TRUTH)
     // ============================================================
     suspend fun markDelete(reminder: EventReminder) {
         Timber.tag(DELETE_TAG).d("🟥 markDelete() START id=${reminder.id}")
 
         val ts = System.currentTimeMillis()
-        val deleted = reminder.copy(isDeleted = true, updatedAt = ts)
 
-        // ------------------------------------------------------------
-        // Step 4 — Log state before deletion
-        // ------------------------------------------------------------
-        Timber.tag(DELETE_TAG).d(
-            "🔍 Original → id=${reminder.id}, " +
-                    "isDeleted=${reminder.isDeleted}, updatedAt=${reminder.updatedAt}"
+        val tombstone = reminder.copy(
+            isDeleted = true,
+            updatedAt = ts
         )
 
-        Timber.tag(DELETE_TAG).d(
-            "📝 Marking as deleted → new isDeleted=${deleted.isDeleted}, updatedAt=${deleted.updatedAt}"
-        )
+        Timber.tag(DELETE_TAG).d("🪦 Tombstone → id=${tombstone.id}, isDeleted=true, updatedAt=$ts")
 
         try {
-            // DB write #1
-            Timber.tag(DELETE_TAG).d("📌 DAO markDeleted(id=${reminder.id})")
-            dao.markDeleted(reminder.id)
+            // ✅ SINGLE atomic write
+            dao.update(tombstone)
 
-            // DB write #2
-            Timber.tag(DELETE_TAG).d("📌 DAO update(deleted copy)")
-            dao.update(deleted)
-
-            Timber.tag(DELETE_TAG).d("✔ markDelete() SUCCESS id=${reminder.id}")
-
+            Timber.tag(DELETE_TAG).i("✔ Tombstone created id=${tombstone.id} updatedAt=$ts")
         } catch (t: Throwable) {
-            Timber.tag(DELETE_TAG).e(t, "❌ markDelete() FAILED id=${reminder.id}")
+            Timber.tag(DELETE_TAG).e(t, "❌ markDelete FAILED id=${reminder.id}")
             throw t
         }
-
-        Timber.tag(DELETE_TAG).d(
-            "ℹ ViewModel handled alarm cancellation. Repo performs only DB update."
-        )
 
         Timber.tag(DELETE_TAG).d("🟥 markDelete() END id=${reminder.id}")
     }
@@ -281,9 +265,7 @@ class ReminderRepository @Inject constructor(
      */
     suspend fun getDeletedBefore(cutoffEpochMillis: Long): List<EventReminder> {
 
-        Timber.tag(TAG).d(
-            "getDeletedBefore() cutoffEpochMillis=$cutoffEpochMillis"
-        )
+        Timber.tag(TAG).d("getDeletedBefore() cutoffEpochMillis=$cutoffEpochMillis")
 
         return dao.getDeletedBefore(cutoffEpochMillis = cutoffEpochMillis)
     }

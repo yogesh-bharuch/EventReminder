@@ -237,8 +237,7 @@ class ReminderViewModel @Inject constructor(
         // DUPLICATE DELETE GUARD
         // -------------------------------------------------------
         if (deleteInProgress.contains(id)) {
-            Timber.tag(DELETE_TAG)
-                .d("⛔ Duplicate delete ignored id=$id (already in progress)")
+            Timber.tag(DELETE_TAG).d("⛔ Duplicate delete ignored id=$id (already in progress)")
             return@launch
         }
         deleteInProgress.add(id)

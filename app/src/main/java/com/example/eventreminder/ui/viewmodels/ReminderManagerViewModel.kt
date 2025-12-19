@@ -20,6 +20,7 @@ import kotlinx.coroutines.launch
 import timber.log.Timber
 import javax.inject.Inject
 import com.example.eventreminder.logging.DELETE_TAG
+import com.example.eventreminder.sync.core.SyncEngine
 
 /**
  * ViewModel for ReminderManagerScreen.
@@ -31,7 +32,8 @@ import com.example.eventreminder.logging.DELETE_TAG
 @HiltViewModel
 class ReminderManagerViewModel @Inject constructor(
     private val manualTombstoneGcUseCase: ManualTombstoneGcUseCase,
-    private val reminderRepository: ReminderRepository
+    private val reminderRepository: ReminderRepository,
+    private val syncEngine: SyncEngine
 ) : ViewModel() {
 
     private val _gcReport = MutableStateFlow<TombstoneGcReport?>(null)
@@ -70,6 +72,9 @@ class ReminderManagerViewModel @Inject constructor(
                         reminder.repeatRule == null &&
                         reminder.updatedAt < cutoffMillis
             }
+
+            Timber.tag(DELETE_TAG).i("Triggering sync after cleanup tombstones")
+            syncEngine.syncAll()
 
             Timber.tag(DELETE_TAG).i("Marking %d expired one-time reminders as deleted", deletable.size)
             Timber.tag("ReminderManager").i("Deleting %d expired one-time reminders", deletable.size)

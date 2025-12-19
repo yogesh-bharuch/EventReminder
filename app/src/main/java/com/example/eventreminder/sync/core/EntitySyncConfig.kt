@@ -11,6 +11,7 @@ data class EntitySyncConfig<Local : Any>(
     val fromRemote: (id: String, data: Map<String, Any?>) -> Local,
     val getLocalId: (Local) -> String,
     val getUpdatedAt: (Local) -> Long,
+    val enabled: (Local) -> Boolean,
     val isDeleted: (Local) -> Boolean,
     val getLocalUpdatedAt: suspend (String) -> Long?
 )

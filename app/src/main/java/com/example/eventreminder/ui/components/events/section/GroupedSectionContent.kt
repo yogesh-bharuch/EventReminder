@@ -1,5 +1,8 @@
 package com.example.eventreminder.ui.components.events.section
 
+// =============================================================
+// Imports
+// =============================================================
 import androidx.compose.animation.*
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -8,32 +11,34 @@ import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.draw.scale
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import com.example.eventreminder.ui.viewmodels.EventReminderUI
 import com.example.eventreminder.ui.components.cards.EventCard
 import com.example.eventreminder.ui.viewmodels.ReminderViewModel
+import com.example.eventreminder.ui.components.events.DeleteUndoBottomSheet
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.delay
 import timber.log.Timber
 import com.example.eventreminder.logging.DELETE_TAG
 
-// Local delete-lock (prevents double delete triggers)
+// =============================================================
+// Delete lock (prevents double-trigger)
+// =============================================================
 private val deleteLock = mutableSetOf<String>()
 
-
+// =============================================================
+// Swipe Delete Container
+// =============================================================
 @Composable
 private fun SwipeDeleteContainer(
     id: String,
-    onDelete: suspend () -> Unit,
+    onSwipeDelete: () -> Unit,
     content: @Composable () -> Unit
 ) {
-    val scope = rememberCoroutineScope()
-
     var dragAmount by remember { mutableStateOf(0f) }
+
     val animatedOffset by animateFloatAsState(
         targetValue = dragAmount,
         animationSpec = tween(durationMillis = 200),
@@ -48,12 +53,8 @@ private fun SwipeDeleteContainer(
             .pointerInput(id) {
                 detectHorizontalDragGestures(
                     onDragEnd = {
-                        if (dragAmount < -threshold && deleteLock.add(id)) {
-                            scope.launch {
-                                onDelete()
-                                delay(200)
-                                deleteLock.remove(id)
-                            }
+                        if (dragAmount < -threshold) {
+                            onSwipeDelete()
                         }
                         dragAmount = 0f
                     },
@@ -64,69 +65,82 @@ private fun SwipeDeleteContainer(
             }
     ) {
 
-        // background (red)
         Box(
-            Modifier
+            modifier = Modifier
                 .matchParentSize()
                 .background(MaterialTheme.colorScheme.errorContainer)
                 .padding(end = 20.dp),
             contentAlignment = Alignment.CenterEnd
         ) {
             Text(
-                "Delete",
+                text = "Delete",
                 color = MaterialTheme.colorScheme.onErrorContainer
             )
         }
 
-        // content sliding
         Box(
-            Modifier
-                .offset(x = animatedOffset.dp)
+            modifier = Modifier.offset(x = animatedOffset.dp)
         ) {
             content()
         }
     }
 }
 
-
+// =============================================================
+// Grouped Section Content (BOTTOM SHEET ONLY)
+// =============================================================
 @Composable
 fun GroupedSectionContent(
     events: List<EventReminderUI>,
     collapsed: Boolean,
     viewModel: ReminderViewModel,
-    snackbarHostState: SnackbarHostState,
     onClick: (String) -> Unit
 ) {
     val scope = rememberCoroutineScope()
+
+    var pendingDeleteUi by remember { mutableStateOf<EventReminderUI?>(null) }
+
+    // ---- Bottom sheet (single confirmation gate) ----
+    if (pendingDeleteUi != null) {
+        DeleteUndoBottomSheet(
+            eventTitle = pendingDeleteUi!!.title,
+            onUndo = {
+                Timber.tag(DELETE_TAG).d("↩ Undo delete id=${pendingDeleteUi!!.id}")
+                pendingDeleteUi = null
+            },
+            onConfirmDelete = {
+                val id = pendingDeleteUi!!.id
+                pendingDeleteUi = null
+
+                if (!deleteLock.add(id)) return@DeleteUndoBottomSheet
+
+                scope.launch {
+                    Timber.tag(DELETE_TAG).d("🟥 Final delete id=$id")
+                    viewModel.deleteEventWithUndo(id)
+                    deleteLock.remove(id)
+                }
+            },
+            onDismiss = {
+                Timber.tag(DELETE_TAG).d("⬇ Delete sheet dismissed")
+                pendingDeleteUi = null
+            }
+        )
+    }
 
     AnimatedVisibility(
         visible = !collapsed,
         enter = fadeIn() + expandVertically(),
         exit = fadeOut() + shrinkVertically()
     ) {
-
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
 
             events.forEach { ui ->
 
                 SwipeDeleteContainer(
                     id = ui.id,
-                    onDelete = {
-                        Timber.tag(DELETE_TAG).d("🟥 Swipe → delete id=${ui.id}")
-                        viewModel.deleteEventWithUndo(ui.id)
-
-                        delay(160)
-
-                        val result = snackbarHostState.showSnackbar(
-                            message = "Event deleted",
-                            actionLabel = "Undo",
-                            duration = SnackbarDuration.Long
-                        )
-
-                        if (result == SnackbarResult.ActionPerformed) {
-                            Timber.tag(DELETE_TAG).d("↩ Undo → restore id=${ui.id}")
-                            viewModel.restoreLastDeleted()
-                        }
+                    onSwipeDelete = {
+                        Timber.tag(DELETE_TAG).d("🟥 Swipe → open delete sheet id=${ui.id}")
+                        pendingDeleteUi = ui
                     }
                 ) {
 
@@ -134,27 +148,8 @@ fun GroupedSectionContent(
                         ui = ui,
                         onClick = { onClick(ui.id) },
                         onDelete = {
-                            if (!deleteLock.add(ui.id)) return@EventCard
-
-                            scope.launch {
-                                Timber.tag(DELETE_TAG).d("🟥 Icon → delete id=${ui.id}")
-                                viewModel.deleteEventWithUndo(ui.id)
-
-                                delay(160)
-
-                                val result = snackbarHostState.showSnackbar(
-                                    message = "Event deleted",
-                                    actionLabel = "Undo",
-                                    duration = SnackbarDuration.Long
-                                )
-
-                                if (result == SnackbarResult.ActionPerformed) {
-                                    Timber.tag(DELETE_TAG).d("↩ Undo → restore id=${ui.id}")
-                                    viewModel.restoreLastDeleted()
-                                }
-
-                                deleteLock.remove(ui.id)
-                            }
+                            Timber.tag(DELETE_TAG).d("🟥 Icon → open delete sheet id=${ui.id}")
+                            pendingDeleteUi = ui
                         }
                     )
                 }

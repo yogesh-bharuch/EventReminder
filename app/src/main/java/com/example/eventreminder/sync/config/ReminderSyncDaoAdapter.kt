@@ -3,6 +3,8 @@ package com.example.eventreminder.sync.config
 import com.example.eventreminder.data.local.ReminderDao
 import com.example.eventreminder.data.model.EventReminder
 import com.example.eventreminder.sync.core.SyncDaoAdapter
+import timber.log.Timber
+import com.example.eventreminder.logging.DELETE_TAG
 
 /**
  * Adapter so SyncEngine can talk to Room generically.
@@ -14,10 +16,10 @@ class ReminderSyncDaoAdapter(
 
     /**
      * Return local items whose updatedAt > updatedAfter.
-     * Includes soft-deleted items.
+     * Includes soft-deleted items (tombstones).
      */
     override suspend fun getLocalsChangedAfter(updatedAfter: Long?): List<EventReminder> {
-        val all = dao.getAllIncludingDeletedOnce()   // DAO must now return UUID-based EventReminder
+        val all = dao.getAllIncludingDeletedOnce()
         return if (updatedAfter == null) all else all.filter { it.updatedAt > updatedAfter }
     }
 
@@ -25,26 +27,40 @@ class ReminderSyncDaoAdapter(
      * Insert or update list of reminders.
      */
     override suspend fun upsertAll(items: List<EventReminder>) {
-        dao.insertAll(items)  // DAO must support UUID primary key
+        dao.insertAll(items)
     }
 
     /**
-     * Soft-delete local reminders by UUID STRING.
+     * Apply REMOTE tombstones locally.
      *
-     * IMPORTANT: Use markDeletedRemote to avoid bumping updatedAt when applying a remote tombstone.
+     * IMPORTANT:
+     * - Must NOT bump updatedAt
+     * - Must NOT resurrect anything
      */
     override suspend fun markDeletedByIds(ids: List<String>) {
-        ids.forEach { idString ->
-            //dao.markDeleted(idString)   // UUID string — NO conversion
-            dao.markDeletedRemote(idString)   // Apply remote tombstone without changing updatedAt
+        ids.forEach { id ->
+            Timber.tag(DELETE_TAG).w("REMOTE TOMBSTONE → apply locally id=$id")
+            dao.markDeletedRemote(id)
         }
     }
 
     /**
-     * Used for LATEST_UPDATED_WINS conflict resolution.
-     * Returns local updatedAt for the given UUID.
+     * Used for conflict resolution.
+     * Returns local updatedAt for given UUID, or null if row missing.
      */
     override suspend fun getLocalUpdatedAt(id: String): Long? {
-        return dao.getUpdatedAt(id)     // UUID string — NO conversion
+        return dao.getUpdatedAt(id)
+    }
+
+    /**
+     * 🔥 CRITICAL: Single source of truth for local tombstone state
+     *
+     * Returns true IFF:
+     *   Room row exists AND isDeleted = true
+     */
+    override suspend fun isLocalDeleted(id: String): Boolean {
+        val deleted = dao.isDeleted(id) ?: false
+        Timber.tag(DELETE_TAG).d("isLocalDeleted(id=$id) -> $deleted")
+        return deleted
     }
 }

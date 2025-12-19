@@ -120,6 +120,8 @@ object ReminderSyncConfig {
 
             getUpdatedAt = { event -> event.updatedAt },
 
+            enabled = { event -> event.enabled },
+
             isDeleted = { event -> event.isDeleted },
 
             getLocalUpdatedAt = { idString ->

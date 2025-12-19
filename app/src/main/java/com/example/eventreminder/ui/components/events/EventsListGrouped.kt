@@ -133,7 +133,6 @@ fun EventsListGrouped(
                         events = section.events,
                         collapsed = collapsed[section.header] ?: true,
                         viewModel = viewModel,
-                        snackbarHostState = snackbarHostState,
                         onClick = onClick
                     )
                 }

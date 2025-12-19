@@ -79,7 +79,7 @@ interface ReminderDao {
      *
      * Used by manual tombstone garbage collection.
      */
-    @Query(" SELECT * FROM reminders WHERE isDeleted = 1 AND updatedAt < :cutoffEpochMillis")
+    @Query(" SELECT * FROM reminders WHERE isDeleted = 1 AND updatedAt <= :cutoffEpochMillis")
     suspend fun getDeletedBefore(cutoffEpochMillis: Long): List<EventReminder>
 
     /**
@@ -95,4 +95,8 @@ interface ReminderDao {
     // ---------------------------------------------------------
     @Query(" UPDATE reminders SET repeatRule = NULL WHERE repeatRule = '' ")
     suspend fun normalizeRepeatRule()
+
+    @Query("SELECT isDeleted FROM reminders WHERE id = :id LIMIT 1")
+    suspend fun isDeleted(id: String): Boolean?
+
 }

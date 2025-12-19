@@ -75,10 +75,7 @@ class ReminderSchedulingEngine @Inject constructor(
     // =============================================================
     // BOOT RESTORE
     // =============================================================
-    suspend fun processBootRestore(
-        reminder: EventReminder,
-        nowEpochMillis: Long
-    ) {
+    suspend fun processBootRestore(reminder: EventReminder, nowEpochMillis: Long) {
         Timber.tag(TAG).d("processBootRestore: %s at %d", reminder.id, nowEpochMillis)
 
         if (!reminder.enabled) {
@@ -205,10 +202,7 @@ class ReminderSchedulingEngine @Inject constructor(
         )
     }
 
-    internal fun scheduleOffsets(
-        reminder: EventReminder,
-        occurrenceEpochMillis: Long
-    ) {
+    internal fun scheduleOffsets(reminder: EventReminder, occurrenceEpochMillis: Long) {
         val now = Instant.now().toEpochMilli()
         val offsets = reminder.reminderOffsets.ifEmpty { listOf(0L) }
 
@@ -231,10 +225,7 @@ class ReminderSchedulingEngine @Inject constructor(
     // =============================================================
     // IMMEDIATE FIRE (BOOT / MISSED)
     // =============================================================
-    internal suspend fun fireNotificationNow(
-        reminder: EventReminder,
-        offsetMillis: Long
-    ) {
+    internal suspend fun fireNotificationNow(reminder: EventReminder, offsetMillis: Long) {
         val raw = reminder.id.hashCode() xor offsetMillis.hashCode()
         val notificationId =
             if (raw == Int.MIN_VALUE) Int.MAX_VALUE else kotlin.math.abs(raw)

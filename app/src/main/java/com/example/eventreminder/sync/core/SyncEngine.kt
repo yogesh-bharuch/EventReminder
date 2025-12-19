@@ -7,6 +7,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import kotlinx.coroutines.tasks.await
 import timber.log.Timber
+import com.example.eventreminder.logging.DELETE_TAG
 
 /**
  * SyncEngine
@@ -103,55 +104,33 @@ class SyncEngine(
             val docId = config.getLocalId(local)
             val docRef = collection.document(docId)
 
-            // Track checkpoint
             if (maxUpdatedAt == null || localUpdatedAt > maxUpdatedAt!!) {
                 maxUpdatedAt = localUpdatedAt
             }
 
-            // ------------------------------------------------------------
-            // 🔥 CRITICAL GUARD: READ REMOTE STATE
-            // ------------------------------------------------------------
-            val remoteSnapshot = docRef.get().await()
-            val remoteData = remoteSnapshot.data
-            val remoteDeleted = remoteData?.get("isDeleted") as? Boolean ?: false
-            val remoteUpdatedAt = (remoteData?.get("updatedAt") as? Number)?.toLong()
-
-            /**
-             * RULE #1 — Remote tombstone is FINAL
-             *
-             * If Firestore already has isDeleted=true,
-             * DO NOT upload anything — EVER.
-             *
-             * This guards against:
-             * - Device-2 editing after device-1 deleted
-             * - Resurrection bugs
-             */
-            if (remoteDeleted) {
-                Timber.tag(TAG).w(
-                    "Skip upload: REMOTE TOMBSTONE EXISTS id=%s",
-                    docId
+            // ============================================================
+            // 🔥 RULE #0 — TERMINAL ONE-TIME REMINDERS NEVER SYNC
+            // ============================================================
+            if (!config.enabled(local)) {
+                Timber.tag(DELETE_TAG).i(
+                    "SYNC SKIP terminal reminder (enabled=false) id=%s",
+                    config.getLocalId(local)
                 )
                 continue
             }
 
-            /**
-             * RULE #2 — Local tombstone upload
-             *
-             * Upload a tombstone ONLY IF:
-             * - This deletion has not already been synced
-             */
+
+            // ============================================================
+            // 🔥 RULE #1 — LOCAL TOMBSTONE ALWAYS WINS (NO GATES)
+            // ============================================================
             if (config.isDeleted(local)) {
 
-                // Tombstone already pushed earlier → skip re-upload
-                if (lastLocalSyncAt != null && localUpdatedAt <= lastLocalSyncAt) {
-                    Timber.tag(TAG).d(
-                        "Skip tombstone re-upload id=%s (already synced)",
-                        docId
-                    )
-                    continue
-                }
+                Timber.tag(DELETE_TAG).i(
+                    "⬆️ Uploading LOCAL TOMBSTONE id=%s updatedAt=%d",
+                    docId,
+                    localUpdatedAt
+                )
 
-                // Upload new tombstone
                 batch.set(
                     docRef,
                     mapOf(
@@ -161,34 +140,50 @@ class SyncEngine(
                         "updatedAt" to localUpdatedAt
                     )
                 )
+
                 continue
             }
 
-            /**
-             * RULE #3 — Remote newer than local
-             *
-             * If Firestore has a newer version,
-             * local is stale → skip upload
-             */
-            if (remoteUpdatedAt != null && remoteUpdatedAt > localUpdatedAt) {
-                Timber.tag(TAG).d(
-                    "Skip upload: remote newer id=%s (remote=%s > local=%s)",
-                    docId, remoteUpdatedAt, localUpdatedAt
+            // ============================================================
+            // RULE #2 — READ REMOTE STATE (ONLY FOR NON-DELETED LOCALS)
+            // ============================================================
+            val remoteSnapshot = docRef.get().await()
+            val remoteData = remoteSnapshot.data
+            val remoteDeleted = remoteData?.get("isDeleted") as? Boolean ?: false
+            val remoteUpdatedAt = (remoteData?.get("updatedAt") as? Number)?.toLong()
+
+            // Remote tombstone blocks everything
+            if (remoteDeleted) {
+                Timber.tag(TAG).w(
+                    "Skip upload: REMOTE TOMBSTONE EXISTS id=%s",
+                    docId
                 )
                 continue
             }
 
-            /**
-             * RULE #4 — Normal update
-             *
-             * Local update is newer → push to Firestore
-             */
-            batch.set(docRef, config.toRemote(local, userId))
+            // Remote newer → skip
+            if (remoteUpdatedAt != null && remoteUpdatedAt > localUpdatedAt) {
+                Timber.tag(TAG).d(
+                    "Skip upload: remote newer id=%s (remote=%d > local=%d)",
+                    docId,
+                    remoteUpdatedAt,
+                    localUpdatedAt
+                )
+                continue
+            }
+
+            // ============================================================
+            // RULE #3 — NORMAL UPSERT
+            // ============================================================
+            batch.set(
+                docRef,
+                config.toRemote(local, userId)
+            )
         }
 
         batch.commit().await()
 
-        // Advance checkpoint ONLY if changed
+        // Advance checkpoint
         if (maxUpdatedAt != meta?.lastLocalSyncAt) {
             syncMetadataDao.upsert(
                 SyncMetadataEntity(
@@ -199,7 +194,6 @@ class SyncEngine(
             )
         }
     }
-
 
 
     // =============================================================
@@ -238,6 +232,8 @@ class SyncEngine(
         val toDeleteIds = mutableListOf<String>()
         var maxRemoteUpdatedAt = lastRemoteSyncAt
 
+        Timber.tag(DELETE_TAG).e("SYNC_REMOTE_TO_LOCAL START key=%s lastRemoteSyncAt=%s", config.key, lastRemoteSyncAt)
+
         for (doc in snapshot.documents) {
             val data = doc.data ?: continue
             val docId = doc.id
@@ -245,6 +241,12 @@ class SyncEngine(
             val remoteUpdatedAt = extractUpdatedAtMillis(data["updatedAt"])
             val isRemoteDeleted = data["isDeleted"] as? Boolean ?: false
             val localUpdatedAt = config.getLocalUpdatedAt(docId)
+
+            val isLocalDeleted = config.daoAdapter.isLocalDeleted(docId)
+            if (isLocalDeleted) {
+                Timber.tag("REMOTE_DEBUG").w("LOCAL TOMBSTONE → skip remote upsert id=%s", docId)
+                continue
+            }
 
             /**
              * 🔥 RULE #1 — REMOTE TOMBSTONE

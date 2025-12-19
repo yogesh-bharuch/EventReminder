@@ -27,6 +27,10 @@ interface SyncDaoAdapter<Local : Any> {
      * OR null if the local row does not exist.
      */
     suspend fun getLocalUpdatedAt(id: String): Long?
+
+    suspend fun isLocalDeleted(id: String): Boolean
+
+
 }
 
 /*
