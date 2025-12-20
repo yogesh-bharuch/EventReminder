@@ -71,8 +71,8 @@ interface ReminderDao {
     // GARBAGE COLLECTION (Tombstones)
     // ============================================================
 
-    @Query(" UPDATE reminders SET enabled = :enabled, updatedAt = :updatedAt WHERE id = :id")
-    suspend fun updateEnabled(id: String, enabled: Boolean, updatedAt: Long)
+    @Query(" UPDATE reminders SET enabled = :enabled, isDeleted = :isDeleted, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun updateEnabled(id: String, enabled: Boolean, isDeleted: Boolean, updatedAt: Long)
 
     /**
      * Returns tombstone reminders older than the given cutoff time.

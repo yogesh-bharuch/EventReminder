@@ -60,9 +60,7 @@ fun ReminderManagerScreen(
             enabled = !isRunning,
             onClick = { showConfirmDialog = true }
         ) {
-            Text(
-                if (isRunning) "Cleanup Running…" else "Run Reminder Cleanup"
-            )
+            Text(if (isRunning) "Cleanup Running…" else "Run Reminder Cleanup")
         }
 
         // ---------------------------------------------------------

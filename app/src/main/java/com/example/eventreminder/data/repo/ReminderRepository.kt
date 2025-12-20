@@ -235,6 +235,7 @@ class ReminderRepository @Inject constructor(
     suspend fun updateEnabled(
         id: String,
         enabled: Boolean,
+        isDeleted: Boolean,
         updatedAt: Long
     ) {
         Timber.tag(TAG).i("updateEnabled() id=$id enabled=$enabled updatedAt=$updatedAt")
@@ -242,6 +243,7 @@ class ReminderRepository @Inject constructor(
         dao.updateEnabled(
             id = id,
             enabled = enabled,
+            isDeleted = isDeleted,
             updatedAt = updatedAt
         )
 

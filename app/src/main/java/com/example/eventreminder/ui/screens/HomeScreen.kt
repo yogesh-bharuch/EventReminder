@@ -172,7 +172,7 @@ fun HomeScreen(
                 onSyncClick = {
                     coroutineScope.launch {
                         reminderVm.syncRemindersWithServer()
-                        snackbarHostState.showSnackbar("Sync requested")
+                        //snackbarHostState.showSnackbar("Sync requested")
                     }
                 },
                 onBackupClick = {

@@ -1,6 +1,6 @@
 package com.example.eventreminder.scheduler
 
-// =============================================================
+/*// =============================================================
 // ReminderSchedulingEngine — Master Scheduling Engine (UUID-only)
 // =============================================================
 //
@@ -22,7 +22,7 @@ package com.example.eventreminder.scheduler
 //  → UI will then move it to "Past 30 Days"
 //  → GC will later delete it
 //
-// =============================================================
+// =============================================================*/
 
 import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -150,6 +150,7 @@ class ReminderSchedulingEngine @Inject constructor(
             repo.updateEnabled(
                 id = reminder.id,
                 enabled = false,
+                isDeleted = false,     // 🔥 KEY FIX for orphan in remote, reverted back
                 updatedAt = System.currentTimeMillis()
             )
 

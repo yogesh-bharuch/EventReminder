@@ -337,20 +337,43 @@ class ReminderViewModel @Inject constructor(
             _snackbarEvent.trySend("Sync started…")
             Timber.tag("SYNC").i("Sync started")
 
+            // --------------------------------------------------------
             // Step 1: Perform full remote ↔ local sync
-            syncEngine.syncAll()
+            // --------------------------------------------------------
+            val result = syncEngine.syncAll()
 
-            // Step 2: Re-schedule all reminders using updated synced data (ViewModel)
+            // --------------------------------------------------------
+            // Step 2: Re-schedule all enabled reminders
+            // --------------------------------------------------------
             val reminders = repo.getNonDeletedEnabled()
             Timber.tag("SYNC").i("Rescheduling ${reminders.size} reminders after sync")
 
             reminders.forEach { reminder ->
-                // Delegate cancel+schedule to engine (processSavedReminder does cancel+schedule)
                 schedulingEngine.processSavedReminder(reminder)
             }
 
-            _snackbarEvent.trySend("Sync completed")
-            Timber.tag("SYNC").i("Sync + Reschedule completed successfully")
+            // --------------------------------------------------------
+            // Step 3: Build snackbar message from SyncResult
+            // --------------------------------------------------------
+            val message =
+                if (result.isEmpty()) {
+                    "Sync completed (no changes)"
+                } else {
+                    buildString {
+                        append("Sync completed\n")
+                        append("Local → Cloud:  C: ${result.localToRemoteCreated}, " +
+                                "U: ${result.localToRemoteUpdated}, " +
+                                "D: ${result.localToRemoteDeleted}\n"
+                        )
+                        append("Cloud → Local:  C: ${result.remoteToLocalCreated}, " +
+                                "U: ${result.remoteToLocalUpdated}, " +
+                                "D: ${result.remoteToLocalDeleted}"
+                        )
+                    }
+                }
+
+            _snackbarEvent.trySend(message)
+            Timber.tag("SYNC").i("Sync completed: $message")
 
         } catch (e: Exception) {
             _snackbarEvent.trySend("Sync failed: ${e.message}")

@@ -4,7 +4,6 @@ package com.example.eventreminder.sync.core
 // Imports
 // =============================================================
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.Query
 import kotlinx.coroutines.tasks.await
 import timber.log.Timber
 import com.example.eventreminder.logging.DELETE_TAG
@@ -18,6 +17,9 @@ import com.example.eventreminder.logging.DELETE_TAG
  * Soft delete model:
  * - Local delete -> Firestore tombstone { isDeleted = true }
  * - Firestore tombstone -> local markDeletedByIds()
+ *
+ * This engine is UI-agnostic.
+ * It produces SyncResult which can be consumed by ViewModel / UI.
  */
 class SyncEngine(
     private val firestore: FirebaseFirestore,
@@ -30,7 +32,16 @@ class SyncEngine(
     // =============================================================
     // Sync Entry Point
     // =============================================================
-    suspend fun syncAll() {
+    /**
+     * Runs full sync for all configured entities.
+     *
+     * @return SyncResult containing counts of created / updated / deleted / skipped
+     *         records for both Local→Remote and Remote→Local directions.
+     */
+    suspend fun syncAll(): SyncResult {
+
+        val result = SyncResult()
+
         if (syncConfig.loggingEnabled) {
             Timber.tag(TAG).i("Starting sync for %d entities", syncConfig.entities.size)
         }
@@ -38,7 +49,7 @@ class SyncEngine(
         val userId = syncConfig.userIdProvider.getUserId()
         if (userId == null) {
             Timber.tag(TAG).w("Skipping sync: userId is null.")
-            return
+            return result
         }
 
         Timber.tag(TAG).i("Sync using userId=%s", userId)
@@ -49,11 +60,15 @@ class SyncEngine(
 
             try {
                 when (config.direction) {
-                    SyncDirection.LOCAL_TO_REMOTE -> syncLocalToRemote(userId, config)
-                    SyncDirection.REMOTE_TO_LOCAL -> syncRemoteToLocal(userId, config)
+                    SyncDirection.LOCAL_TO_REMOTE ->
+                        syncLocalToRemote(userId, config, result)
+
+                    SyncDirection.REMOTE_TO_LOCAL ->
+                        syncRemoteToLocal(userId, config, result)
+
                     SyncDirection.BIDIRECTIONAL -> {
-                        syncLocalToRemote(userId, config)
-                        syncRemoteToLocal(userId, config)
+                        syncLocalToRemote(userId, config, result)
+                        syncRemoteToLocal(userId, config, result)
                     }
                 }
             } catch (t: Throwable) {
@@ -61,9 +76,26 @@ class SyncEngine(
             }
         }
 
+        // =============================================================
+        // 🔥 FINAL SYNC SUMMARY (Log-only, UI can reuse SyncResult)
+        // =============================================================
+        Timber.tag(DELETE_TAG).i(
+            "SYNC SUMMARY ↑C:%d ↑U:%d ↑D:%d ↑S:%d ↓C:%d ↓U:%d ↓D:%d ↓S:%d",
+            result.localToRemoteCreated,
+            result.localToRemoteUpdated,
+            result.localToRemoteDeleted,
+            result.localToRemoteSkipped,
+            result.remoteToLocalCreated,
+            result.remoteToLocalUpdated,
+            result.remoteToLocalDeleted,
+            result.remoteToLocalSkipped
+        )
+
         if (syncConfig.loggingEnabled) {
             Timber.tag(TAG).i("Sync complete.")
         }
+
+        return result
     }
 
     // =============================================================
@@ -74,23 +106,29 @@ class SyncEngine(
      *
      * STRATEGY:
      * - Push local changes to Firestore
-     * - Push tombstones for deleted records
+     * - Push TOMBSTONES first (absolute priority)
+     * - Skip terminal (disabled) records ONLY if not deleted
      * - NEVER overwrite an existing remote tombstone
-     * - NEVER resurrect a deleted record
+     * - NEVER resurrect a deleted record on any device
      *
-     * IMPORTANT RULE:
-     *   If Firestore already has isDeleted=true for a document,
-     *   that document is FINAL and must NEVER be overwritten,
-     *   even if local.updatedAt is newer.
+     * GOLDEN RULE:
+     *   Deletion beats disable.
+     *
+     * WHY:
+     * - One-time reminders are first disabled when fired
+     * - Later they are converted into TOMBSTONES during cleanup
+     * - Tombstones MUST be synced even if enabled=false
+     * - Otherwise second device will resurrect stale remote records
      */
     private suspend fun <Local : Any> syncLocalToRemote(
         userId: String,
-        config: EntitySyncConfig<Local>
+        config: EntitySyncConfig<Local>,
+        result: SyncResult
     ) {
         val meta = syncMetadataDao.get(config.key)
         val lastLocalSyncAt = meta?.lastLocalSyncAt
 
-        // Fetch local rows changed since last sync (includes deleted rows)
+        // Fetch all locally changed rows since last sync (includes deleted rows)
         val changedLocals = config.daoAdapter.getLocalsChangedAfter(lastLocalSyncAt)
         if (changedLocals.isEmpty()) return
 
@@ -104,32 +142,24 @@ class SyncEngine(
             val docId = config.getLocalId(local)
             val docRef = collection.document(docId)
 
-            if (maxUpdatedAt == null || localUpdatedAt > maxUpdatedAt!!) {
+            if (maxUpdatedAt == null || localUpdatedAt > maxUpdatedAt) {
                 maxUpdatedAt = localUpdatedAt
             }
 
-            // ============================================================
-            // 🔥 RULE #0 — TERMINAL ONE-TIME REMINDERS NEVER SYNC
-            // ============================================================
-            if (!config.enabled(local)) {
-                Timber.tag(DELETE_TAG).i(
-                    "SYNC SKIP terminal reminder (enabled=false) id=%s",
-                    config.getLocalId(local)
-                )
-                continue
-            }
-
-
-            // ============================================================
-            // 🔥 RULE #1 — LOCAL TOMBSTONE ALWAYS WINS (NO GATES)
-            // ============================================================
+            /*// ============================================================
+            // 🔥 RULE #0 — LOCAL TOMBSTONE ALWAYS WINS (ABSOLUTE)
+            //
+            // If a record is marked isDeleted=true locally,
+            // it MUST be written to remote regardless of enabled state.
+            //
+            // This guarantees:
+            // - No remote orphan records
+            // - No resurrection on second device
+            // ============================================================*/
             if (config.isDeleted(local)) {
+                result.localToRemoteDeleted++
 
-                Timber.tag(DELETE_TAG).i(
-                    "⬆️ Uploading LOCAL TOMBSTONE id=%s updatedAt=%d",
-                    docId,
-                    localUpdatedAt
-                )
+                Timber.tag(DELETE_TAG).i("SYNC TOMBSTONE → id=%s updatedAt=%d", docId, localUpdatedAt)
 
                 batch.set(
                     docRef,
@@ -140,41 +170,56 @@ class SyncEngine(
                         "updatedAt" to localUpdatedAt
                     )
                 )
-
                 continue
             }
 
-            // ============================================================
-            // RULE #2 — READ REMOTE STATE (ONLY FOR NON-DELETED LOCALS)
-            // ============================================================
+            /*// ============================================================
+            // 🔥 RULE #1 — TERMINAL (DISABLED) RECORDS NEVER UPSERT
+            //
+            // One-time reminders that have fired (enabled=false)
+            // must NOT be re-uploaded to remote.
+            //
+            // They remain local-only until:
+            // - Converted to tombstone in cleanup
+            // - Then synced via RULE #0
+            // ============================================================*/
+            if (!config.enabled(local)) {
+                result.localToRemoteSkipped++
+
+                Timber.tag(DELETE_TAG).i("SYNC SKIP terminal record (enabled=false) id=%s", docId)
+                continue
+            }
+
+            /*// ============================================================
+            // RULE #2 — READ REMOTE STATE
+            //
+            // Remote tombstones are FINAL.
+            // They can NEVER be overwritten or resurrected.
+            // ============================================================*/
             val remoteSnapshot = docRef.get().await()
             val remoteData = remoteSnapshot.data
             val remoteDeleted = remoteData?.get("isDeleted") as? Boolean ?: false
             val remoteUpdatedAt = (remoteData?.get("updatedAt") as? Number)?.toLong()
 
-            // Remote tombstone blocks everything
             if (remoteDeleted) {
-                Timber.tag(TAG).w(
-                    "Skip upload: REMOTE TOMBSTONE EXISTS id=%s",
-                    docId
-                )
+                result.localToRemoteSkipped++
                 continue
             }
 
-            // Remote newer → skip
             if (remoteUpdatedAt != null && remoteUpdatedAt > localUpdatedAt) {
-                Timber.tag(TAG).d(
-                    "Skip upload: remote newer id=%s (remote=%d > local=%d)",
-                    docId,
-                    remoteUpdatedAt,
-                    localUpdatedAt
-                )
+                result.localToRemoteSkipped++
                 continue
             }
 
             // ============================================================
             // RULE #3 — NORMAL UPSERT
             // ============================================================
+            if (remoteSnapshot.exists()) {
+                result.localToRemoteUpdated++
+            } else {
+                result.localToRemoteCreated++
+            }
+
             batch.set(
                 docRef,
                 config.toRemote(local, userId)
@@ -183,7 +228,7 @@ class SyncEngine(
 
         batch.commit().await()
 
-        // Advance checkpoint
+        // Advance sync checkpoint
         if (maxUpdatedAt != meta?.lastLocalSyncAt) {
             syncMetadataDao.upsert(
                 SyncMetadataEntity(
@@ -214,7 +259,8 @@ class SyncEngine(
      */
     private suspend fun <Local : Any> syncRemoteToLocal(
         userId: String,
-        config: EntitySyncConfig<Local>
+        config: EntitySyncConfig<Local>,
+        result: SyncResult
     ) {
         val meta = syncMetadataDao.get(config.key)
         val lastRemoteSyncAt = meta?.lastRemoteSyncAt
@@ -232,8 +278,6 @@ class SyncEngine(
         val toDeleteIds = mutableListOf<String>()
         var maxRemoteUpdatedAt = lastRemoteSyncAt
 
-        Timber.tag(DELETE_TAG).e("SYNC_REMOTE_TO_LOCAL START key=%s lastRemoteSyncAt=%s", config.key, lastRemoteSyncAt)
-
         for (doc in snapshot.documents) {
             val data = doc.data ?: continue
             val docId = doc.id
@@ -242,36 +286,24 @@ class SyncEngine(
             val isRemoteDeleted = data["isDeleted"] as? Boolean ?: false
             val localUpdatedAt = config.getLocalUpdatedAt(docId)
 
-            val isLocalDeleted = config.daoAdapter.isLocalDeleted(docId)
-            if (isLocalDeleted) {
-                Timber.tag("REMOTE_DEBUG").w("LOCAL TOMBSTONE → skip remote upsert id=%s", docId)
+            // Local tombstone blocks remote resurrection
+            if (config.daoAdapter.isLocalDeleted(docId)) {
+                result.remoteToLocalSkipped++
                 continue
             }
 
-            /**
-             * 🔥 RULE #1 — REMOTE TOMBSTONE
-             *
-             * ALWAYS apply delete locally.
-             * Conflict strategy is IGNORED.
-             */
+            // ============================================================
+            // 🔥 RULE #1 — REMOTE TOMBSTONE
+            // ============================================================
             if (isRemoteDeleted) {
-
-                Timber.tag("REMOTE_DEBUG")
-                    .e("REMOTE TOMBSTONE → delete local id=%s", docId)
-
+                result.remoteToLocalDeleted++
                 toDeleteIds.add(docId)
-
-                if (remoteUpdatedAt != null &&
-                    (maxRemoteUpdatedAt == null || remoteUpdatedAt > maxRemoteUpdatedAt!!)
-                ) {
-                    maxRemoteUpdatedAt = remoteUpdatedAt
-                }
                 continue
             }
 
-            /**
-             * RULE #2 — Conflict resolution for NON-deleted records
-             */
+            // ============================================================
+            // RULE #2 — Conflict resolution
+            // ============================================================
             val shouldApply = when (config.conflictStrategy) {
                 ConflictStrategy.REMOTE_WINS ->
                     lastRemoteSyncAt == null ||
@@ -287,7 +319,16 @@ class SyncEngine(
                             (remoteUpdatedAt != null && remoteUpdatedAt > lastRemoteSyncAt)
             }
 
-            if (!shouldApply) continue
+            if (!shouldApply) {
+                result.remoteToLocalSkipped++
+                continue
+            }
+
+            if (localUpdatedAt == null) {
+                result.remoteToLocalCreated++
+            } else {
+                result.remoteToLocalUpdated++
+            }
 
             if (remoteUpdatedAt != null &&
                 (maxRemoteUpdatedAt == null || remoteUpdatedAt > maxRemoteUpdatedAt!!)
@@ -295,7 +336,6 @@ class SyncEngine(
                 maxRemoteUpdatedAt = remoteUpdatedAt
             }
 
-            // Normal upsert
             toUpsert.add(config.fromRemote(docId, data))
         }
 
@@ -318,36 +358,25 @@ class SyncEngine(
         }
     }
 
-
     // =============================================================
     // Helper: Normalize updatedAt → millis
     // =============================================================
-    private fun extractUpdatedAtMillis(raw: Any?): Long? {
-        return when (raw) {
+    private fun extractUpdatedAtMillis(raw: Any?): Long? =
+        when (raw) {
             is Number -> raw.toLong()
             is String -> raw.toLongOrNull()
             else -> null
         }
-    }
 }
 
-
 /*
-✅ 5. SyncEngine.kt
+✅ SyncEngine.kt
 💥 THE HEART OF THE ENTIRE SYNC SYSTEM
-Responsible for:
 
-A. Local → Remote (Push)
-Finds local records with updatedAt > lastLocalSyncAt
-Sends them to Firestore
-Writes tombstones if deleted
-Updates lastLocalSyncAt
-
-B. Remote → Local (Pull)
-Fetches Firestore docs for the user
-Filters by updatedAt > lastRemoteSyncAt
-Applies conflict strategy
-Inserts/updates/deletes in Room
-Updates lastRemoteSyncAt
-👉 This is the sync brain that does the actual work.
-* */
+Now:
+✔ Uses SyncResult as single source of truth
+✔ Produces deterministic sync telemetry
+✔ UI / Snackbar ready
+✔ No architecture changes
+✔ Multi-device & tombstone safe
+*/
