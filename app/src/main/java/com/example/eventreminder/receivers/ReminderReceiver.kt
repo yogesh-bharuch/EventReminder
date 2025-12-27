@@ -144,11 +144,27 @@ class ReminderReceiver : BroadcastReceiver() {
     }
 
     private fun inferEventType(title: String, message: String): String {
-        val text = "$title $message".lowercase()
+        val titleText = title.lowercase()
+        val messageText = message.lowercase()
+        // ---------------------------------------------------------
+        // 1️⃣ Title has priority (explicit & clear)
+        // ---------------------------------------------------------
+
         return when {
-            "birthday" in text -> "BIRTHDAY"
-            "anniversary" in text -> "ANNIVERSARY"
-            else -> "UNKNOWN"
+            "birthday" in titleText -> "BIRTHDAY"
+            "anniversary" in titleText -> "ANNIVERSARY"
+            "medicine" in titleText -> "MEDICINE"
+            "workout" in titleText -> "WORKOUT"
+            "meeting" in titleText -> "MEETING"
+
+            // -----------------------------------------------------
+            // 2️⃣ Description fallback (only if title is generic)
+            // -----------------------------------------------------
+            "pill" in messageText || "tablet" in messageText -> "MEDICINE"
+            "exercise" in messageText || "gym" in messageText -> "WORKOUT"
+            "meet" in messageText -> "MEETING"
+
+            else -> "GENERAL"
         }
     }
 }

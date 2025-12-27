@@ -13,7 +13,6 @@ import androidx.navigation.compose.navigation
 import androidx.navigation.toRoute
 import com.example.eventreminder.cards.pixelcanvas.ui.CardEditorScreen
 import com.example.eventreminder.debug.ui.SchedulingDebugScreen
-import com.example.eventreminder.debug.ui.SchedulingDebugViewModel
 import com.example.eventreminder.ui.components.BatteryOptimizationDialog
 import com.example.eventreminder.ui.screens.AddEditReminderScreen
 import com.example.eventreminder.ui.screens.HomeScreen
@@ -83,7 +82,6 @@ fun AppNavGraph(
         // LOGIN ROUTE
         // =============================================================
         composable<LoginRoute> {
-
             FirebaseLoginEntry(
                 onLoginSuccess = {
                     Timber.tag(TAG).d("Login successful → Navigating to HomeGraph")
@@ -103,11 +101,10 @@ fun AppNavGraph(
         ) {
 
             // -------------------------------------------------------------
-            // MUST be inside the navigation block AND a composable scope
+            // HOME
             // -------------------------------------------------------------
             composable<HomeRoute> { backStackEntry ->
 
-                // Shared VM for whole HomeGraph
                 val parentEntry = remember(backStackEntry) {
                     navController.getBackStackEntry(HomeGraphRoute::class)
                 }
@@ -120,7 +117,7 @@ fun AppNavGraph(
             }
 
             // -------------------------------------------------------------
-            // ADD / EDIT SCREEN
+            // ADD / EDIT
             // -------------------------------------------------------------
             composable<AddEditReminderRoute> { backStackEntry ->
 
@@ -139,7 +136,7 @@ fun AppNavGraph(
             }
 
             // -------------------------------------------------------------
-            // PIXEL CANVAS (Long ID)
+            // PIXEL CANVAS (Long)
             // -------------------------------------------------------------
             composable<PixelPreviewRoute> { backStackEntry ->
                 val args = backStackEntry.toRoute<PixelPreviewRoute>()
@@ -155,23 +152,12 @@ fun AppNavGraph(
             }
 
             // -------------------------------------------------------------
-            // 🔥 SCHEDULING DEBUG SCREEN (Developer Tool)
+            // 🔊 DEBUG — SOUND TEST SCREEN
             // -------------------------------------------------------------
-            composable<SchedulingDebugRoute> { backStackEntry ->
-
-                // Using the same parentEntry pattern ensures Shared VM scope
-                val parentEntry = remember(backStackEntry) {
-                    navController.getBackStackEntry(HomeGraphRoute::class)
-                }
-
-                val debugVm: SchedulingDebugViewModel = hiltViewModel(parentEntry)
-
-                SchedulingDebugScreen(viewModel = debugVm)
+            composable<SchedulingDebugRoute> {
+                SchedulingDebugScreen()
             }
         }
-
-
-
 
         // =============================================================
         // REMINDER MANAGER ROUTE
@@ -182,11 +168,5 @@ fun AppNavGraph(
                 onOpenDebug = { navController.navigate(SchedulingDebugRoute) }
             )
         }
-
-        /*composable<ReminderManagerRoute> {
-            ReminderManagerScreen(
-                onBack = { navController.popBackStack() }
-            )
-        }*/
     }
 }

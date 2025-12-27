@@ -1,9 +1,13 @@
 package com.example.eventreminder.util
 
 // =============================================================
-// NotificationHelper — FIXED Open Card Navigation (UUID Always Sent)
+// NotificationHelper — Category-based channels (UUID-safe)
+// Sound is bound to CHANNEL (Android O+ compliant)
 // =============================================================
 
+// =============================================================
+// Imports
+// =============================================================
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -17,7 +21,6 @@ import androidx.core.app.NotificationCompat
 import com.example.eventreminder.MainActivity
 import com.example.eventreminder.R
 import com.example.eventreminder.receivers.ReminderReceiver
-import com.example.eventreminder.ui.notification.RingtoneResolver
 import timber.log.Timber
 
 // =============================================================
@@ -34,7 +37,10 @@ private const val CH_GENERAL = "channel_general"
 
 /**
  * NotificationHelper
- * Category-based channels + smart ringtone + actions (Open Card + Dismiss)
+ *
+ * - Category-based notification channels
+ * - Deterministic channel sound (Android O+ safe)
+ * - UUID always propagated for secure navigation
  */
 object NotificationHelper {
 
@@ -63,19 +69,28 @@ object NotificationHelper {
         val nm = context.getSystemService(NotificationManager::class.java)
 
         // ---------------------------------------------------------
-        // SMART SOUND SELECTOR (single resolution)
+        // Deterministic sound per event type (CHANNEL SAFE)
         // ---------------------------------------------------------
-        val resolvedSound: Uri? = RingtoneResolver.resolve(context, title, message)
-        val finalSound: Uri = resolvedSound
-            ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+        val channelSound: Uri = when (eventType.uppercase()) {
+            "BIRTHDAY" ->
+                Uri.parse("android.resource://${context.packageName}/${R.raw.birthday}")
+            "ANNIVERSARY" ->
+                Uri.parse("android.resource://${context.packageName}/${R.raw.anniversary}")
+            "MEDICINE" ->
+                Uri.parse("android.resource://${context.packageName}/${R.raw.medicine}")
+            "WORKOUT" ->
+                Uri.parse("android.resource://${context.packageName}/${R.raw.workout}")
+            else ->
+                RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+        }
 
         val uuid = extras[ReminderReceiver.EXTRA_REMINDER_ID_STRING] as? String
         val eventTypeExtra = extras[ReminderReceiver.EXTRA_EVENT_TYPE] as? String
 
-        Timber.tag(TAG).d("🔥 showNotification() → uuid=$uuid eventType=$eventTypeExtra")
+        Timber.tag(TAG).d("🔔 showNotification → uuid=$uuid eventType=$eventTypeExtra")
 
         // ---------------------------------------------------------
-        // Create channels
+        // Channel mapping
         // ---------------------------------------------------------
         val channelId = when (eventType.uppercase()) {
             "BIRTHDAY" -> CH_BIRTHDAY
@@ -93,15 +108,21 @@ object NotificationHelper {
             else -> "General Reminders"
         }
 
+        // ---------------------------------------------------------
+        // Create notification channel (Android O+)
+        // NOTE: Sound is immutable once channel exists
+        // ---------------------------------------------------------
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = nm.getNotificationChannel(channelId)
-                ?: NotificationChannel(
+            val existing = nm.getNotificationChannel(channelId)
+
+            if (existing == null) {
+                val channel = NotificationChannel(
                     channelId,
                     channelName,
-                    NotificationManager.IMPORTANCE_HIGH // ensure high importance
+                    NotificationManager.IMPORTANCE_HIGH
                 ).apply {
                     setSound(
-                        finalSound,
+                        channelSound,
                         AudioAttributes.Builder()
                             .setUsage(AudioAttributes.USAGE_NOTIFICATION)
                             .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
@@ -111,12 +132,14 @@ object NotificationHelper {
                     description = "Reminder notifications"
                 }
 
-            nm.createNotificationChannel(channel)
+                nm.createNotificationChannel(channel)
+
+                Timber.tag(TAG).d("📡 Created channel=$channelId sound=$channelSound")
+            }
         }
 
         // =========================================================
-        // TAP → OPEN MAIN ACTIVITY AND NAVIGATE TO CARD
-        // ALWAYS INCLUDES UUID
+        // TAP → OPEN MAIN ACTIVITY (UUID SAFE)
         // =========================================================
         val tapIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or
@@ -124,7 +147,6 @@ object NotificationHelper {
                     Intent.FLAG_ACTIVITY_SINGLE_TOP
 
             putExtrasFromMap(extras)
-
             putExtra(ReminderReceiver.EXTRA_FROM_NOTIFICATION, true)
             putExtra(ReminderReceiver.EXTRA_REMINDER_ID_STRING, uuid)
             putExtra(ReminderReceiver.EXTRA_EVENT_TYPE, eventTypeExtra)
@@ -138,23 +160,18 @@ object NotificationHelper {
         )
 
         // =========================================================
-        // OPEN CARD ACTION (CRITICAL FIX: UUID ADDED)
+        // OPEN CARD ACTION
         // =========================================================
         val openIntent = Intent(context, MainActivity::class.java).apply {
             action = ReminderReceiver.ACTION_OPEN_CARD
-
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or
                     Intent.FLAG_ACTIVITY_CLEAR_TOP or
                     Intent.FLAG_ACTIVITY_SINGLE_TOP
 
             putExtrasFromMap(extras)
-
-            // FIX: Always add required navigation extras
             putExtra(ReminderReceiver.EXTRA_FROM_NOTIFICATION, true)
             putExtra(ReminderReceiver.EXTRA_REMINDER_ID_STRING, uuid)
             putExtra(ReminderReceiver.EXTRA_EVENT_TYPE, eventTypeExtra)
-
-            Timber.tag(TAG).d("🔥 OpenCard Intent → uuid=$uuid")
         }
 
         val openPI = PendingIntent.getActivity(
@@ -165,7 +182,7 @@ object NotificationHelper {
         )
 
         // =========================================================
-        // DISMISS ACTION
+        // DISMISS ACTION (UI only)
         // =========================================================
         val dismissIntent = Intent(context, ReminderReceiver::class.java).apply {
             action = ReminderReceiver.ACTION_DISMISS
@@ -180,12 +197,13 @@ object NotificationHelper {
         )
 
         // ---------------------------------------------------------
-        // EMOJI + MESSAGE
+        // Emoji prefix (presentation only)
         // ---------------------------------------------------------
         val emojiPrefix = when (eventType.uppercase()) {
             "BIRTHDAY" -> "🎂 "
             "ANNIVERSARY" -> "❤️ "
             "MEDICINE" -> "💊 "
+            "MEETING" -> "📅 "
             "WORKOUT" -> "💪 "
             else -> ""
         }
@@ -193,12 +211,12 @@ object NotificationHelper {
         val fullMessage = "$emojiPrefix$message"
 
         // ---------------------------------------------------------
-        // BUILD NOTIFICATION 😀 😃
+        // Build notification
         // ---------------------------------------------------------
         val builder = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
-            .setContentText(message)
+            .setContentText(fullMessage)
             .setOngoing(true)
             .setAutoCancel(false)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -210,15 +228,14 @@ object NotificationHelper {
 
         // Pre-O devices → runtime sound
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
-            builder.setSound(finalSound)
+            builder.setSound(channelSound)
         }
 
         // ---------------------------------------------------------
-        // POST NOTIFICATION
+        // Post notification
         // ---------------------------------------------------------
         nm.notify(notificationId, builder.build())
 
-        Timber.tag(TAG).d("Notification posted → id=$notificationId channel=$channelId")
-        Timber.tag(TAG).d("📢 Notification delivered → id=$notificationId uuid=$uuid")
+        Timber.tag(TAG).d("📢 Notification posted id=$notificationId channel=$channelId uuid=$uuid")
     }
 }

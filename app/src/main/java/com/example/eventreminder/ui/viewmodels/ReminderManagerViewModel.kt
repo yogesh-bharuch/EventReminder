@@ -137,4 +137,114 @@ class ReminderManagerViewModel @Inject constructor(
             }
         }
     }
+
+    // =============================================================
+    // CLEANUP — PHASE A: TOMBSTONE PROPAGATION (SAFE)
+    // =============================================================
+    /**
+     * Phase A — Propagate tombstones.
+     *
+     * PURPOSE:
+     * - Convert expired one-time reminders into TOMBSTONES
+     * - Sync tombstones to Firestore
+     *
+     * SAFETY:
+     * - Multi-device safe
+     * - Can be run multiple times
+     * - MUST run before remote GC
+     */
+    fun propagateExpiredTombstones(retentionDays: Int) {
+        if (_isRunning.value) return
+        _isRunning.value = true
+
+        viewModelScope.launch {
+            try {
+                val now = System.currentTimeMillis()
+                val cutoffMillis = now - retentionDays * 24L * 60 * 60 * 1000
+
+                // -----------------------------------------------------
+                // Phase 0 — Normalize DB
+                // -----------------------------------------------------
+                Timber.tag(DELETE_TAG)
+                    .i("CLEANUP[A] Normalize DB (repeatRule \"\" → NULL)")
+                reminderRepository.normalizeRepeatRules()
+
+                // -----------------------------------------------------
+                // Phase 1 — Identify expired ONE-TIME reminders
+                // -----------------------------------------------------
+                val allReminders = reminderRepository.getAllReminders().first()
+
+                val expired = allReminders.filter { reminder ->
+                    !reminder.enabled &&
+                            reminder.repeatRule == null &&
+                            reminder.updatedAt < cutoffMillis &&
+                            !reminder.isDeleted
+                }
+
+                Timber.tag(DELETE_TAG)
+                    .i("CLEANUP[A] Found %d expired reminders to tombstone", expired.size)
+
+                // -----------------------------------------------------
+                // Phase 1 — Mark TOMBSTONES locally
+                // -----------------------------------------------------
+                expired.forEach { reminder ->
+                    Timber.tag(DELETE_TAG)
+                        .d("CLEANUP[A] Mark tombstone id=%s", reminder.id)
+                    reminderRepository.markDelete(reminder)
+                }
+
+                // -----------------------------------------------------
+                // Phase 1.5 — Sync tombstones to remote
+                // -----------------------------------------------------
+                Timber.tag(DELETE_TAG)
+                    .i("CLEANUP[A] Syncing tombstones to Firestore")
+                syncEngine.syncAll()
+
+            } finally {
+                _isRunning.value = false
+            }
+        }
+    }
+
+    // =============================================================
+    // CLEANUP — PHASE B: TOMBSTONE GARBAGE COLLECTION (DANGEROUS)
+    // =============================================================
+    /**
+     * Phase B — Hard delete tombstones.
+     *
+     * * ⚠️ WARNING:
+     *      * - MUST be executed only AFTER all devices have synced tombstones
+     *      * - Running too early can cause remote resurrection
+     *
+     * PURPOSE:
+     * - Permanently delete tombstones from:
+     *   • Local DB
+     *   • Firestore
+     *
+     */
+    fun runRemoteTombstoneGc(retentionDays: Int) {
+        if (_isRunning.value) return
+        _isRunning.value = true
+
+        viewModelScope.launch {
+            try {
+                val now = System.currentTimeMillis()
+
+                Timber.tag(DELETE_TAG)
+                    .i("CLEANUP[B] Running tombstone GC (retentionDays=%d)", retentionDays)
+
+                val report = manualTombstoneGcUseCase.run(
+                    nowEpochMillis = now,
+                    retentionDays = retentionDays
+                )
+
+                _gcReport.value = report
+
+            } finally {
+                _isRunning.value = false
+            }
+        }
+    }
+
+
 }

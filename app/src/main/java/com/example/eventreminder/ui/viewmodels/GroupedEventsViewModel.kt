@@ -9,6 +9,7 @@ import com.example.eventreminder.data.model.EventReminder
 import com.example.eventreminder.data.repo.ReminderRepository
 import com.example.eventreminder.util.NextOccurrenceCalculator
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import java.time.LocalDate
 import java.time.ZoneId
@@ -21,6 +22,7 @@ private const val DAY_MILLIS = 86_400_000L
 private const val WEEK_DAYS = 7L
 private const val MONTH_DAYS = 30L
 private const val PAST_GRACE_DAYS = 30L
+private const val UI_TICK_MILLIS = 5_000L // 1 minute UI recompute
 
 // ===============================================================
 // HELPERS
@@ -28,58 +30,77 @@ private const val PAST_GRACE_DAYS = 30L
 private fun EventReminder.isOneTime(): Boolean =
     this.repeatRule.isNullOrBlank()
 
+// ===============================================================
+// ViewModel
+// ===============================================================
 @HiltViewModel
 class GroupedEventsViewModel @Inject constructor(
     private val repo: ReminderRepository
 ) : ViewModel() {
 
     // ============================================================
+    // ⏱️ UI CLOCK — forces regrouping after repeat fires
+    // ============================================================
+    private val nowFlow: Flow<Long> = flow {
+        while (true) {
+            emit(System.currentTimeMillis())
+            delay(UI_TICK_MILLIS)
+        }
+    }
+
+    // ============================================================
     // 📅 GROUPED EVENTS — HomeScreen
     // ============================================================
     val groupedEvents: StateFlow<List<GroupedUiSection>> =
-        repo.getAllReminders()
-            .map { reminders ->
+        combine(
+            repo.getAllReminders(),
+            nowFlow
+        ) { reminders, now ->
 
-                val now = System.currentTimeMillis()
-
-                // ----------------------------------------------------
-                // VISIBILITY RULE
-                // ----------------------------------------------------
-                // Enabled reminders are always visible.
-                // Disabled reminders are visible ONLY if within past grace window.
-                val visible = reminders.filter { rem ->
-                    rem.enabled || isWithinPastGrace(rem, now)
+            // ----------------------------------------------------
+            // VISIBILITY RULE (STATE FIRST)
+            // ----------------------------------------------------
+            // Enabled reminders → always visible
+            // Disabled one-time reminders → past grace only
+            val visible = reminders.filter { rem ->
+                when {
+                    rem.enabled -> true
+                    rem.isOneTime() -> isWithinPastGrace(rem, now)
+                    else -> false
                 }
+            }
 
-                // ----------------------------------------------------
-                // DB → UI MODEL
-                // ----------------------------------------------------
-                val uiList = visible.map { rem ->
+            // ----------------------------------------------------
+            // DB → UI MODEL (NEXT OCCURRENCE DRIVEN)
+            // ----------------------------------------------------
+            val uiList = visible.map { rem ->
 
-                    val nextEpoch =
-                        NextOccurrenceCalculator.nextOccurrence(
-                            eventEpochMillis = rem.eventEpochMillis,
-                            zoneIdStr = rem.timeZone,
-                            repeatRule = rem.repeatRule
-                        )
-
-                    EventReminderUI.from(
-                        id = rem.id,
-                        title = rem.title,
-                        desc = rem.description,
-                        // 🔑 For one-time reminders, keep original event time
-                        eventMillis = nextEpoch ?: rem.eventEpochMillis,
-                        repeat = rem.repeatRule,
-                        tz = rem.timeZone,
-                        offsets = rem.reminderOffsets
+                val nextEpoch =
+                    NextOccurrenceCalculator.nextOccurrence(
+                        eventEpochMillis = rem.eventEpochMillis,
+                        zoneIdStr = rem.timeZone,
+                        repeatRule = rem.repeatRule
                     )
-                }
 
-                groupUiEvents(
-                    source = visible,
-                    uiList = uiList
+                EventReminderUI.from(
+                    id = rem.id,
+                    title = rem.title,
+                    desc = rem.description,
+                    // 🔑 repeating → next occurrence
+                    // 🔑 one-time → original event time
+                    eventMillis = nextEpoch ?: rem.eventEpochMillis,
+                    repeat = rem.repeatRule,
+                    tz = rem.timeZone,
+                    offsets = rem.reminderOffsets
                 )
             }
+
+            groupUiEvents(
+                source = visible,
+                uiList = uiList,
+                now = now
+            )
+        }
             .stateIn(
                 scope = viewModelScope,
                 started = SharingStarted.Eagerly,
@@ -87,7 +108,7 @@ class GroupedEventsViewModel @Inject constructor(
             )
 
     // ============================================================
-    // 30-DAY PAST VISIBILITY WINDOW
+    // 30-DAY PAST VISIBILITY WINDOW (ONE-TIME ONLY)
     // ============================================================
     private fun isWithinPastGrace(
         reminder: EventReminder,
@@ -102,7 +123,8 @@ class GroupedEventsViewModel @Inject constructor(
     // ============================================================
     private fun groupUiEvents(
         source: List<EventReminder>,
-        uiList: List<EventReminderUI>
+        uiList: List<EventReminderUI>,
+        now: Long
     ): List<GroupedUiSection> {
 
         val today = LocalDate.now()
@@ -131,14 +153,13 @@ class GroupedEventsViewModel @Inject constructor(
             val isExpiredOneTime =
                 original.isOneTime() && !original.enabled
 
-            // HARD STOP — expired one-time reminders NEVER go elsewhere
             if (isExpiredOneTime) {
                 past30.add(ui)
                 return@forEachIndexed
             }
 
             // -----------------------------------------------------
-            // NORMAL TIME-BASED GROUPING
+            // NORMAL TIME-BASED GROUPING (NEXT OCCURRENCE)
             // -----------------------------------------------------
             when {
                 ui.eventEpochMillis in todayStart until tomorrowStart ->

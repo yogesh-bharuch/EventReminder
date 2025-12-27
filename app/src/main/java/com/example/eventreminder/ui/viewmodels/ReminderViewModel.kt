@@ -312,7 +312,7 @@ class ReminderViewModel @Inject constructor(
     // BOTTOM TRAY (placeholders)
     // ============================================================
 
-    // ============================================================
+    /*// ============================================================
     // DEBUG / CLEANUP — triggers navigation event
     // ============================================================
     private val _navigateToDebug = Channel<Unit>(capacity = Channel.BUFFERED)
@@ -322,7 +322,7 @@ class ReminderViewModel @Inject constructor(
         viewModelScope.launch {
             _navigateToDebug.send(Unit)
         }
-    }
+    }*/
 
     // generate pdf tray
     fun generatePdfReport() = viewModelScope.launch {}

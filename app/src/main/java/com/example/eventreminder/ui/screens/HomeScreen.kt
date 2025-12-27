@@ -96,12 +96,12 @@ fun HomeScreen(
         }
     }
 
-    // debug bottom tray action
+    /*// debug bottom tray action
     LaunchedEffect(Unit) {
         reminderVm.navigateToDebug.collect {
             navController.navigate(SchedulingDebugRoute)
         }
-    }
+    }*/
 
 
     // ---------------------------------------------------------
@@ -153,7 +153,8 @@ fun HomeScreen(
             HomeBottomTray(
                 onCleanupClick = {
                     coroutineScope.launch {
-                        reminderVm.cleanupOldReminders()
+                        navController.navigate(SchedulingDebugRoute)
+                        //reminderVm.cleanupOldReminders()
                         //snackbarHostState.showSnackbar("Old reminders cleaned")
                     }
                 },

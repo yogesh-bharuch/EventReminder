@@ -4,9 +4,11 @@ package com.example.eventreminder.ui.screens
 // Imports
 // =============================================================
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.eventreminder.maintenance.gc.TombstoneGcReport
@@ -22,90 +24,165 @@ fun ReminderManagerScreen(
     // ---------------------------------------------------------
     // UI-only State
     // ---------------------------------------------------------
-    var showConfirmDialog by remember { mutableStateOf(false) }
     var retentionDaysInput by remember { mutableStateOf("30") }
+    var showGcConfirmDialog by remember { mutableStateOf(false) }
 
     val retentionDays = retentionDaysInput.toIntOrNull()?.coerceIn(0, 365) ?: 30
 
     val gcReport by viewModel.gcReport.collectAsState()
     val isRunning by viewModel.isRunning.collectAsState()
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(20.dp)
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
 
-        Text(text = "Reminder Manager", style = MaterialTheme.typography.headlineSmall)
-
-        Spacer(Modifier.height(24.dp))
-
-        // ---------------------------------------------------------
-        // Retention Days Input
-        // ---------------------------------------------------------
-        OutlinedTextField(
-            enabled = !isRunning,
-            value = retentionDaysInput,
-            onValueChange = { retentionDaysInput = it },
-            label = { Text("Tombstone retention (days 0-365)") },
-            singleLine = true
-        )
-
-        Spacer(Modifier.height(16.dp))
-
-        // ---------------------------------------------------------
-        // Tombstone GC Button
-        // ---------------------------------------------------------
-        Button(
-            enabled = !isRunning,
-            onClick = { showConfirmDialog = true }
-        ) {
-            Text(if (isRunning) "Cleanup Running…" else "Run Reminder Cleanup")
+        // =====================================================
+        // Header
+        // =====================================================
+        item {
+            Text(
+                text = "Reminder Manager",
+                style = MaterialTheme.typography.headlineSmall
+            )
         }
 
-        // ---------------------------------------------------------
-        // GC Report Summary
-        // ---------------------------------------------------------
+        // =====================================================
+        // Retention Days Input
+        // =====================================================
+        item {
+            OutlinedTextField(
+                enabled = !isRunning,
+                value = retentionDaysInput,
+                onValueChange = { retentionDaysInput = it },
+                label = { Text("Retention window (days 0–365)") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+
+        // =====================================================
+        // Phase A — Propagate Tombstones
+        // =====================================================
+        item {
+            Text(
+                text = "Phase A — Propagate tombstones",
+                style = MaterialTheme.typography.titleMedium
+            )
+        }
+
+        item {
+            Text(
+                text =
+                    "• Marks expired one-time reminders as tombstones\n" +
+                            "• Syncs tombstones to Firestore\n" +
+                            "• Safe to run multiple times\n" +
+                            "• Required before permanent deletion",
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
+
+        item {
+            Button(
+                enabled = !isRunning,
+                onClick = {
+                    viewModel.propagateExpiredTombstones(
+                        retentionDays = retentionDays
+                    )
+                }
+            ) {
+                Text("Run Phase A (Propagate)")
+            }
+        }
+
+        // =====================================================
+        // Phase B — Permanent Delete
+        // =====================================================
+        item {
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+
+        item {
+            Text(
+                text = "Phase B — Permanent cleanup",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.error
+            )
+        }
+
+        item {
+            Text(
+                text =
+                    "⚠ WARNING:\n" +
+                            "• Run only AFTER all devices have synced\n" +
+                            "• Removes deleted  records from device\n" +
+                            "• Permanently deletes tombstones in Remote\n" +
+                            "• This action CANNOT be undone",
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.Red
+            )
+        }
+
+        item {
+            Button(
+                enabled = !isRunning,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.error
+                ),
+                onClick = { showGcConfirmDialog = true }
+            ) {
+                Text("Run Phase B (Permanent Delete)")
+            }
+        }
+
+        // =====================================================
+        // GC Report Summary (Optional)
+        // =====================================================
         gcReport?.let { report ->
-            Spacer(Modifier.height(24.dp))
-            TombstoneGcReportSummary(report = report)
+            item {
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+
+            item {
+                TombstoneGcReportSummary(report = report)
+            }
         }
     }
 
-    // ---------------------------------------------------------
-    // Confirmation Dialog
-    // ---------------------------------------------------------
-    if (showConfirmDialog) {
+    // =========================================================
+    // Confirmation Dialog (Phase B only)
+    // =========================================================
+    if (showGcConfirmDialog) {
         AlertDialog(
-            onDismissRequest = { showConfirmDialog = false },
+            onDismissRequest = { showGcConfirmDialog = false },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        showConfirmDialog = false
-                        viewModel.runFullCleanup(retentionDays = retentionDays)
+                        showGcConfirmDialog = false
+                        viewModel.runRemoteTombstoneGc(
+                            retentionDays = retentionDays
+                        )
                     }
                 ) {
-                    Text("Run Cleanup")
+                    Text("Delete Permanently")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showConfirmDialog = false }) {
+                TextButton(onClick = { showGcConfirmDialog = false }) {
                     Text("Cancel")
                 }
             },
-            title = { Text("Confirm Tombstone Cleanup") },
+            title = { Text("Confirm Permanent Deletion") },
             text = {
                 Text(
-                    "This will:\n\n" +
-                            "• Move one-time past reminders older than $retentionDays days to expired\n" +
-                            "• Permanently delete tombstones older than $retentionDays days\n\n" +
-                            "This action cannot be undone."
+                    "This will permanently delete tombstones older than $retentionDays days.\n\n" +
+                            "Make sure ALL devices have synced before proceeding."
                 )
             }
         )
     }
 }
-
 
 @Composable
 private fun TombstoneGcReportSummary(
