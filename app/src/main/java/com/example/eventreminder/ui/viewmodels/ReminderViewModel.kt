@@ -2,11 +2,11 @@ package com.example.eventreminder.ui.viewmodels
 
 // =============================================================
 // ReminderViewModel.kt
-// - Clean save pipeline (no double-launch)
-// - Single DB read for "existing" check
-// - ViewModel is the single place for scheduling/cancelling alarms
-// - Assumes repository is DB-only and verifies writes before returning
-// - Detailed SaveReminderLogs for tracing the entire flow
+//
+// NOTE ON MULTI-USER SUPPORT:
+// - ViewModel does NOT handle Firebase UID directly
+// - UID ownership is injected and enforced by ReminderRepository
+// - This keeps UI logic user-agnostic and prevents auth leakage
 // =============================================================
 
 import android.content.Context
@@ -136,6 +136,7 @@ class ReminderViewModel @Inject constructor(
         val epoch = zdt.toInstant().toEpochMilli()
 
         val reminder = EventReminder(
+            uid = "", // placeholder — real UID is enforced by ReminderRepository
             id = existingId ?: UUID.randomUUID().toString(),
             title = title.label,
             description = description.ifBlank { null },

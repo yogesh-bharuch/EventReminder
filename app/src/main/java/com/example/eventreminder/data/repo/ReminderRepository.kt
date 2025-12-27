@@ -1,24 +1,18 @@
 package com.example.eventreminder.data.repo
 
-/*// ============================================================
-// ReminderRepository — Clean Architecture (UUID Only)
-// Responsibilities:
-//  • Pure data access layer (Room only)
-//  • NO scheduling, NO business logic, NO alarms
-//  • Ensures DB writes are committed (read-after-write verification)
-//  • Returns IDs and entities for ViewModel to process
-//
-// This update adds per-offset fire-state helpers (lastFiredAt storage).
-// ============================================================*/
-
+// ============================================================
+// Imports
+// ============================================================
 import android.content.Context
 import com.example.eventreminder.data.local.ReminderDao
 import com.example.eventreminder.data.local.ReminderFireStateDao
 import com.example.eventreminder.data.model.EventReminder
 import com.example.eventreminder.data.model.ReminderFireStateEntity
+import com.example.eventreminder.sync.core.UserIdProvider
 import com.example.eventreminder.util.BackupHelper
 import kotlinx.coroutines.flow.Flow
-import kotlinx.serialization.encodeToString
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.serialization.json.Json
 import timber.log.Timber
 import java.io.File
@@ -28,134 +22,183 @@ import com.example.eventreminder.logging.DELETE_TAG
 
 private const val TAG = "ReminderRepository"
 
-
+/**
+ * ReminderRepository
+ *
+ * UID-scoped Room-only repository.
+ *
+ * Rules:
+ * - Firebase UID is mandatory for all operations
+ * - UID is obtained ONLY via UserIdProvider
+ * - If UID is null → fail fast
+ * - ViewModels remain UID-agnostic
+ * - No SyncEngine or auth redesign
+ */
 @Singleton
 class ReminderRepository @Inject constructor(
     private val dao: ReminderDao,
-    private val fireStateDao: ReminderFireStateDao
+    private val fireStateDao: ReminderFireStateDao,
+    private val userIdProvider: UserIdProvider
 ) {
 
     // ============================================================
-    // READ API (UUID Only)
+    // UID helper (FAIL-FAST)
     // ============================================================
-    fun getAllReminders(): Flow<List<EventReminder>> =
-        dao.getAll()
+
+    private suspend fun requireUid(): String {
+        return userIdProvider.getUserId()
+            ?: error("❌ UID is null — user is logged out or auth not ready")
+    }
+
+    // ============================================================
+    // READ API (UID-SCOPED)
+    // ============================================================
+
+    /**
+     * UID-agnostic Flow for UI layer.
+     *
+     * ViewModels must call THIS method.
+     */
+    fun getAllReminders(): Flow<List<EventReminder>> = flow {
+        val uid = requireUid()
+        emitAll(dao.getAll(uid = uid))
+    }
+
+    /**
+     * Explicit UID version (internal / special cases only).
+     */
+    fun getAllReminders(uid: String): Flow<List<EventReminder>> =
+        dao.getAll(uid = uid)
 
     suspend fun getAllOnce(): List<EventReminder> =
-        dao.getAllOnce()
+        dao.getAllOnce(uid = requireUid())
 
     suspend fun getReminder(id: String): EventReminder? =
-        dao.getById(id)
+        dao.getById(uid = requireUid(), id = id)
 
     // ============================================================
-    // FIRE STATE HELPERS (Per-offset lastFiredAt)
+    // FIRE STATE HELPERS
     // ============================================================
+
     suspend fun getLastFiredAt(reminderId: String, offsetMillis: Long): Long? =
         fireStateDao.getLastFiredAt(reminderId, offsetMillis)
 
     suspend fun upsertLastFiredAt(reminderId: String, offsetMillis: Long, ts: Long) {
-        val entity = ReminderFireStateEntity(
-            reminderId = reminderId,
-            offsetMillis = offsetMillis,
-            lastFiredAt = ts
+        fireStateDao.upsert(
+            ReminderFireStateEntity(
+                reminderId = reminderId,
+                offsetMillis = offsetMillis,
+                lastFiredAt = ts
+            )
         )
-        fireStateDao.upsert(entity)
         Timber.tag(TAG).d("Upserted FireState → id=$reminderId offset=$offsetMillis ts=$ts")
     }
-
-    suspend fun getAllFireStatesForReminder(reminderId: String) =
-        fireStateDao.getAllForReminder(reminderId)
 
     suspend fun deleteFireStatesForReminder(reminderId: String) =
         fireStateDao.deleteForReminder(reminderId)
 
     // ============================================================
-    // INSERT (UUID)
+    // INSERT (UID ENFORCED)
     // ============================================================
+
     suspend fun insert(reminder: EventReminder): String {
-        Timber.tag(TAG).i("insert id=${reminder.id}")
+        val uid = requireUid()
 
-        val updated = reminder.copy(updatedAt = System.currentTimeMillis())
-
-        // Room returns rowId: Long (ignored)
-        dao.insert(updated)
-
-        // Ensure DB commit visible before returning
-        val verified = dao.getById(updated.id)
-        if (verified == null) {
-            Timber.tag(TAG).e("❌ Insert verification FAILED for id=${updated.id}")
-        } else {
-            Timber.tag(TAG).i("✔ Insert verified for id=${updated.id}")
-        }
-
-        return updated.id // ALWAYS return UUID
-    }
-
-    // ============================================================
-    // UPDATE (UUID)
-    // ============================================================
-    suspend fun update(reminder: EventReminder) {
-        Timber.tag(TAG).i("update id=${reminder.id}")
-
-        val updated = reminder.copy(updatedAt = System.currentTimeMillis())
-
-        dao.update(updated)
-
-        // Ensure DB commit visible before returning
-        val verified = dao.getById(updated.id)
-        if (verified == null) {
-            Timber.tag(TAG).e("❌ Update verification FAILED for id=${updated.id}")
-        } else {
-            Timber.tag(TAG).i("✔ Update verified for id=${updated.id}")
-        }
-    }
-
-    // ============================================================
-    // DELETE (Soft delete — SINGLE SOURCE OF TRUTH)
-    // ============================================================
-    suspend fun markDelete(reminder: EventReminder) {
-        Timber.tag(DELETE_TAG).d("🟥 markDelete() START id=${reminder.id}")
-
-        val ts = System.currentTimeMillis()
-
-        val tombstone = reminder.copy(
-            isDeleted = true,
-            updatedAt = ts
+        val updated = reminder.copy(
+            uid = uid,
+            updatedAt = System.currentTimeMillis()
         )
 
-        Timber.tag(DELETE_TAG).d("🪦 Tombstone → id=${tombstone.id}, isDeleted=true, updatedAt=$ts")
+        Timber.tag(TAG).i("insert id=${updated.id} uid=$uid")
 
-        try {
-            // ✅ SINGLE atomic write
-            dao.update(tombstone)
-
-            Timber.tag(DELETE_TAG).i("✔ Tombstone created id=${tombstone.id} updatedAt=$ts")
-        } catch (t: Throwable) {
-            Timber.tag(DELETE_TAG).e(t, "❌ markDelete FAILED id=${reminder.id}")
-            throw t
-        }
-
-        Timber.tag(DELETE_TAG).d("🟥 markDelete() END id=${reminder.id}")
+        dao.insert(updated)
+        return updated.id
     }
 
-    // ---------------------------------------------------------
-    // To clean up db, One-time DB normalization from "" to null
-    // ---------------------------------------------------------
+    // ============================================================
+    // UPDATE (UID ENFORCED)
+    // ============================================================
+
+    suspend fun update(reminder: EventReminder) {
+        val uid = requireUid()
+
+        dao.update(
+            reminder.copy(
+                uid = uid,
+                updatedAt = System.currentTimeMillis()
+            )
+        )
+    }
+
+    // ============================================================
+    // DELETE (SOFT DELETE / TOMBSTONE)
+    // ============================================================
+
+    suspend fun markDelete(reminder: EventReminder) {
+        val uid = requireUid()
+        val ts = System.currentTimeMillis()
+
+        Timber.tag(DELETE_TAG).d("🪦 Tombstone → id=${reminder.id} uid=$uid")
+
+        dao.update(
+            reminder.copy(
+                uid = uid,
+                isDeleted = true,
+                updatedAt = ts
+            )
+        )
+    }
+
+    // ============================================================
+    // NORMALIZATION
+    // ============================================================
+
     suspend fun normalizeRepeatRules() {
-        dao.normalizeRepeatRule()
+        dao.normalizeRepeatRule(uid = requireUid())
     }
 
     // ============================================================
-    // FETCH NON-DELETED ENABLED REMINDERS
-    // Used by sync + BOOT restoration
+    // ENABLE / DISABLE (Scheduler support)
     // ============================================================
-    suspend fun getNonDeletedEnabled(): List<EventReminder> {
-        return getAllOnce().filter { it.enabled && !it.isDeleted }
+
+    suspend fun updateEnabled(
+        id: String,
+        enabled: Boolean,
+        isDeleted: Boolean,
+        updatedAt: Long
+    ) {
+        dao.updateEnabled(
+            uid = requireUid(),
+            id = id,
+            enabled = enabled,
+            isDeleted = isDeleted,
+            updatedAt = updatedAt
+        )
     }
 
     // ============================================================
-    // BACKUP JSON EXPORT
+    // GARBAGE COLLECTION (TOMBSTONES)
     // ============================================================
+
+    suspend fun getDeletedBefore(cutoffEpochMillis: Long): List<EventReminder> =
+        dao.getDeletedBefore(
+            uid = requireUid(),
+            cutoffEpochMillis = cutoffEpochMillis
+        )
+
+    suspend fun getNonDeletedEnabled(): List<EventReminder> =
+        dao.getAllOnce(uid = requireUid())
+            .filter { it.enabled && !it.isDeleted }
+
+    suspend fun hardDeleteByIds(ids: List<String>) {
+        if (ids.isEmpty()) return
+        dao.hardDeleteByIds(uid = requireUid(), ids = ids)
+    }
+
+    // ============================================================
+    // BACKUP EXPORT / RESTORE
+    // ============================================================
+
     suspend fun exportRemindersToJson(context: Context): String {
         val reminders = getAllOnce()
         val json = Json.encodeToString(reminders)
@@ -165,126 +208,34 @@ class ReminderRepository @Inject constructor(
         return msg
     }
 
-    // ============================================================
-    // BACKUP RESTORE (UUID)
-    // ============================================================
     suspend fun restoreRemindersFromBackup(context: Context): String {
+        val uid = requireUid()
         val file = File(context.filesDir, "reminders_backup.json")
         if (!file.exists()) return "No backup file found"
 
-        return try {
-            val json = file.readText()
-            val backupList: List<EventReminder> = Json.decodeFromString(json)
+        val json = file.readText()
+        val backupList: List<EventReminder> = Json.decodeFromString(json)
 
-            val existing = getAllOnce().associateBy { it.id }
-
-            var inserted = 0
-            var updated = 0
-            var skipped = 0
-
-            backupList.forEach { backup ->
-
-                if (backup.isDeleted) { skipped++; return@forEach }
-
-                val match = existing[backup.id]
-
-                if (match == null) {
-                    val restored = backup.copy(
-                        isDeleted = false,
+        backupList.forEach { reminder ->
+            if (!reminder.isDeleted) {
+                insert(
+                    reminder.copy(
+                        uid = uid,
                         updatedAt = System.currentTimeMillis()
                     )
-                    insert(restored)
-                    inserted++
-
-                } else {
-                    val equivalent =
-                        match.title == backup.title &&
-                                match.description == backup.description &&
-                                match.eventEpochMillis == backup.eventEpochMillis &&
-                                match.timeZone == backup.timeZone &&
-                                match.repeatRule == backup.repeatRule &&
-                                match.reminderOffsets == backup.reminderOffsets &&
-                                match.enabled == backup.enabled &&
-                                match.backgroundUri == backup.backgroundUri
-
-                    if (equivalent) {
-                        skipped++
-                    } else {
-                        val merged = backup.copy(
-                            id = match.id,
-                            isDeleted = false,
-                            updatedAt = System.currentTimeMillis()
-                        )
-                        update(merged)
-                        updated++
-                    }
-                }
+                )
             }
-
-            "Restore completed: $inserted new, $updated updated, $skipped skipped"
-
-        } catch (e: Exception) {
-            Timber.tag("RESTORE_REMINDERS").e(e)
-            "Restore failed"
         }
+        return "Restore completed"
     }
 
     // ============================================================
-    // UPDATE (Scheduler / Lifecycle support)
-    // ============================================================
-    suspend fun updateEnabled(
-        id: String,
-        enabled: Boolean,
-        isDeleted: Boolean,
-        updatedAt: Long
-    ) {
-        Timber.tag(TAG).i("updateEnabled() id=$id enabled=$enabled updatedAt=$updatedAt")
-
-        dao.updateEnabled(
-            id = id,
-            enabled = enabled,
-            isDeleted = isDeleted,
-            updatedAt = updatedAt
-        )
-
-        // Optional verification (matches your repo style)
-        val verified = dao.getById(id)
-        if (verified == null) {
-            Timber.tag(TAG).e("❌ updateEnabled verification FAILED id=$id")
-        } else {
-            Timber.tag(TAG).i("✔ updateEnabled verified id=$id enabled=${verified.enabled}")
-        }
-    }
-
-    // ============================================================
-    // GARBAGE COLLECTION (Tombstones)
+    // FIRE STATE DEBUG HELPERS
     // ============================================================
 
-    /**
-     * Returns tombstone reminders older than the given cutoff time.
-     *
-     * Used by manual tombstone GC only.
-     */
-    suspend fun getDeletedBefore(cutoffEpochMillis: Long): List<EventReminder> {
-
-        Timber.tag(TAG).d("getDeletedBefore() cutoffEpochMillis=$cutoffEpochMillis")
-
-        return dao.getDeletedBefore(cutoffEpochMillis = cutoffEpochMillis)
+    suspend fun getAllFireStatesForReminder(
+        reminderId: String
+    ): List<ReminderFireStateEntity> {
+        return fireStateDao.getAllForReminder(reminderId)
     }
-
-    /**
-     * Permanently deletes reminders by UUID.
-     *
-     * ⚠️ Destructive — used only by manual tombstone GC.
-     */
-    suspend fun hardDeleteByIds(ids: List<String>) {
-        Timber.tag(TAG).w("hardDeleteByIds() count=${ids.size}")
-
-        if (ids.isEmpty()) return
-
-        dao.hardDeleteByIds(ids = ids)
-    }
-
-
-
 }

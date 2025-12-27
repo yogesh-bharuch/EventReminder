@@ -14,6 +14,11 @@ import timber.log.Timber
  * ReminderSyncConfig
  *
  * UUID–ONLY sync configuration.
+ *
+ * NOTE ON UID:
+ * - SyncEngine provides userId separately
+ * - fromRemote() creates EventReminder with placeholder uid
+ * - DAO / Repository layer enforces the real UID
  */
 object ReminderSyncConfig {
 
@@ -21,10 +26,14 @@ object ReminderSyncConfig {
 
     fun create(
         firestore: FirebaseFirestore,
-        reminderDao: ReminderDao
+        reminderDao: ReminderDao,
+        userIdProvider: UserIdProvider        // ✅ REQUIRED
     ): EntitySyncConfig<EventReminder> {
 
-        val daoAdapter = ReminderSyncDaoAdapter(reminderDao)
+        val daoAdapter = ReminderSyncDaoAdapter(
+            dao = reminderDao,
+            userIdProvider = userIdProvider    // ✅ FIX
+        )
 
         return EntitySyncConfig(
             key = "reminders",
@@ -46,7 +55,7 @@ object ReminderSyncConfig {
 
                 mapOf(
                     "uid" to userId,
-                    "id" to local.id,                        // ⭐ UUID string
+                    "id" to local.id,
                     "title" to local.title,
                     "description" to local.description,
                     "eventEpochMillis" to local.eventEpochMillis,
@@ -55,8 +64,6 @@ object ReminderSyncConfig {
                     "enabled" to local.enabled,
                     "timeZone" to local.timeZone,
                     "backgroundUri" to local.backgroundUri,
-
-                    // Sync-critical fields
                     "updatedAt" to updatedMillis,
                     "isDeleted" to local.isDeleted
                 )
@@ -64,11 +71,9 @@ object ReminderSyncConfig {
 
             // -----------------------------------------------------------------
             // REMOTE → LOCAL (UUID)
-            // Firestore document ID is ALSO UUID string now
             // -----------------------------------------------------------------
             fromRemote = { id, data ->
 
-                // Normalize updatedAt
                 val updatedAt: Long = when (val raw = data["updatedAt"]) {
                     is Timestamp -> raw.toDate().time
                     is Number -> raw.toLong()
@@ -78,7 +83,8 @@ object ReminderSyncConfig {
 
                 try {
                     EventReminder(
-                        id = id,                                // ⭐ UUID string (NO toLong())
+                        uid = "", // placeholder — real UID enforced later
+                        id = id,
                         title = data["title"] as? String ?: "",
                         description = data["description"] as? String?,
                         eventEpochMillis = (data["eventEpochMillis"] as? Number)?.toLong()
@@ -98,7 +104,8 @@ object ReminderSyncConfig {
                     Timber.tag(TAG).e(t, "fromRemote: Failed to parse remote doc id=$id")
 
                     EventReminder(
-                        id = id,                                // fallback UUID
+                        uid = "",
+                        id = id,
                         title = "",
                         description = null,
                         eventEpochMillis = System.currentTimeMillis(),
@@ -114,18 +121,14 @@ object ReminderSyncConfig {
             },
 
             // -----------------------------------------------------------------
-            // LOCAL UUID STRING ID
+            // Helpers
             // -----------------------------------------------------------------
-            getLocalId = { event -> event.id },                   // ⭐ UUID string
-
+            getLocalId = { event -> event.id },
             getUpdatedAt = { event -> event.updatedAt },
-
             enabled = { event -> event.enabled },
-
             isDeleted = { event -> event.isDeleted },
-
             getLocalUpdatedAt = { idString ->
-                daoAdapter.getLocalUpdatedAt(idString)            // ⭐ UUID lookup
+                daoAdapter.getLocalUpdatedAt(idString)
             }
         )
     }

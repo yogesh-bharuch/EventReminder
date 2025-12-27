@@ -16,7 +16,14 @@ import timber.log.Timber
 import javax.inject.Singleton
 
 /**
- * Provides SyncEngine and SyncConfig for the app.
+ * SyncModule
+ *
+ * Provides:
+ * - FirebaseFirestore
+ * - UserIdProvider (FirebaseAuth-backed)
+ * - ReminderSyncConfig (UID-aware)
+ * - Global SyncConfig
+ * - SyncEngine
  */
 @Module
 @InstallIn(SingletonComponent::class)
@@ -44,19 +51,21 @@ object SyncModule {
         }
     }
 
-
     // --------------------------
-    // Reminder Sync Config
+    // Reminder Sync Entity Config
     // --------------------------
     @Provides
     @Singleton
     fun provideReminderSyncEntityConfig(
         firestore: FirebaseFirestore,
-        db: AppDatabase
+        db: AppDatabase,
+        userIdProvider: UserIdProvider      // ✅ ADDED
     ): EntitySyncConfig<*> {
+
         return ReminderSyncConfig.create(
             firestore = firestore,
-            reminderDao = db.reminderDao()
+            reminderDao = db.reminderDao(),
+            userIdProvider = userIdProvider   // ✅ FIX
         )
     }
 
@@ -69,6 +78,7 @@ object SyncModule {
         userIdProvider: UserIdProvider,
         reminderConfig: EntitySyncConfig<*>
     ): SyncConfig {
+
         return SyncConfig(
             userIdProvider = userIdProvider,
             entities = listOf(reminderConfig),
@@ -87,6 +97,7 @@ object SyncModule {
         syncConfig: SyncConfig,
         db: AppDatabase
     ): SyncEngine {
+
         return SyncEngine(
             firestore = firestore,
             syncConfig = syncConfig,
@@ -94,14 +105,3 @@ object SyncModule {
         )
     }
 }
-
-/*
-* ✅ 8. SyncModule.kt (Hilt DI Module)
-Provides:
-Firestore instance
-UserIdProvider
-ReminderSyncConfig
-Global SyncConfig with entity list
-SyncEngine instance
-👉 This wires up all sync components using Hilt Dependency Injection.
-* */
