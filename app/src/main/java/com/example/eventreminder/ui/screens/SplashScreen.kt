@@ -1,16 +1,8 @@
 package com.example.eventreminder.ui.screens
 
-/*// =============================================================
-// SplashScreen — FirebaseAuth Is the ONLY Source of Truth
-//
-// Responsibilities:
-// - One-time app initialization hook
-// - Normalize DB illegal states ("" → NULL)
-// - Handle OEM-delayed Firebase initialization
-// - Gate navigation (Home / Login)
-// - Never bypass auth
-// =============================================================*/
-
+// =============================================================
+// Imports
+// =============================================================
 import android.os.PowerManager
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -19,24 +11,33 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.example.eventreminder.logging.AUTH_STATE_TAG
 import com.example.eventreminder.ui.viewmodels.SplashViewModel
-import com.google.firebase.auth.FirebaseAuth
-import kotlinx.coroutines.delay
+import com.example.eventreminder.ui.viewmodels.SplashViewModel.AuthGate
 import timber.log.Timber
 
-private const val TAG = "SplashScreen"
-
+/**
+ * SplashScreen
+ *
+ * Entry point for auth-state resolution.
+ * UI-only: reacts to AuthGate emitted by SplashViewModel.
+ *
+ * Logging rule enforced:
+ * [SplashScreen.kt::FunctionName]
+ */
 @Composable
 fun SplashScreen(
     onNavigateToHome: () -> Unit,
     onNavigateToLogin: () -> Unit,
+    onNavigateToEmailVerification: () -> Unit,
     onBatteryFixRequired: () -> Unit,
     viewModel: SplashViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
     var hasNavigated by remember { mutableStateOf(false) }
 
-    Timber.tag(TAG).d("Splash composed (hasNavigated=$hasNavigated)")
+    Timber.tag(AUTH_STATE_TAG)
+        .d("Splash composed [SplashScreen.kt::SplashScreen]")
 
     // ------------------------------------------------------------
     // Battery Optimization Check (once)
@@ -47,69 +48,63 @@ fun SplashScreen(
     }
 
     // ------------------------------------------------------------
-    // ONE-TIME EFFECT
+    // Observe AuthGate
+    // ------------------------------------------------------------
+    val authGate by viewModel.authGate.collectAsState()
+
+    // ------------------------------------------------------------
+    // ONE-TIME INITIALIZATION
     // ------------------------------------------------------------
     LaunchedEffect(Unit) {
+        Timber.tag(AUTH_STATE_TAG)
+            .i("INIT → ViewModel.initialize() [SplashScreen.kt::LaunchedEffect]")
+        viewModel.initialize()
+    }
 
-        Timber.tag(TAG).i("Splash started → init sequence")
+    // ------------------------------------------------------------
+    // NAVIGATION GATE (EXACTLY ONCE)
+    // ------------------------------------------------------------
+    LaunchedEffect(authGate) {
 
-        // =========================================================
-        // 🔑 DB NORMALIZATION (CRITICAL FIX)
-        // =========================================================
-        try {
-            viewModel.normalizeDatabase()
-            Timber.tag(TAG).i("DB normalization completed")
-        } catch (t: Throwable) {
-            Timber.tag(TAG).e(t, "DB normalization failed")
-        }
+        if (hasNavigated || authGate == null) return@LaunchedEffect
 
-        // --------------------------------------------------------
-        // OEM FirebaseAuth hydration delay (OnePlus / Samsung etc)
-        // --------------------------------------------------------
-        delay(300)
-
-        // --------------------------------------------------------
-        // Battery Optimization Warning
-        // --------------------------------------------------------
+        // Highest priority: battery optimization
         if (isBatteryOptimized) {
-            Timber.tag(TAG).w("Battery optimization detected")
+            Timber.tag(AUTH_STATE_TAG)
+                .w("STATE → BATTERY_OPTIMIZED [SplashScreen.kt::LaunchedEffect]")
+            hasNavigated = true
             onBatteryFixRequired()
             return@LaunchedEffect
         }
 
-        // --------------------------------------------------------
-        // FirebaseAuth readiness retry loop
-        // --------------------------------------------------------
-        var user = FirebaseAuth.getInstance().currentUser
-        var retries = 0
+        hasNavigated = true
 
-        while (user == null && retries < 20) {
-            delay(150)
-            retries++
-            user = FirebaseAuth.getInstance().currentUser
-            Timber.tag(TAG).d("Retry($retries): Firebase user = $user")
-        }
+        when (authGate) {
 
-        val isLoggedIn = user != null
-        Timber.tag(TAG).i("Auth resolved → loggedIn=$isLoggedIn")
-
-        // --------------------------------------------------------
-        // Navigate EXACTLY ONCE
-        // --------------------------------------------------------
-        if (!hasNavigated) {
-            hasNavigated = true
-            if (isLoggedIn) {
-                Timber.tag(TAG).i("Splash → Home")
-                onNavigateToHome()
-            } else {
-                Timber.tag(TAG).i("Splash → Login")
+            AuthGate.LOGGED_OUT -> {
+                Timber.tag(AUTH_STATE_TAG)
+                    .i("STATE → LOGGED_OUT → Login [SplashScreen.kt::LaunchedEffect]")
                 onNavigateToLogin()
             }
+
+            AuthGate.EMAIL_UNVERIFIED -> {
+                Timber.tag(AUTH_STATE_TAG)
+                    .w("STATE → EMAIL_UNVERIFIED → VerifyEmail [SplashScreen.kt::LaunchedEffect]")
+                onNavigateToEmailVerification()
+            }
+
+            AuthGate.READY -> {
+                Timber.tag(AUTH_STATE_TAG)
+                    .i("STATE → READY → Home [SplashScreen.kt::LaunchedEffect]")
+                onNavigateToHome()
+            }
+
+            null -> Unit
         }
     }
 
     // ------------------------------------------------------------
-    // UI (pure, no logic)
+    // UI (pure)
     // ------------------------------------------------------------
     Box(
         modifier = Modifier.fillMaxSize(),

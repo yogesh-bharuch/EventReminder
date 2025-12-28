@@ -2,11 +2,25 @@ package com.example.eventreminder.navigation
 
 import kotlinx.serialization.Serializable
 
+// =============================================================
+// AUTH / ENTRY ROUTES
+// =============================================================
+
+@Serializable
+data object SplashRoute
+
 @Serializable
 data object LoginRoute
 
 @Serializable
-object SplashRoute
+data object EmailVerificationRoute   // ✅ NEW — email verification gate
+
+// =============================================================
+// HOME GRAPH
+// =============================================================
+
+@Serializable
+data object HomeGraphRoute
 
 @Serializable
 data object HomeRoute
@@ -14,15 +28,18 @@ data object HomeRoute
 @Serializable
 data object ReminderManagerRoute
 
-@Serializable
-data object HomeGraphRoute
-
+// =============================================================
+// ADD / EDIT
+// =============================================================
 
 @Serializable
 data class AddEditReminderRoute(
     val eventId: String? = null
 )
 
+// =============================================================
+// PIXEL PREVIEW
+// =============================================================
 
 @Serializable
 data class PixelPreviewRoute(
@@ -30,12 +47,16 @@ data class PixelPreviewRoute(
 )
 
 // ------------------------------------------------------------
-// idString parallel route
+// UUID-string parallel route
 // ------------------------------------------------------------
 @Serializable
-data class PixelPreviewRouteString(                      // idchanged to idstring
-    val reminderIdString: String                         // idchanged to idstring
+data class PixelPreviewRouteString(
+    val reminderIdString: String
 )
+
+// =============================================================
+// DEBUG
+// =============================================================
 
 @Serializable
 data object SchedulingDebugRoute

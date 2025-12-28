@@ -18,6 +18,7 @@ import com.example.eventreminder.ui.screens.AddEditReminderScreen
 import com.example.eventreminder.ui.screens.HomeScreen
 import com.example.eventreminder.ui.screens.ReminderManagerScreen
 import com.example.eventreminder.ui.screens.SplashScreen
+import com.example.eventreminder.ui.screens.EmailVerificationScreen
 import com.example.eventreminder.ui.viewmodels.ReminderViewModel
 import com.example.firebaseloginmodule.FirebaseLoginEntry
 import timber.log.Timber
@@ -33,7 +34,7 @@ fun AppNavGraph(
     navController: NavHostController,
     startDestination: Any = SplashRoute
 ) {
-    Timber.tag(TAG).d("NavHost started at = $startDestination")
+    Timber.tag(TAG).d("NavHost started at=$startDestination [AppNavGraph.kt::AppNavGraph]")
 
     NavHost(
         navController = navController,
@@ -60,33 +61,71 @@ fun AppNavGraph(
 
             SplashScreen(
                 onNavigateToHome = {
-                    Timber.tag(TAG).d("Splash → Navigate to HomeGraph")
+                    Timber.tag(TAG).i(
+                        "Splash → HomeGraph [AppNavGraph.kt::SplashRoute]"
+                    )
                     navController.navigate(route = HomeGraphRoute) {
                         popUpTo(route = SplashRoute) { inclusive = true }
                     }
                 },
                 onNavigateToLogin = {
-                    Timber.tag(TAG).d("Splash → Navigate to LoginRoute")
+                    Timber.tag(TAG).i(
+                        "Splash → LoginRoute [AppNavGraph.kt::SplashRoute]"
+                    )
                     navController.navigate(route = LoginRoute) {
                         popUpTo(route = SplashRoute) { inclusive = true }
                     }
                 },
+                onNavigateToEmailVerification = {
+                    Timber.tag(TAG).i(
+                        "Splash → EmailVerificationRoute [AppNavGraph.kt::SplashRoute]"
+                    )
+                    navController.navigate(route = EmailVerificationRoute) {
+                        popUpTo(route = SplashRoute) { inclusive = true }
+                    }
+                },
                 onBatteryFixRequired = {
-                    Timber.tag(TAG).w("Battery optimization is ON")
+                    Timber.tag(TAG).w(
+                        "Battery optimization detected [AppNavGraph.kt::SplashRoute]"
+                    )
                     showBatteryDialog = true
                 }
             )
         }
 
         // =============================================================
-        // LOGIN ROUTE
+        // LOGIN ROUTE (External Login Module)
         // =============================================================
         composable<LoginRoute> {
             FirebaseLoginEntry(
                 onLoginSuccess = {
-                    Timber.tag(TAG).d("Login successful → Navigating to HomeGraph")
+                    Timber.tag(TAG).i("Login success → HomeGraph [AppNavGraph.kt::LoginRoute]")
                     navController.navigate(route = HomeGraphRoute) {
                         popUpTo(route = LoginRoute) { inclusive = true }
+                    }
+                }
+            )
+        }
+
+        // =============================================================
+        // EMAIL VERIFICATION ROUTE
+        // =============================================================
+        composable<EmailVerificationRoute> {
+            EmailVerificationScreen(
+                onVerified = {
+                    Timber.tag(TAG).i(
+                        "Email verified → HomeGraph [AppNavGraph.kt::EmailVerificationRoute]"
+                    )
+                    navController.navigate(route = HomeGraphRoute) {
+                        popUpTo(route = EmailVerificationRoute) { inclusive = true }
+                    }
+                },
+                onLogout = {
+                    Timber.tag(TAG).i(
+                        "Logout from verification → Login [AppNavGraph.kt::EmailVerificationRoute]"
+                    )
+                    navController.navigate(route = LoginRoute) {
+                        popUpTo(0)
                     }
                 }
             )
@@ -100,11 +139,7 @@ fun AppNavGraph(
             route = HomeGraphRoute::class
         ) {
 
-            // -------------------------------------------------------------
-            // HOME
-            // -------------------------------------------------------------
             composable<HomeRoute> { backStackEntry ->
-
                 val parentEntry = remember(backStackEntry) {
                     navController.getBackStackEntry(HomeGraphRoute::class)
                 }
@@ -116,11 +151,7 @@ fun AppNavGraph(
                 )
             }
 
-            // -------------------------------------------------------------
-            // ADD / EDIT
-            // -------------------------------------------------------------
             composable<AddEditReminderRoute> { backStackEntry ->
-
                 val parentEntry = remember(backStackEntry) {
                     navController.getBackStackEntry(HomeGraphRoute::class)
                 }
@@ -135,32 +166,23 @@ fun AppNavGraph(
                 )
             }
 
-            // -------------------------------------------------------------
-            // PIXEL CANVAS (Long)
-            // -------------------------------------------------------------
             composable<PixelPreviewRoute> { backStackEntry ->
                 val args = backStackEntry.toRoute<PixelPreviewRoute>()
                 CardEditorScreen(reminderId = args.reminderId)
             }
 
-            // -------------------------------------------------------------
-            // PIXEL CANVAS (UUID)
-            // -------------------------------------------------------------
             composable<PixelPreviewRouteString> { backStackEntry ->
                 val args = backStackEntry.toRoute<PixelPreviewRouteString>()
                 CardEditorScreen(reminderId = args.reminderIdString)
             }
 
-            // -------------------------------------------------------------
-            // 🔊 DEBUG — SOUND TEST SCREEN
-            // -------------------------------------------------------------
             composable<SchedulingDebugRoute> {
                 SchedulingDebugScreen()
             }
         }
 
         // =============================================================
-        // REMINDER MANAGER ROUTE
+        // REMINDER MANAGER
         // =============================================================
         composable<ReminderManagerRoute> {
             ReminderManagerScreen(

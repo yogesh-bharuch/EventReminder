@@ -2,18 +2,35 @@ package com.example.eventreminder.logging
 
 // =============================================================
 // Global logging tags used across layers
+//
+// RULE (MANDATORY):
+// Every Timber log message MUST include
+// [FileName.kt::FunctionName] at the END.
 // =============================================================
 
-// --- Reminder CRUD ---
+// -------------------------------------------------------------
+// AUTH / LOGIN / VERIFICATION
+// -------------------------------------------------------------
+const val AUTH_STATE_TAG = "AuthState"
+
+// -------------------------------------------------------------
+// Reminder CRUD
+// -------------------------------------------------------------
 const val SAVE_TAG = "SaveReminder"
 const val DELETE_TAG = "DeleteReminder"
 
-// --- Scheduling / Engine ---
+// -------------------------------------------------------------
+// Scheduling / Engine
+// -------------------------------------------------------------
 const val ENGINE_TAG = "SchedulingEngine"
 const val ELAPSED_TAG = "ElapsedReminder"
 
-// --- Boot / Restore ---
+// -------------------------------------------------------------
+// Boot / Restore
+// -------------------------------------------------------------
 const val BOOT_TAG = "BootRestore"
 
-// --- Maintenance / GC ---
+// -------------------------------------------------------------
+// Maintenance / GC
+// -------------------------------------------------------------
 const val GC_TAG = "TombstoneGC"
