@@ -46,9 +46,13 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions {
-        jvmTarget = "17"
+
+    kotlin {
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        }
     }
+
     buildFeatures {
         compose = true
         buildConfig = true
@@ -75,28 +79,26 @@ dependencies {
     implementation(libs.androidx.security.crypto)
 
     // Material Icons (Filled)
-    implementation(libs.androidx.material.icons.core)
-    implementation(libs.androidx.material.icons.extended)
+    //implementation(libs.androidx.material.icons.core)
+    //implementation(libs.androidx.material.icons.extended)
     implementation(libs.androidx.compose.material.icons.extended)
 
     implementation(libs.androidx.room.ktx)
 
     // ✅ Firebase login module
     implementation(project(":firebaseloginmodule"))
-    //implementation(libs.support.annotations)
     implementation(libs.firebase.auth.ktx) // ✅ Required for FirebaseAuth in host module
     implementation(libs.firebase.firestore.ktx)
 
     // Room
     implementation(libs.androidx.room.ktx)
     implementation(libs.androidx.compose.runtime.saveable)
-    implementation(libs.androidx.junit.ktx)
+    //implementation(libs.androidx.junit.ktx)
     implementation(libs.androidx.compose.foundation.layout)
     kapt(libs.androidx.room.compiler)
 
     // ✅ Hilt DI
     implementation(libs.hilt.android)
-    //implementation(libs.androidx.work.runtime.ktx)
     kapt(libs.hilt.compiler)
     implementation(libs.hilt.navigation.compose)
 
@@ -106,11 +108,10 @@ dependencies {
     implementation(libs.kotlin.reflect)
 
     // 🩵 FIX for ListenableFuture error
-    implementation(libs.guava)
-    implementation(libs.kotlinx.coroutines.guava)
+    //implementation(libs.guava)
+    //implementation(libs.kotlinx.coroutines.guava)
 
     implementation(libs.itextg)
-
     implementation(libs.kotlinx.serialization.json)
 
     // ✅ Jetpack Navigation Compose
@@ -136,16 +137,14 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
 
-// ----------- Android Instrumented Tests -----------
-    androidTestImplementation(libs.androidx.junit.v115)
-    androidTestImplementation(libs.androidx.espresso.core.v351)
+    // ----------- Android Instrumented Tests -----------
+    //androidTestImplementation(libs.androidx.junit.v115)
+    //androidTestImplementation(libs.androidx.espresso.core.v351)
 
-// Required for Canvas & Bitmap tests in instrumented mode
-    androidTestImplementation(libs.androidx.core)
+    // Required for Canvas & Bitmap tests in instrumented mode
+    //androidTestImplementation(libs.androidx.core)
 
     // DataStore Preferences
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.documentfile)
-
-
 }
