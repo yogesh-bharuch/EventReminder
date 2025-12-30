@@ -44,18 +44,62 @@ class ReminderReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
 
-        Timber.tag(TAG).i("Receiver fired → action=${intent.action}")
+        Timber.tag(TAG).i("Receiver fired → action=${intent.action} [ReminderReceiver.kt::onReceive]")
 
         // ---------------------------------------------------------
-        // DISMISS Action
+        // DISMISS Action (UI → DB only)
         // ---------------------------------------------------------
+
+
         if (intent.action == ACTION_DISMISS) {
-            val notificationId = intent.getIntExtra(EXTRA_NOTIFICATION_ID, -1)
+
+            val notificationId =
+                intent.getIntExtra(EXTRA_NOTIFICATION_ID, -1)
+
+            val reminderId =
+                intent.getStringExtra(EXTRA_REMINDER_ID_STRING)
+
+            val offsetMillis =
+                intent.getLongExtra(EXTRA_OFFSET_MILLIS, 0L)
+
+            Timber.tag("DISMISS").e(
+                "DISMISS_RECEIVED → notifId=%d uuid=%s offset=%d [ReminderReceiver.kt::onReceive]",
+                notificationId,
+                reminderId,
+                offsetMillis
+            )
+
+            // Cancel notification immediately
             if (notificationId != -1) {
                 val nm = context.getSystemService(NotificationManager::class.java)
                 nm.cancel(notificationId)
-                Timber.tag(TAG).d("Dismissed → id=$notificationId")
+                Timber.tag(TAG).d(
+                    "Notification dismissed → id=$notificationId [ReminderReceiver.kt::onReceive]"
+                )
             }
+
+            // Persist dismiss event (async, no UI blocking)
+            if (!reminderId.isNullOrBlank()) {
+                CoroutineScope(Dispatchers.IO).launch {
+
+                    try {
+                        repo.recordDismissed(
+                            reminderId = reminderId,
+                            offsetMillis = offsetMillis
+                        )
+                    } catch (t: Throwable) {
+                        Timber.tag(TAG).e(
+                            t,
+                            "Failed to record dismiss → id=$reminderId off=$offsetMillis [ReminderReceiver.kt::onReceive]"
+                        )
+                    }
+                }
+            } else {
+                Timber.tag(TAG).w(
+                    "Dismiss action without reminderId [ReminderReceiver.kt::onReceive]"
+                )
+            }
+
             return
         }
 
@@ -65,7 +109,7 @@ class ReminderReceiver : BroadcastReceiver() {
         if (intent.action == ACTION_OPEN_CARD) {
             val idString = intent.getStringExtra(EXTRA_REMINDER_ID_STRING)
             if (idString.isNullOrBlank()) {
-                Timber.tag(TAG).e("❌ ACTION_OPEN_CARD but UUID missing")
+                Timber.tag(TAG).e("❌ ACTION_OPEN_CARD but UUID missing [ReminderReceiver.kt::onReceive]")
                 return
             }
 
@@ -73,7 +117,9 @@ class ReminderReceiver : BroadcastReceiver() {
             val message = intent.getStringExtra(EXTRA_MESSAGE) ?: ""
             val eventType = inferEventType(title, message)
 
-            Timber.tag(TAG).d("📬 ACTION_OPEN_CARD → Forwarding UUID=$idString")
+            Timber.tag(TAG).d(
+                "📬 ACTION_OPEN_CARD → Forwarding UUID=$idString [ReminderReceiver.kt::onReceive]"
+            )
 
             val activityIntent = Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or
@@ -94,11 +140,11 @@ class ReminderReceiver : BroadcastReceiver() {
         // ---------------------------------------------------------
         val idString = intent.getStringExtra(EXTRA_REMINDER_ID_STRING)
         if (idString.isNullOrBlank()) {
-            Timber.tag(TAG).e("❌ Alarm received but missing UUID")
+            Timber.tag(TAG).e("❌ Alarm received but missing UUID [ReminderReceiver.kt::onReceive]")
             return
         }
 
-        Timber.tag(TAG).d("🔔 Alarm trigger → UUID=$idString")
+        Timber.tag(TAG).d("🔔 Alarm trigger → UUID=$idString [ReminderReceiver.kt::onReceive]")
 
         val title = intent.getStringExtra(EXTRA_TITLE) ?: "Reminder"
         val message = intent.getStringExtra(EXTRA_MESSAGE) ?: ""
@@ -107,10 +153,9 @@ class ReminderReceiver : BroadcastReceiver() {
 
         val eventType = inferEventType(title, message)
 
-        // Create deterministic notification ID
-        val notificationId = generateNotificationIdFromString(idString, offsetMillis)
+        val notificationId =
+            generateNotificationIdFromString(idString, offsetMillis)
 
-        // SHOW NOTIFICATION (no fire-state update here anymore)
         NotificationHelper.showNotification(
             context = context,
             notificationId = notificationId,
@@ -120,25 +165,30 @@ class ReminderReceiver : BroadcastReceiver() {
             extras = mapOf(
                 EXTRA_FROM_NOTIFICATION to true,
                 EXTRA_REMINDER_ID_STRING to idString,
-                EXTRA_EVENT_TYPE to eventType
+                EXTRA_EVENT_TYPE to eventType,
+                EXTRA_OFFSET_MILLIS to offsetMillis
             )
         )
 
-        // ---------------------------------------------------------
-        // Delegate fire-state update + repeat scheduling to ENGINE
-        // ---------------------------------------------------------
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 schedulingEngine.processRepeatTrigger(
-                    reminderId = idString
+                    reminderId = idString,
+                    offsetMillis = offsetMillis
                 )
             } catch (t: Throwable) {
-                Timber.tag(TAG).e(t, "Engine repeat-trigger failed for $idString")
+                Timber.tag(TAG).e(
+                    t,
+                    "Engine repeat-trigger failed for $idString [ReminderReceiver.kt::onReceive]"
+                )
             }
         }
     }
 
-    private fun generateNotificationIdFromString(idString: String, offsetMillis: Long): Int {
+    private fun generateNotificationIdFromString(
+        idString: String,
+        offsetMillis: Long
+    ): Int {
         val raw = idString.hashCode() xor offsetMillis.hashCode()
         return if (raw == Int.MIN_VALUE) Int.MAX_VALUE else kotlin.math.abs(raw)
     }
@@ -146,9 +196,6 @@ class ReminderReceiver : BroadcastReceiver() {
     private fun inferEventType(title: String, message: String): String {
         val titleText = title.lowercase()
         val messageText = message.lowercase()
-        // ---------------------------------------------------------
-        // 1️⃣ Title has priority (explicit & clear)
-        // ---------------------------------------------------------
 
         return when {
             "birthday" in titleText -> "BIRTHDAY"
@@ -156,14 +203,9 @@ class ReminderReceiver : BroadcastReceiver() {
             "medicine" in titleText -> "MEDICINE"
             "workout" in titleText -> "WORKOUT"
             "meeting" in titleText -> "MEETING"
-
-            // -----------------------------------------------------
-            // 2️⃣ Description fallback (only if title is generic)
-            // -----------------------------------------------------
             "pill" in messageText || "tablet" in messageText -> "MEDICINE"
             "exercise" in messageText || "gym" in messageText -> "WORKOUT"
             "meet" in messageText -> "MEETING"
-
             else -> "GENERAL"
         }
     }

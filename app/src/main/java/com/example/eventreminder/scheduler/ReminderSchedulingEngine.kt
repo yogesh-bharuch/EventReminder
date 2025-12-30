@@ -25,16 +25,16 @@ package com.example.eventreminder.scheduler
 // =============================================================*/
 
 import android.content.Context
-import dagger.hilt.android.qualifiers.ApplicationContext
-import javax.inject.Inject
-import javax.inject.Singleton
-import timber.log.Timber
 import com.example.eventreminder.data.model.EventReminder
 import com.example.eventreminder.data.repo.ReminderRepository
+import com.example.eventreminder.logging.DELETE_TAG
 import com.example.eventreminder.util.NextOccurrenceCalculator
 import com.example.eventreminder.util.NotificationHelper
+import dagger.hilt.android.qualifiers.ApplicationContext
+import timber.log.Timber
 import java.time.Instant
-import com.example.eventreminder.logging.DELETE_TAG
+import javax.inject.Inject
+import javax.inject.Singleton
 
 private const val TAG = "ReminderSchedulingEngine"
 
@@ -45,26 +45,38 @@ class ReminderSchedulingEngine @Inject constructor(
     private val alarmScheduler: AlarmScheduler
 ) {
 
-    // =============================================================
-    // SAVE / UPDATE ENTRY POINT
-    // =============================================================
+    /**
+     * Called by:
+     * - ReminderViewModel (save / update action)
+     *
+     * Responsibility:
+     * - Cancel existing alarms
+     * - Clear fire-states if reminder is disabled
+     * - Compute next occurrence
+     * - Schedule all valid future offsets
+     *
+     * Returns:
+     * - Unit
+     */
     suspend fun processSavedReminder(reminder: EventReminder) {
-        Timber.tag(TAG).d("processSavedReminder: %s", reminder.id)
+        Timber.tag(TAG).d(
+            "processSavedReminder → id=%s [ReminderSchedulingEngine.kt::processSavedReminder]",
+            reminder.id
+        )
 
         cancelOffsets(reminder)
 
         if (!reminder.enabled) {
-            Timber.tag(TAG).d("Reminder %s disabled — clearing fire-states and returning", reminder.id)
+            Timber.tag(TAG).d(
+                "Reminder disabled — clearing fire-states id=%s [ReminderSchedulingEngine.kt::processSavedReminder]",
+                reminder.id
+            )
             repo.deleteFireStatesForReminder(reminder.id)
             return
         }
 
         val nextEventEpochMillis = computeNextEvent(reminder)
-
-        if (nextEventEpochMillis == null) {
-            Timber.tag(TAG).d("No next occurrence for %s — nothing to schedule", reminder.id)
-            return
-        }
+            ?: return
 
         scheduleOffsets(
             reminder = reminder,
@@ -72,16 +84,26 @@ class ReminderSchedulingEngine @Inject constructor(
         )
     }
 
-    // =============================================================
-    // BOOT RESTORE
-    // =============================================================
-    suspend fun processBootRestore(reminder: EventReminder, nowEpochMillis: Long) {
-        Timber.tag(TAG).d("processBootRestore: %s at %d", reminder.id, nowEpochMillis)
+    /**
+     * Called by:
+     * - BootReceiver (BOOT_COMPLETED / PACKAGE_REPLACED)
+     *
+     * Responsibility:
+     * - Restore alarms after reboot
+     * - Detect missed fires using ReminderFireState
+     * - Fire missed notifications immediately
+     * - Schedule future alarms only
+     *
+     * Returns:
+     * - Unit
+     */
+    suspend fun processBootRestore(
+        reminder: EventReminder,
+        nowEpochMillis: Long
+    ) {
+        Timber.tag(TAG).d("processBootRestore → id=%s now=%d [ReminderSchedulingEngine.kt::processBootRestore]", reminder.id, nowEpochMillis)
 
-        if (!reminder.enabled) {
-            Timber.tag(TAG).d("Reminder %s disabled on boot — skipping", reminder.id)
-            return
-        }
+        if (!reminder.enabled) return
 
         val offsets = reminder.reminderOffsets.ifEmpty { listOf(0L) }
 
@@ -106,8 +128,7 @@ class ReminderSchedulingEngine @Inject constructor(
             val isMissed = scheduledTrigger < nowEpochMillis
 
             if (isMissed && !hasAlreadyFired) {
-                Timber.tag(TAG).w("Boot: Missed alarm → firing now id=%s offset=%d", reminder.id, offsetMillis)
-
+                Timber.tag(TAG).w("Missed alarm → firing now id=%s offset=%d [ReminderSchedulingEngine.kt::processBootRestore]", reminder.id, offsetMillis)
                 fireNotificationNow(reminder, offsetMillis)
             } else if (scheduledTrigger > nowEpochMillis) {
                 alarmScheduler.scheduleExactByString(
@@ -123,34 +144,53 @@ class ReminderSchedulingEngine @Inject constructor(
         }
     }
 
-    // =============================================================
-    // REPEAT TRIGGER (AFTER NOTIFICATION FIRE)
-    // =============================================================
-    suspend fun processRepeatTrigger(reminderId: String) {
+    /**
+     * Called by:
+     * - ReminderReceiver (after normal alarm fire)
+     *
+     * Responsibility:
+     * - Record fire-state
+     * - Handle post-fire lifecycle
+     * - Disable one-time reminders
+     * - Schedule next repeat occurrence
+     *
+     * Returns:
+     * - Unit
+     */
+    suspend fun processRepeatTrigger(reminderId: String, offsetMillis: Long) {
+        Timber.tag(TAG).d("processRepeatTrigger → id=%s [ReminderSchedulingEngine.kt::processRepeatTrigger]", reminderId)
 
-        Timber.tag(TAG).d("processRepeatTrigger: %s", reminderId)
-
-        val reminder = repo.getReminder(reminderId) ?: run {
-            Timber.tag(TAG).w("processRepeatTrigger: reminder not found %s", reminderId)
-            return
-        }
+        val reminder = repo.getReminder(reminderId) ?: return
 
         if (!reminder.enabled) {
             cancelOffsets(reminder)
             return
         }
 
+        // ✅ NORMAL FIRE → record fire-state for offset 0
+        recordFire(
+            reminderId = reminder.id,
+            offsetMillis = 0L
+        )
+
         // ---------------------------------------------------------
         // ⭐ ONE-TIME REMINDER EXPIRY (DELETE LIFECYCLE)
         // ---------------------------------------------------------
         if (reminder.repeatRule.isNullOrEmpty()) {
 
-            Timber.tag(DELETE_TAG).i("One-time reminder expired on fire → id=%s", reminder.id)
+            // 🔒 DO NOT expire on pre-offset fires
+            if (offsetMillis != 0L) {
+                Timber.tag(TAG).d("Pre-offset fired → keeping reminder alive id=%s offset=%d [ReminderSchedulingEngine.kt::processRepeatTrigger]", reminder.id, offsetMillis)
+                return
+            }
+
+            // ✅ Expire ONLY on main event fire
+            Timber.tag(DELETE_TAG).i("One-time reminder expired on main event fire → id=%s [ReminderSchedulingEngine.kt::processRepeatTrigger]", reminder.id)
 
             repo.updateEnabled(
                 id = reminder.id,
                 enabled = false,
-                isDeleted = false,     // 🔥 KEY FIX for orphan in remote, reverted back
+                isDeleted = false,
                 updatedAt = System.currentTimeMillis()
             )
 
@@ -158,12 +198,8 @@ class ReminderSchedulingEngine @Inject constructor(
             return
         }
 
-        val next = computeNextEvent(reminder)
 
-        if (next == null) {
-            cancelOffsets(reminder)
-            return
-        }
+        val next = computeNextEvent(reminder) ?: return
 
         scheduleOffsets(
             reminder = reminder,
@@ -180,53 +216,41 @@ class ReminderSchedulingEngine @Inject constructor(
         repo.deleteFireStatesForReminder(reminder.id)
     }
 
-    // =============================================================
-    // INTERNAL HELPERS
-    // =============================================================
-    internal fun computeNextEvent(reminder: EventReminder): Long? =
-        try {
-            NextOccurrenceCalculator.nextOccurrence(
-                eventEpochMillis = reminder.eventEpochMillis,
-                zoneIdStr = reminder.timeZone,
-                repeatRule = reminder.repeatRule
-            )
-        } catch (t: Throwable) {
-            Timber.tag(TAG).e(t, "Failed to compute next event for %s", reminder.id)
-            null
-        }
+    /**
+     * INTERNAL — shared fire-state write
+     *
+     * Called by:
+     * - fireNotificationNow (boot / missed)
+     * - processRepeatTrigger (normal fire)
+     *
+     * Responsibility:
+     * - Persist lastFiredAt for reminder+offset
+     *
+     * Returns:
+     * - Unit
+     */
+    internal suspend fun recordFire(
+        reminderId: String,
+        offsetMillis: Long
+    ) {
+        val ts = System.currentTimeMillis()
 
-    internal fun cancelOffsets(reminder: EventReminder) {
-        val offsets = reminder.reminderOffsets.ifEmpty { listOf(0L) }
-        alarmScheduler.cancelAllByString(
-            reminderIdString = reminder.id,
-            offsets = offsets
+        repo.upsertLastFiredAt(
+            reminderId = reminderId,
+            offsetMillis = offsetMillis,
+            ts = ts
         )
+
+        Timber.tag(TAG).d("Fire recorded → id=%s offset=%d ts=%d [ReminderSchedulingEngine.kt::recordFire]", reminderId, offsetMillis, ts)
     }
 
-    internal fun scheduleOffsets(reminder: EventReminder, occurrenceEpochMillis: Long) {
-        val now = Instant.now().toEpochMilli()
-        val offsets = reminder.reminderOffsets.ifEmpty { listOf(0L) }
-
-        val futureOffsets = offsets.filter {
-            (occurrenceEpochMillis - it) > now
-        }
-
-        if (futureOffsets.isEmpty()) return
-
-        alarmScheduler.scheduleAllByString(
-            reminderIdString = reminder.id,
-            title = reminder.title,
-            message = reminder.description.orEmpty(),
-            repeatRule = reminder.repeatRule,
-            nextEventTime = occurrenceEpochMillis,
-            offsets = futureOffsets
-        )
-    }
-
-    // =============================================================
-    // IMMEDIATE FIRE (BOOT / MISSED)
-    // =============================================================
-    internal suspend fun fireNotificationNow(reminder: EventReminder, offsetMillis: Long) {
+    /**
+     * IMMEDIATE FIRE (BOOT / MISSED)
+     */
+    internal suspend fun fireNotificationNow(
+        reminder: EventReminder,
+        offsetMillis: Long
+    ) {
         val raw = reminder.id.hashCode() xor offsetMillis.hashCode()
         val notificationId =
             if (raw == Int.MIN_VALUE) Int.MAX_VALUE else kotlin.math.abs(raw)
@@ -243,10 +267,52 @@ class ReminderSchedulingEngine @Inject constructor(
             )
         )
 
-        repo.upsertLastFiredAt(
+        recordFire(
             reminderId = reminder.id,
-            offsetMillis = offsetMillis,
-            ts = System.currentTimeMillis()
+            offsetMillis = offsetMillis
+        )
+    }
+
+    internal fun computeNextEvent(reminder: EventReminder): Long? =
+        try {
+            NextOccurrenceCalculator.nextOccurrence(
+                eventEpochMillis = reminder.eventEpochMillis,
+                zoneIdStr = reminder.timeZone,
+                repeatRule = reminder.repeatRule
+            )
+        } catch (t: Throwable) {
+            Timber.tag(TAG).e(t, "Next occurrence computation failed id=%s [ReminderSchedulingEngine.kt::computeNextEvent]", reminder.id)
+            null
+        }
+
+    internal fun cancelOffsets(reminder: EventReminder) {
+        val offsets = reminder.reminderOffsets.ifEmpty { listOf(0L) }
+        alarmScheduler.cancelAllByString(
+            reminderIdString = reminder.id,
+            offsets = offsets
+        )
+    }
+
+    internal fun scheduleOffsets(
+        reminder: EventReminder,
+        occurrenceEpochMillis: Long
+    ) {
+        val now = Instant.now().toEpochMilli()
+        val offsets = reminder.reminderOffsets.ifEmpty { listOf(0L) }
+
+        val futureOffsets = offsets.filter {
+            (occurrenceEpochMillis - it) > now
+        }
+
+        if (futureOffsets.isEmpty()) return
+
+        alarmScheduler.scheduleAllByString(
+            reminderIdString = reminder.id,
+            title = reminder.title,
+            message = reminder.description.orEmpty(),
+            repeatRule = reminder.repeatRule,
+            nextEventTime = occurrenceEpochMillis,
+            offsets = futureOffsets
         )
     }
 

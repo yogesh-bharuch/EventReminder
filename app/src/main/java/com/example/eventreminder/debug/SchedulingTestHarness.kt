@@ -95,7 +95,7 @@ class SchedulingTestHarness @Inject constructor(
         withContext(Dispatchers.IO) {
 
             Timber.tag(TAG).i("=== TEST: Simulating REPEAT trigger for $reminderId ===")
-            engine.processRepeatTrigger(reminderId = reminderId)
+            //engine.processRepeatTrigger(reminderId = reminderId, offsetMillis: Long)
             Timber.tag(TAG).i("=== REPEAT simulation complete ===")
         }
 

@@ -1,6 +1,5 @@
 package com.example.eventreminder.data.local
 
-
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
@@ -19,11 +18,35 @@ interface ReminderFireStateDao {
     // ============================================================
     // Read helpers
     // ============================================================
-    @Query("SELECT lastFiredAt FROM reminder_fire_state WHERE reminderId = :id AND offsetMillis = :offsetMillis LIMIT 1")
-    suspend fun getLastFiredAt(id: String, offsetMillis: Long): Long?
+    @Query(
+        "SELECT lastFiredAt FROM reminder_fire_state " +
+                "WHERE reminderId = :id AND offsetMillis = :offsetMillis LIMIT 1"
+    )
+    suspend fun getLastFiredAt(
+        id: String,
+        offsetMillis: Long
+    ): Long?
 
-    @Query("SELECT * FROM reminder_fire_state WHERE reminderId = :id")
-    suspend fun getAllForReminder(id: String): List<ReminderFireStateEntity>
+    @Query(
+        "SELECT * FROM reminder_fire_state WHERE reminderId = :id"
+    )
+    suspend fun getAllForReminder(
+        id: String
+    ): List<ReminderFireStateEntity>
+
+    // ============================================================
+    // Dismiss bookkeeping (NEW — Step 2A)
+    // ============================================================
+    @Query(
+        "UPDATE reminder_fire_state " +
+                "SET dismissedAt = :dismissedAt " +
+                "WHERE reminderId = :id AND offsetMillis = :offsetMillis"
+    )
+    suspend fun updateDismissedAt(
+        id: String,
+        offsetMillis: Long,
+        dismissedAt: Long
+    )
 
     // ============================================================
     // Delete helpers

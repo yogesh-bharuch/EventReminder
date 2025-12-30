@@ -182,11 +182,25 @@ object NotificationHelper {
         )
 
         // =========================================================
-        // DISMISS ACTION (UI only)
+        // DISMISS ACTION (DB bookkeeping only — no lifecycle change)
         // =========================================================
+        Timber.tag(TAG).e(
+            "DISMISS_PI_CREATE → notifId=%d uuid=%s offset=%s [NotificationHelper.kt::showNotification]",
+            notificationId,
+            uuid,
+            extras[ReminderReceiver.EXTRA_OFFSET_MILLIS]
+        )
+
         val dismissIntent = Intent(context, ReminderReceiver::class.java).apply {
             action = ReminderReceiver.ACTION_DISMISS
+
+            // REQUIRED for DB write
             putExtra(ReminderReceiver.EXTRA_NOTIFICATION_ID, notificationId)
+            putExtra(ReminderReceiver.EXTRA_REMINDER_ID_STRING, uuid)
+            putExtra(
+                ReminderReceiver.EXTRA_OFFSET_MILLIS,
+                extras[ReminderReceiver.EXTRA_OFFSET_MILLIS] as? Long ?: 0L
+            )
         }
 
         val dismissPI = PendingIntent.getBroadcast(
