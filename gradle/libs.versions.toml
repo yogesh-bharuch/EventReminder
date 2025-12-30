@@ -33,7 +33,7 @@ hiltNavigationCompose = "1.3.0"
 
 kotlinSerialization = "1.9.0"
 #kotlinxCoroutinesGuava = "1.10.2"
-#guava = "33.5.0-android"
+guava = "33.5.0-android"
 
 timber = "5.0.1"
 itextg = "5.5.10"
@@ -106,7 +106,7 @@ kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serializa
 #kotlinx-coroutines-guava = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-guava", version.ref = "kotlinxCoroutinesGuava" }
 
 # ---------- Utilities ----------
-#guava = { module = "com.google.guava:guava", version.ref = "guava" }
+guava = { module = "com.google.guava:guava", version.ref = "guava" }
 timber = { group = "com.jakewharton.timber", name = "timber", version.ref = "timber" }
 itextg = { module = "com.itextpdf:itextg", version.ref = "itextg" }
 

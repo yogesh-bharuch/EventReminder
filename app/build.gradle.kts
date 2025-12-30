@@ -58,9 +58,9 @@ android {
         buildConfig = true
     }
 
-    composeOptions {
+    /*composeOptions {
         kotlinCompilerExtensionVersion = "1.5.3"
-    }
+    }*/
 }
 
 dependencies {
@@ -108,7 +108,7 @@ dependencies {
     implementation(libs.kotlin.reflect)
 
     // 🩵 FIX for ListenableFuture error
-    //implementation(libs.guava)
+    implementation(libs.guava) // required Hilt + WorkManager glue code references it
     //implementation(libs.kotlinx.coroutines.guava)
 
     implementation(libs.itextg)

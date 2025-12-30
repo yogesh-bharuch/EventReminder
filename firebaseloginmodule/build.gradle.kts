@@ -41,9 +41,9 @@ android {
         compose = true
     }
 
-    composeOptions {
+    /*composeOptions {
         kotlinCompilerExtensionVersion = "1.5.3"
-    }
+    }*/
 }
 
 dependencies {
