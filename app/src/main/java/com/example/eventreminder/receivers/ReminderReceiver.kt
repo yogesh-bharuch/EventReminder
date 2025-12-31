@@ -20,6 +20,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import timber.log.Timber
 import javax.inject.Inject
+import com.example.eventreminder.logging.DISMISS_TAG
+
 
 private const val TAG = "ReminderReceiver"
 
@@ -62,7 +64,7 @@ class ReminderReceiver : BroadcastReceiver() {
             val offsetMillis =
                 intent.getLongExtra(EXTRA_OFFSET_MILLIS, 0L)
 
-            Timber.tag("DISMISS").e(
+            Timber.tag("DISMISS_TAG").e(
                 "DISMISS_RECEIVED → notifId=%d uuid=%s offset=%d [ReminderReceiver.kt::onReceive]",
                 notificationId,
                 reminderId,

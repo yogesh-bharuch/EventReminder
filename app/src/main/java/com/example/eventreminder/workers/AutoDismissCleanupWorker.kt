@@ -12,6 +12,8 @@ import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 import timber.log.Timber
 import kotlin.math.abs
+import com.example.eventreminder.logging.DISMISS_TAG
+
 
 private const val TAG = "AutoDismissCleanupWorker"
 private const val AUTO_DISMISS_THRESHOLD_MILLIS =
@@ -62,9 +64,7 @@ class AutoDismissCleanupWorker(
 
         val staleRows = fireStateDao.getStaleFireStates(cutoff)
 
-        Timber.tag(TAG).i(
-            "AUTO_DISMISS_FOUND count=${staleRows.size} cutoff=$cutoff [AutoDismissCleanupWorker.kt::doWork]"
-        )
+        Timber.tag(TAG).i("AUTO_DISMISS_FOUND count=${staleRows.size} cutoff=$cutoff [AutoDismissCleanupWorker.kt::doWork]")
 
         for (state in staleRows) {
 
@@ -74,9 +74,7 @@ class AutoDismissCleanupWorker(
             val notificationId =
                 generateNotificationIdFromString(reminderId, offsetMillis)
 
-            Timber.tag(TAG).i(
-                "AUTO_DISMISS_APPLY → id=$reminderId notifId=$notificationId [AutoDismissCleanupWorker.kt::doWork]"
-            )
+            Timber.tag(DISMISS_TAG).i("AUTO_DISMISS_APPLY → id=$reminderId notifId=$notificationId [AutoDismissCleanupWorker.kt::doWork]")
 
             try {
                 nm.cancel(notificationId)
@@ -87,16 +85,11 @@ class AutoDismissCleanupWorker(
                 )
 
             } catch (t: Throwable) {
-                Timber.tag(TAG).e(
-                    t,
-                    "AUTO_DISMISS_FAILED → id=$reminderId [AutoDismissCleanupWorker.kt::doWork]"
-                )
+                Timber.tag(DISMISS_TAG).e(t, "AUTO_DISMISS_FAILED → id=$reminderId [AutoDismissCleanupWorker.kt::doWork]")
             }
         }
 
-        Timber.tag(TAG).i(
-            "AUTO_DISMISS_WORKER_DONE [AutoDismissCleanupWorker.kt::doWork]"
-        )
+        Timber.tag(TAG).i("AUTO_DISMISS_WORKER_DONE [AutoDismissCleanupWorker.kt::doWork]")
 
         return Result.success()
     }

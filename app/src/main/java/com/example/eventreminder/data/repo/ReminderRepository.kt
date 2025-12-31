@@ -1,8 +1,5 @@
 package com.example.eventreminder.data.repo
 
-// ============================================================
-// Imports
-// ============================================================
 import android.content.Context
 import com.example.eventreminder.data.local.ReminderDao
 import com.example.eventreminder.data.local.ReminderFireStateDao
@@ -19,6 +16,7 @@ import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 import com.example.eventreminder.logging.DELETE_TAG
+import com.example.eventreminder.logging.DISMISS_TAG
 
 private const val TAG = "ReminderRepository"
 
@@ -148,7 +146,7 @@ class ReminderRepository @Inject constructor(
             dismissedAt = dismissedAt
         )
 
-        Timber.tag(TAG).i(
+        Timber.tag(DISMISS_TAG).i(
             "Dismiss recorded → id=$reminderId offset=$offsetMillis at=$dismissedAt [ReminderRepository.kt::recordDismissed]"
         )
     }

@@ -45,6 +45,9 @@ class MyApp : Application(), Configuration.Provider {
 
         Timber.d("AUTO_DISMISS periodic worker ensured [MyApp.kt::onCreate]")
 
+        // FORCE DB RESET (TEMPORARILY DURING DEVELOPMENT)
+        // deleteDatabase("event_reminder_db")
+
         // 🚀 Seed the database (runs ONLY if DB is empty)
         // databaseSeeder.seedIfEmpty()
     }
