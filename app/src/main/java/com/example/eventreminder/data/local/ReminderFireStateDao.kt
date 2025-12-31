@@ -35,7 +35,7 @@ interface ReminderFireStateDao {
     ): List<ReminderFireStateEntity>
 
     // ============================================================
-    // Dismiss bookkeeping (NEW — Step 2A)
+    // Dismiss bookkeeping
     // ============================================================
     @Query(
         "UPDATE reminder_fire_state " +
@@ -47,6 +47,20 @@ interface ReminderFireStateDao {
         offsetMillis: Long,
         dismissedAt: Long
     )
+
+    // ============================================================
+    // 🔥 Auto-dismiss query
+    // ============================================================
+    @Query(
+        "SELECT * FROM reminder_fire_state " +
+                "WHERE dismissedAt IS NULL " +
+                "AND lastFiredAt IS NOT NULL " +
+                "AND lastFiredAt <= :cutoffEpochMillis"
+    )
+    suspend fun getStaleFireStates(
+        cutoffEpochMillis: Long
+    ): List<ReminderFireStateEntity>
+
 
     // ============================================================
     // Delete helpers

@@ -3,42 +3,58 @@ package com.example.eventreminder
 import android.app.Application
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
 import com.example.eventreminder.data.local.DatabaseSeeder
+import com.example.eventreminder.workers.AutoDismissCleanupWorker
 import dagger.hilt.android.HiltAndroidApp
 import timber.log.Timber
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
-// 🧩 Root of your Hilt dependency graph
 @HiltAndroidApp
 class MyApp : Application(), Configuration.Provider {
 
-    // 👇 Hilt automatically injects this WorkerFactory
     @Inject
     lateinit var workerFactory: HiltWorkerFactory
 
-    // 👇 Inject our new DB seeder
     @Inject
     lateinit var databaseSeeder: DatabaseSeeder
 
     override fun onCreate() {
         super.onCreate()
 
-        // FORCE DB RESET (TEMPORARILY DURING DEVELOPMENT)
-        //deleteDatabase("event_reminder_db")
-
-        // 🌲 Initialize Timber for debug logging
         if (BuildConfig.DEBUG) {
             Timber.plant(Timber.DebugTree())
-            Timber.d("Timber initialized in DEBUG mode")
+            Timber.d("Timber initialized in DEBUG mode [MyApp.kt::onCreate]")
         }
 
+        // ------------------------------------------------------------
+        // Auto-dismiss cleanup worker (GLOBAL, APP-LEVEL)
+        // ------------------------------------------------------------
+        WorkManager.getInstance(this)
+            .enqueueUniquePeriodicWork(
+                AUTO_DISMISS_WORK_NAME,
+                ExistingPeriodicWorkPolicy.KEEP, // ifperiod wants to change run one time with REPLACE than changed back to KEEP
+                PeriodicWorkRequestBuilder<AutoDismissCleanupWorker>(
+                    24,
+                    TimeUnit.HOURS
+                ).build()
+            )
+
+        Timber.d("AUTO_DISMISS periodic worker ensured [MyApp.kt::onCreate]")
+
         // 🚀 Seed the database (runs ONLY if DB is empty)
-        //databaseSeeder.seedIfEmpty()
+        // databaseSeeder.seedIfEmpty()
     }
 
-    // ✅ Must override this property, not a function
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
-            .setWorkerFactory(workerFactory) // integrates Hilt with WorkManager
+            .setWorkerFactory(workerFactory)
             .build()
+
+    private companion object {
+        private const val AUTO_DISMISS_WORK_NAME = "auto_dismiss_cleanup"
+    }
 }
