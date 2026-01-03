@@ -11,7 +11,7 @@ import androidx.room.Query
 @Dao
 interface SyncMetadataDao {
 
-    @Query("SELECT * FROM sync_metadata WHERE key = :key LIMIT 1")
+    @Query("SELECT * FROM sync_metadata WHERE `key` = :key LIMIT 1")
     suspend fun get(key: String): SyncMetadataEntity?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
