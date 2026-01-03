@@ -67,4 +67,15 @@ interface ReminderFireStateDao {
     // ============================================================
     @Query("DELETE FROM reminder_fire_state WHERE reminderId = :id")
     suspend fun deleteForReminder(id: String)
+
+    // ============================================================
+    // 🔁 Restore helpers (UI-only, no lifecycle change)
+    // ============================================================
+    @Query(
+        "SELECT * FROM reminder_fire_state " +
+                "WHERE lastFiredAt IS NOT NULL " +
+                "AND dismissedAt IS NULL"
+    )
+    suspend fun getActiveFiredFireStates(): List<ReminderFireStateEntity>
+
 }

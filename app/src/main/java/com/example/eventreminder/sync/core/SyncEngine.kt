@@ -88,18 +88,11 @@ class SyncEngine(
                     }
                 }
             } catch (t: Throwable) {
-                Timber.tag(TAG).e(
-                    t,
-                    "SYNC ERROR key=${config.key} [SyncEngine.kt::syncAll]"
-                )
+                Timber.tag(TAG).e(t, "SYNC ERROR key=${config.key} [SyncEngine.kt::syncAll]")
             }
         }
 
-        Timber.tag(TAG).i(
-            "SYNC COMPLETE ↑C:${result.localToRemoteCreated} ↑U:${result.localToRemoteUpdated} ↑D:${result.localToRemoteDeleted} " +
-                    "↓C:${result.remoteToLocalCreated} ↓U:${result.remoteToLocalUpdated} ↓D:${result.remoteToLocalDeleted} " +
-                    "[SyncEngine.kt::syncAll]"
-        )
+        Timber.tag(TAG).i("%s[SyncEngine.kt::syncAll]", "SYNC COMPLETE ↑C:${result.localToRemoteCreated} ↑U:${result.localToRemoteUpdated} ↑D:${result.localToRemoteDeleted} " + "↓C:${result.remoteToLocalCreated} ↓U:${result.remoteToLocalUpdated} ↓D:${result.remoteToLocalDeleted} ")
 
         return result
     }
@@ -112,9 +105,7 @@ class SyncEngine(
         config: EntitySyncConfig<Local>,
         result: SyncResult
     ) {
-        Timber.tag(TAG).d(
-            "Local→Remote START key=${config.key} [SyncEngine.kt::syncLocalToRemote]"
-        )
+        Timber.tag(TAG).d("Local→Remote START key=${config.key} [SyncEngine.kt::syncLocalToRemote]")
 
         val meta = syncMetadataDao.get(config.key)
         val lastLocalSyncAt = meta?.lastLocalSyncAt

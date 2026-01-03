@@ -64,7 +64,8 @@ object NotificationHelper {
         title: String,
         message: String,
         eventType: String = "UNKNOWN",
-        extras: Map<String, Any?> = emptyMap()
+        extras: Map<String, Any?> = emptyMap(),
+        silent: Boolean = false
     ) {
         val nm = context.getSystemService(NotificationManager::class.java)
 
@@ -233,6 +234,7 @@ object NotificationHelper {
             .setContentText(fullMessage)
             .setOngoing(true)
             .setAutoCancel(false)
+            .setOnlyAlertOnce(silent)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setContentIntent(tapPI)
             .setVibrate(longArrayOf(0, 300, 200, 300))

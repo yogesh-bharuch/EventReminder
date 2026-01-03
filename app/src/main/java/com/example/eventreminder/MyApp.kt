@@ -7,8 +7,12 @@ import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.example.eventreminder.data.local.DatabaseSeeder
+import com.example.eventreminder.notifications.NotificationRestoreManager
 import com.example.eventreminder.workers.AutoDismissCleanupWorker
 import dagger.hilt.android.HiltAndroidApp
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import timber.log.Timber
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
@@ -28,6 +32,20 @@ class MyApp : Application(), Configuration.Provider {
         if (BuildConfig.DEBUG) {
             Timber.plant(Timber.DebugTree())
             Timber.d("Timber initialized in DEBUG mode [MyApp.kt::onCreate]")
+        }
+
+        // ------------------------------------------------------------
+        // 🔁 Restore fired-but-not-dismissed notifications (UI only)
+        // ------------------------------------------------------------
+        CoroutineScope(Dispatchers.Default).launch {
+            try {
+                NotificationRestoreManager.restoreActiveNotifications(this@MyApp)
+            } catch (t: Throwable) {
+                Timber.e(
+                    t,
+                    "RESTORE_FAILED [MyApp.kt::onCreate]"
+                )
+            }
         }
 
         // ------------------------------------------------------------
