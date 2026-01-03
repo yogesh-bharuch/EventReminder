@@ -1,6 +1,6 @@
 package com.example.eventreminder.sync.core
 
-// =============================================================
+/*// =============================================================
 // UserIdProvider — Robust Firebase UID Provider (UUID Sync Safe)
 // -------------------------------------------------------------
 // Responsibilities:
@@ -17,7 +17,7 @@ package com.example.eventreminder.sync.core
 //   • Named arguments ✓
 //   • Section headers ✓
 //   • Inline comments ✓
-// =============================================================
+// =============================================================*/
 
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.delay
@@ -59,7 +59,7 @@ fun interface UserIdProvider {
             if (currentUser != null) {
                 try {
                     currentUser.reload().await()
-                    currentUser.uid?.let { uid ->
+                    currentUser.uid.let { uid ->
                         Timber.tag(TAG).d("UID restored after reload() → $uid")
                         return@UserIdProvider uid
                     }
