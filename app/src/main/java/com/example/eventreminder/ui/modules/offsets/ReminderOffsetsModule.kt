@@ -50,12 +50,7 @@ fun ReminderOffsetsModule(
                             if (isChecked) add(offset) else remove(offset)
                         }
 
-                        Timber.tag(TAG).d(
-                            "Offset %s %s → size=%d",
-                            offset.label,
-                            if (isChecked) "added" else "removed",
-                            updated.size
-                        )
+                        Timber.tag(TAG).d("Offset %s %s → size=%d", offset.label, if (isChecked) "added" else "removed", updated.size)
 
                         onOffsetsChanged(updated)
                     }

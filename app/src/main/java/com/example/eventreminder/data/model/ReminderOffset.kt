@@ -7,7 +7,8 @@ enum class ReminderOffset(val millis: Long, val label: String) {
     MIN_30(30 * 60_000L, "30 minutes before"),
     HOUR_1(60 * 60_000L, "1 hour before"),
     HOUR_3(3 * 60 * 60_000L, "3 hours before"),
-    DAY_1(24 * 60 * 60_000L, "1 day before");
+    DAY_1(24 * 60 * 60_000L, "1 day before"),
+    MONTH_1(30L * 24 * 60 * 60_000L, "30 days before");
 
     override fun toString(): String = label
 
