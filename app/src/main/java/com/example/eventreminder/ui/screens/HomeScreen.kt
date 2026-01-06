@@ -61,19 +61,28 @@ fun HomeScreen(
     // Snackbar Host (ViewModel → HomeScreen)
     // ---------------------------------------------------------
     val snackbarHostState = remember { SnackbarHostState() }
+    var pendingSnackbar by remember { mutableStateOf<String?>(null) }
+
     val coroutineScope = rememberCoroutineScope()
 
     LaunchedEffect(reminderVm) {
-        Timber.tag(SAVE_TAG).d("📥 HomeScreen collector STARTED")
+        Timber.tag(SAVE_TAG).d("📥 HomeScreen snackbar collector STARTED")
 
         reminderVm.snackbarEvent.collectLatest { message ->
-            Timber.tag(SAVE_TAG).d("🔔 Snackbar collected → $message")
-
-            snackbarHostState.showSnackbar(message)
-
-            Timber.tag(SAVE_TAG).d("🔔 Snackbar shown")
+            Timber.tag(SAVE_TAG).d("🔔 Snackbar queued → $message")
+            pendingSnackbar = message
         }
     }
+
+    LaunchedEffect(pendingSnackbar) {
+        pendingSnackbar?.let { message ->
+            Timber.tag(SAVE_TAG).d("🔔 Snackbar shown → $message")
+            snackbarHostState.showSnackbar(message)
+            pendingSnackbar = null
+        }
+    }
+
+
 
     // ---------------------------------------------------------
     // Double Back Press to Exit App

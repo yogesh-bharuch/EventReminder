@@ -51,6 +51,14 @@ class ReminderViewModel @Inject constructor(
     private val _snackbarEvent = Channel<String>(capacity = Channel.BUFFERED)
     val snackbarEvent = _snackbarEvent.receiveAsFlow()
 
+    private val _events = MutableSharedFlow<UiEvent>()
+    val events = _events.asSharedFlow()
+
+    sealed class UiEvent {
+        data class SaveSuccess(val message: String) : UiEvent()
+        data class SaveError(val message: String) : UiEvent()
+    }
+
 
     // ============================================================
     // UI STATE
@@ -192,6 +200,7 @@ class ReminderViewModel @Inject constructor(
                 _uiState.update { it.copy(errorMessage = "Failed to save reminder") }
                 // Emit an error snackbar so UI knows something went wrong
                 _snackbarEvent.trySend("Failed to save reminder")
+                _events.emit(UiEvent.SaveError("Failed to save reminder"))
                 return
             }
 
@@ -215,14 +224,16 @@ class ReminderViewModel @Inject constructor(
 
             Timber.tag(SAVE_TAG).d("🟠 Emitting snackbar msg=$msg")
             _snackbarEvent.trySend(msg)
+            _events.emit(UiEvent.SaveSuccess("Reminder saved successfully"))
 
             Timber.tag(SAVE_TAG).d("🟠 Resetting AddEdit form…")
-            resetAddEditForm()
+            //resetAddEditForm()
 
         } catch (e: Exception) {
             Timber.tag(SAVE_TAG).e(e, "❌ Exception during saveReminder()")
             Timber.tag(TAG).e(e, "Exception during save process")
             _uiState.update { it.copy(errorMessage = e.message) }
+            _events.emit(UiEvent.SaveError("Failed to save reminder"))
         }
 
         Timber.tag(SAVE_TAG).d("🟠 saveReminder() END id=${reminder.id}")

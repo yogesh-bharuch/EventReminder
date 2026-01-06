@@ -100,8 +100,8 @@ fun AddEditReminderScreen(
 
     // Validation snackbar
     LaunchedEffect(uiState.errorMessage) {
-        uiState.errorMessage?.let {
-            SnackbarHostState().showSnackbar(it)
+        uiState.errorMessage?.let { message ->
+            snackbarHostState.showSnackbar(message)
             reminderVm.resetError()
         }
     }
@@ -284,7 +284,7 @@ fun AddEditReminderScreen(
                                 existingId = reminderId
                             )
 
-                            delay(350) // smoother, enough time to emit snackbar
+                            //delay(350) // smoother, enough time to emit snackbar
                             navController.popBackStack()
                         }
                     }
