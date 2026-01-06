@@ -42,7 +42,7 @@ fun AppNavGraph(
     ) {
 
         // =============================================================
-        // SPLASH ROUTE
+        // SPLASH ROUTE, ENTRY GATE
         // =============================================================
         composable<SplashRoute> {
 
@@ -94,7 +94,7 @@ fun AppNavGraph(
         }
 
         // =============================================================
-        // LOGIN ROUTE (External Login Module)
+        // LOGIN ROUTE, ENTRY GATE (External Login Module)
         // =============================================================
         composable<LoginRoute> {
             FirebaseLoginEntry(
@@ -108,7 +108,7 @@ fun AppNavGraph(
         }
 
         // =============================================================
-        // EMAIL VERIFICATION ROUTE
+        // EMAIL VERIFICATION ROUTE, ENTRY GATE
         // =============================================================
         composable<EmailVerificationRoute> {
             EmailVerificationScreen(
