@@ -56,33 +56,41 @@ fun HomeScreen(
 
     val context = LocalContext.current
     val activity = context as Activity
+    val isSyncing by reminderVm.isSyncing.collectAsState()
+    val isBackingUp by reminderVm.isBackingUp.collectAsState()
+    val isRestoring by reminderVm.isRestoring.collectAsState()
+    val isGeneratingPdf by pdfviewModel.isGeneratingPdf.collectAsState()
+
 
     // ---------------------------------------------------------
     // Snackbar Host (ViewModel → HomeScreen)
     // ---------------------------------------------------------
     val snackbarHostState = remember { SnackbarHostState() }
-    var pendingSnackbar by remember { mutableStateOf<String?>(null) }
-
     val coroutineScope = rememberCoroutineScope()
 
     LaunchedEffect(reminderVm) {
-        Timber.tag(SAVE_TAG).d("📥 HomeScreen snackbar collector STARTED")
+        Timber.tag(SAVE_TAG).d("📥 HomeScreen UiEvent collector STARTED")
 
-        reminderVm.snackbarEvent.collectLatest { message ->
-            Timber.tag(SAVE_TAG).d("🔔 Snackbar queued → $message")
-            pendingSnackbar = message
+        reminderVm.events.collect { event ->
+            when (event) {
+
+                is ReminderViewModel.UiEvent.SaveSuccess -> {
+                    Timber.tag(SAVE_TAG).d("🔔 Snackbar → ${event.message}")
+                    snackbarHostState.showSnackbar(event.message)
+                }
+
+                is ReminderViewModel.UiEvent.SaveError -> {
+                    Timber.tag(SAVE_TAG).d("❌ Snackbar → ${event.message}")
+                    snackbarHostState.showSnackbar(event.message)
+                }
+
+                is ReminderViewModel.UiEvent.ShowMessage -> {
+                    Timber.tag(SAVE_TAG).d("ℹ️ Snackbar → ${event.message}")
+                    snackbarHostState.showSnackbar(event.message)
+                }
+            }
         }
     }
-
-    LaunchedEffect(pendingSnackbar) {
-        pendingSnackbar?.let { message ->
-            Timber.tag(SAVE_TAG).d("🔔 Snackbar shown → $message")
-            snackbarHostState.showSnackbar(message)
-            pendingSnackbar = null
-        }
-    }
-
-
 
     // ---------------------------------------------------------
     // Double Back Press to Exit App
@@ -160,6 +168,10 @@ fun HomeScreen(
 
         bottomBar = {
             HomeBottomTray(
+                isSyncing = isSyncing,
+                isBackingUp = isBackingUp,
+                isRestoring = isRestoring,
+                isGeneratingPdf = isGeneratingPdf,
                 onCleanupClick = {
                     coroutineScope.launch {
                         navController.navigate(SchedulingDebugRoute)
@@ -170,7 +182,6 @@ fun HomeScreen(
                 onGeneratePdfClick = {
                     coroutineScope.launch {
                         pdfviewModel.runTodo3RealReport()
-                        snackbarHostState.showSnackbar("PDF generated")
                     }
                 },
                 onExportClick = {
@@ -182,19 +193,16 @@ fun HomeScreen(
                 onSyncClick = {
                     coroutineScope.launch {
                         reminderVm.syncRemindersWithServer()
-                        //snackbarHostState.showSnackbar("Sync requested")
                     }
                 },
                 onBackupClick = {
                     coroutineScope.launch {
                         reminderVm.backupReminders(context)
-                        snackbarHostState.showSnackbar("Backup completed")
                     }
                 },
                 onRestoreClick = {
                     coroutineScope.launch {
                         reminderVm.restoreReminders(context)
-                        snackbarHostState.showSnackbar("Restore completed")
                     }
                 }
             )

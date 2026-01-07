@@ -1,13 +1,13 @@
 package com.example.eventreminder.ui.viewmodels
 
-// =============================================================
+/*// =============================================================
 // ReminderViewModel.kt
 //
 // NOTE ON MULTI-USER SUPPORT:
 // - ViewModel does NOT handle Firebase UID directly
 // - UID ownership is injected and enforced by ReminderRepository
 // - This keeps UI logic user-agnostic and prevents auth leakage
-// =============================================================
+// =============================================================*/
 
 import android.content.Context
 import androidx.lifecycle.ViewModel
@@ -32,11 +32,10 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.receiveAsFlow
 import com.example.eventreminder.logging.DELETE_TAG
 import com.example.eventreminder.logging.SAVE_TAG
+import com.example.eventreminder.sync.core.SyncBlockedReason
 
 
 private const val TAG = "ReminderViewModel"
-
-
 
 @HiltViewModel
 class ReminderViewModel @Inject constructor(
@@ -47,18 +46,23 @@ class ReminderViewModel @Inject constructor(
 
     private val deleteInProgress = mutableSetOf<String>()
 
-    // SNACKBAR EVENTS — one-shot channel (no replay after rotation)
-    private val _snackbarEvent = Channel<String>(capacity = Channel.BUFFERED)
-    val snackbarEvent = _snackbarEvent.receiveAsFlow()
-
-    private val _events = MutableSharedFlow<UiEvent>()
+    private val _events = MutableSharedFlow<UiEvent>(replay = 0, extraBufferCapacity = 1)
     val events = _events.asSharedFlow()
 
     sealed class UiEvent {
         data class SaveSuccess(val message: String) : UiEvent()
         data class SaveError(val message: String) : UiEvent()
+        data class ShowMessage(val message: String) : UiEvent()
     }
 
+    private val _isSyncing = MutableStateFlow(false)
+    val isSyncing: StateFlow<Boolean> = _isSyncing.asStateFlow()
+
+    private val _isBackingUp = MutableStateFlow(false)
+    val isBackingUp: StateFlow<Boolean> = _isBackingUp
+
+    private val _isRestoring = MutableStateFlow(false)
+    val isRestoring: StateFlow<Boolean> = _isRestoring
 
     // ============================================================
     // UI STATE
@@ -199,7 +203,7 @@ class ReminderViewModel @Inject constructor(
                 Timber.tag(SAVE_TAG).e("❌ ERROR → repo returned null after save (id=$savedId)")
                 _uiState.update { it.copy(errorMessage = "Failed to save reminder") }
                 // Emit an error snackbar so UI knows something went wrong
-                _snackbarEvent.trySend("Failed to save reminder")
+                //_snackbarEvent.trySend("Failed to save reminder")
                 _events.emit(UiEvent.SaveError("Failed to save reminder"))
                 return
             }
@@ -223,7 +227,7 @@ class ReminderViewModel @Inject constructor(
             val msg = "${if (isNew) "Created" else "Updated"}: ${saved.title} → $formatted"
 
             Timber.tag(SAVE_TAG).d("🟠 Emitting snackbar msg=$msg")
-            _snackbarEvent.trySend(msg)
+            //_snackbarEvent.trySend(msg)
             _events.emit(UiEvent.SaveSuccess("Reminder saved successfully"))
 
             Timber.tag(SAVE_TAG).d("🟠 Resetting AddEdit form…")
@@ -345,65 +349,177 @@ class ReminderViewModel @Inject constructor(
     // - Repo is DB-only. ViewModel delegates rescheduling to engine after sync.
     // ============================================================
     fun syncRemindersWithServer() = viewModelScope.launch {
-        try {
-            _snackbarEvent.trySend("Sync started…")
-            Timber.tag("SYNC").i("Sync started")
+        if (_isSyncing.value) {
+            Timber.tag("SYNC").w("⛔ Sync ignored (already running) [ReminderViewModel.kt::syncRemindersWithServer]")
+            return@launch
+        }
 
+        _isSyncing.value = true
+        Timber.tag("SYNC").i("▶️ Sync started [ReminderViewModel.kt::syncRemindersWithServer]")
+
+        try {
             // --------------------------------------------------------
             // Step 1: Perform full remote ↔ local sync
             // --------------------------------------------------------
+            Timber.tag("SYNC").i("⏳ Calling SyncEngine.syncAll() [ReminderViewModel.kt::syncRemindersWithServer]")
             val result = syncEngine.syncAll()
+
+            // --------------------------------------------------------
+            // Step 1.1: Handle BLOCKED cases explicitly
+            // --------------------------------------------------------
+            when (result.blockedReason) {
+                SyncBlockedReason.USER_NOT_LOGGED_IN -> {
+                    Timber.tag("SYNC").w("🚫 Sync blocked: USER_NOT_LOGGED_IN [ReminderViewModel.kt::syncRemindersWithServer]")
+                    _events.emit(UiEvent.ShowMessage("Please sign in to sync"))
+                    return@launch
+                }
+
+                SyncBlockedReason.EMAIL_NOT_VERIFIED -> {
+                    Timber.tag("SYNC").w("🚫 Sync blocked: EMAIL_NOT_VERIFIED [ReminderViewModel.kt::syncRemindersWithServer]")
+                    _events.emit(UiEvent.ShowMessage("Verify your email to enable sync"))
+                    return@launch
+                }
+
+                SyncBlockedReason.NO_INTERNET -> {
+                    Timber.tag("SYNC").w("🌐 Sync blocked: NO_INTERNET [ReminderViewModel.kt::syncRemindersWithServer]")
+                    _events.emit(UiEvent.ShowMessage("No internet connection"))
+                    return@launch
+                }
+
+                null -> {
+                    Timber.tag("SYNC").i("✅ No sync blocks detected [ReminderViewModel.kt::syncRemindersWithServer]")
+                }
+            }
 
             // --------------------------------------------------------
             // Step 2: Re-schedule all enabled reminders
             // --------------------------------------------------------
             val reminders = repo.getNonDeletedEnabled()
-            Timber.tag("SYNC").i("Rescheduling ${reminders.size} reminders after sync")
+            Timber.tag("SYNC").i(
+                "🔁 Rescheduling ${reminders.size} reminders after sync [ReminderViewModel.kt::syncRemindersWithServer]"
+            )
 
             reminders.forEach { reminder ->
                 schedulingEngine.processSavedReminder(reminder)
             }
 
             // --------------------------------------------------------
-            // Step 3: Build snackbar message from SyncResult
+            // Step 3: Build FINAL snackbar message
             // --------------------------------------------------------
             val message =
                 if (result.isEmpty()) {
+                    Timber.tag("SYNC").i("ℹ️ Sync completed with no changes [ReminderViewModel.kt::syncRemindersWithServer]")
                     "Sync completed (no changes)"
                 } else {
+                    Timber.tag("SYNC").i(
+                        "📊 Sync summary L→R(C:${result.localToRemoteCreated},U:${result.localToRemoteUpdated},D:${result.localToRemoteDeleted}) " +
+                                "R→L(C:${result.remoteToLocalCreated},U:${result.remoteToLocalUpdated},D:${result.remoteToLocalDeleted}) " +
+                                "[ReminderViewModel.kt::syncRemindersWithServer]"
+                    )
+
                     buildString {
                         append("Sync completed\n")
-                        append("Local → Cloud:  C: ${result.localToRemoteCreated}, " +
-                                "U: ${result.localToRemoteUpdated}, " +
-                                "D: ${result.localToRemoteDeleted}\n"
+                        append(
+                            "Local → Cloud: C:${result.localToRemoteCreated}, " +
+                                    "U:${result.localToRemoteUpdated}, " +
+                                    "D:${result.localToRemoteDeleted}\n"
                         )
-                        append("Cloud → Local:  C: ${result.remoteToLocalCreated}, " +
-                                "U: ${result.remoteToLocalUpdated}, " +
-                                "D: ${result.remoteToLocalDeleted}"
+                        append(
+                            "Cloud → Local: C:${result.remoteToLocalCreated}, " +
+                                    "U:${result.remoteToLocalUpdated}, " +
+                                    "D:${result.remoteToLocalDeleted}"
                         )
                     }
                 }
 
-            _snackbarEvent.trySend(message)
-            Timber.tag("SYNC").i("Sync completed: $message")
+            Timber.tag("SYNC").i("✅ Sync finished successfully [ReminderViewModel.kt::syncRemindersWithServer]")
+            _events.emit(UiEvent.ShowMessage(message))
+        }
 
-        } catch (e: Exception) {
-            _snackbarEvent.trySend("Sync failed: ${e.message}")
-            Timber.tag("SYNC").e(e, "Sync failed")
+        // --------------------------------------------------------
+        // Firestore-specific failures (EXACT reason)
+        // --------------------------------------------------------
+        catch (e: com.google.firebase.firestore.FirebaseFirestoreException) {
+            val errorMsg = when (e.code) {
+                com.google.firebase.firestore.FirebaseFirestoreException.Code.PERMISSION_DENIED -> {
+                    Timber.tag("SYNC").e(e, "🚫 Firestore PERMISSION_DENIED [ReminderViewModel.kt::syncRemindersWithServer]")
+                    "Sync failed: permission denied"
+                }
+
+                com.google.firebase.firestore.FirebaseFirestoreException.Code.RESOURCE_EXHAUSTED -> {
+                    Timber.tag("SYNC").e(e, "📛 Firestore RESOURCE_EXHAUSTED [ReminderViewModel.kt::syncRemindersWithServer]")
+                    "Sync failed: quota exceeded"
+                }
+
+                com.google.firebase.firestore.FirebaseFirestoreException.Code.UNAVAILABLE -> {
+                    Timber.tag("SYNC").e(e, "🌐 Firestore UNAVAILABLE [ReminderViewModel.kt::syncRemindersWithServer]")
+                    "Sync service unavailable"
+                }
+
+                else -> {
+                    Timber.tag("SYNC").e(e, "❌ Firestore error code=${e.code} [ReminderViewModel.kt::syncRemindersWithServer]")
+                    "Sync failed"
+                }
+            }
+
+            _events.emit(UiEvent.ShowMessage(errorMsg))
+        }
+
+        // --------------------------------------------------------
+        // Generic / network / unknown failures
+        // --------------------------------------------------------
+        catch (e: Exception) {
+            val errorMsg = when (e) {
+                is java.net.UnknownHostException,
+                is java.net.SocketTimeoutException -> {
+                    Timber.tag("SYNC").w("🌐 Network error during sync [ReminderViewModel.kt::syncRemindersWithServer]")
+                    "No internet connection"
+                }
+
+                else -> {
+                    Timber.tag("SYNC").e(e, "❌ Unexpected sync failure [ReminderViewModel.kt::syncRemindersWithServer]")
+                    "Sync failed"
+                }
+            }
+
+            _events.emit(UiEvent.ShowMessage(errorMsg))
+        }
+        finally {
+            _isSyncing.value = false
+            Timber.tag("SYNC").i("🔓 Sync state reset (_isSyncing=false) [ReminderViewModel.kt::syncRemindersWithServer]")
         }
     }
 
     fun backupReminders(context: Context) {
         viewModelScope.launch {
-            val msg = repo.exportRemindersToJson(context)
-            _snackbarEvent.trySend(msg)
+            if (_isBackingUp.value) return@launch   // 🔒 guard
+
+            _isBackingUp.value = true
+            try {
+                val msg = repo.exportRemindersToJson(context)
+                _events.emit(UiEvent.ShowMessage(msg))
+            } catch (e: Exception) {
+                _events.emit(UiEvent.ShowMessage("Backup failed"))
+            } finally {
+                _isBackingUp.value = false          // ✅ MUST reset
+            }
         }
     }
 
     fun restoreReminders(context: Context) {
         viewModelScope.launch {
-            val msg = repo.restoreRemindersFromBackup(context)
-            _snackbarEvent.trySend(msg)
+            if (_isRestoring.value) return@launch   // 🔒 guard
+
+            _isRestoring.value = true
+            try {
+                val msg = repo.restoreRemindersFromBackup(context)
+                _events.emit(UiEvent.ShowMessage(msg))
+            } catch (e: Exception) {
+                _events.emit(UiEvent.ShowMessage("Restore failed"))
+            } finally {
+                _isRestoring.value = false          // ✅ MUST reset
+            }
         }
     }
+
 }

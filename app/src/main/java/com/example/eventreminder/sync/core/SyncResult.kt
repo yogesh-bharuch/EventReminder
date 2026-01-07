@@ -25,7 +25,12 @@ data class SyncResult(
     var remoteToLocalCreated: Int = 0,
     var remoteToLocalUpdated: Int = 0,
     var remoteToLocalDeleted: Int = 0,
-    var remoteToLocalSkipped: Int = 0
+    var remoteToLocalSkipped: Int = 0,
+
+    // -------------------------------
+    // Meta (NEW — non-breaking)
+    // -------------------------------
+    var blockedReason: SyncBlockedReason? = null
 ) {
 
     /**
@@ -39,4 +44,14 @@ data class SyncResult(
                 remoteToLocalCreated +
                 remoteToLocalUpdated +
                 remoteToLocalDeleted == 0
+}
+
+/**
+ * Explicit sync block reasons.
+ * Used ONLY for UI feedback.
+ */
+enum class SyncBlockedReason {
+    USER_NOT_LOGGED_IN,
+    EMAIL_NOT_VERIFIED,
+    NO_INTERNET
 }

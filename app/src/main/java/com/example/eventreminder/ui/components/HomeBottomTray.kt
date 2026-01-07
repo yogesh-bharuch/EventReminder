@@ -29,16 +29,13 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import timber.log.Timber
 
-// =============================================================
-// Timber TAG
-// =============================================================
 private const val TAG = "HomeBottomTray"
 
-// =============================================================
+/*// =============================================================
 // Public API: HomeBottomTray
 // - A horizontal tray of action chips shown at bottom of Home screen
 // - Buttons are composable items in a LazyRow so they can overflow/scoll
-// =============================================================
+// =============================================================*/
 
 /**
  * HomeBottomTray
@@ -53,6 +50,10 @@ private const val TAG = "HomeBottomTray"
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeBottomTray(
+    isSyncing: Boolean,
+    isBackingUp: Boolean,
+    isRestoring: Boolean,
+    isGeneratingPdf: Boolean,
     onCleanupClick: () -> Unit,
     onGeneratePdfClick: () -> Unit,
     onExportClick: () -> Unit = {},
@@ -87,8 +88,17 @@ fun HomeBottomTray(
 
             item {
                 ActionChip(
-                    label = "PDF Report",
-                    icon = Icons.Default.PictureAsPdf,
+                    label = if (isGeneratingPdf) "Generating PDF" else "PDF Report",
+                    icon = if (isGeneratingPdf) null else Icons.Default.PictureAsPdf,
+                    enabled = !isGeneratingPdf,
+                    trailing = {
+                        if (isGeneratingPdf) {
+                            androidx.compose.material3.CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp
+                            )
+                        }
+                    },
                     onClick = {
                         Timber.tag(TAG).d("PDF Report clicked")
                         onGeneratePdfClick()
@@ -109,32 +119,56 @@ fun HomeBottomTray(
 
             item {
                 ActionChip(
-                    label = "Sync",
-                    icon = Icons.Default.Sync,
+                    label = if (isSyncing) "Syncing…" else "Sync",
+                    icon = if (isSyncing) null else Icons.Default.Sync,
+                    enabled = !isSyncing,
+                    trailing = {
+                        if (isSyncing) {
+                            androidx.compose.material3.CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp
+                            )
+                        }
+                    },
                     onClick = {
-                        Timber.tag(TAG).d("Sync clicked")
+                        Timber.tag(TAG).d("Sync clicked (isSyncing=$isSyncing)")
                         onSyncClick()
                     }
                 )
             }
 
+
             item {
                 ActionChip(
-                    label = "Backup",
-                    icon = Icons.Default.Backup,
-                    onClick = {
-                        onBackupClick()
-                    }
+                    label = if (isBackingUp) "Backing up…" else "Backup",
+                    icon = if (isBackingUp) null else Icons.Default.Backup,
+                    enabled = !isBackingUp,
+                    trailing = {
+                        if (isBackingUp) {
+                            androidx.compose.material3.CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp
+                            )
+                        }
+                    },
+                    onClick = { onBackupClick() }
                 )
             }
 
             item {
                 ActionChip(
-                    label = "Restore",
-                    icon = Icons.Default.Restore,
-                    onClick = {
-                        onRestoreClick()
-                    }
+                    label = if (isRestoring) "Restoring…" else "Restore",
+                    icon = if (isRestoring) null else Icons.Default.Restore,
+                    enabled = !isRestoring,
+                    trailing = {
+                        if (isRestoring) {
+                            androidx.compose.material3.CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp
+                            )
+                        }
+                    },
+                    onClick = { onRestoreClick() }
                 )
             }
         }
@@ -149,16 +183,26 @@ fun HomeBottomTray(
 private fun ActionChip(
     label: String,
     icon: ImageVector? = null,
+    enabled: Boolean = true,
+    trailing: (@Composable () -> Unit)? = null,
     onClick: () -> Unit,
     height: Dp = 40.dp,
     horizontalPadding: Dp = 16.dp
 ) {
+    val backgroundColor =
+        if (enabled) MaterialTheme.colorScheme.primaryContainer
+        else MaterialTheme.colorScheme.surfaceVariant
+
+    val contentColor =
+        if (enabled) MaterialTheme.colorScheme.onPrimaryContainer
+        else MaterialTheme.colorScheme.onSurfaceVariant
+
     Surface(
-        color = MaterialTheme.colorScheme.primaryContainer,
+        color = backgroundColor,
         shape = RoundedCornerShape(18.dp),
-        tonalElevation = 3.dp,
+        tonalElevation = if (enabled) 3.dp else 0.dp,
         modifier = Modifier
-            .clickable { onClick() }
+            .clickable(enabled = enabled) { onClick() }
     ) {
         Row(
             modifier = Modifier
@@ -170,15 +214,20 @@ private fun ActionChip(
                 Icon(
                     imageVector = icon,
                     contentDescription = "$label icon",
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    tint = contentColor,
                     modifier = Modifier.size(20.dp)
                 )
             }
+
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onPrimaryContainer
+                color = contentColor
             )
+
+            if (trailing != null) {
+                trailing()
+            }
         }
     }
 }
