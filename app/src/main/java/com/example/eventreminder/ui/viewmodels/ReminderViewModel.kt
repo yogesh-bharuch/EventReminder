@@ -429,7 +429,7 @@ class ReminderViewModel @Inject constructor(
                     }
                 }
 
-            Timber.tag(SYNC_TAG).i("✅ Sync finished successfully [ReminderViewModel.kt::syncRemindersWithServer]")
+            Timber.tag(SYNC_TAG).i("✅ Sync finished successfully → $message [ReminderViewModel.kt::syncRemindersWithServer]")
             _events.emit(UiEvent.ShowMessage(message))
         }
 
