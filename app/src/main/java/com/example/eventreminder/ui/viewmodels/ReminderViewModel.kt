@@ -32,6 +32,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.receiveAsFlow
 import com.example.eventreminder.logging.DELETE_TAG
 import com.example.eventreminder.logging.SAVE_TAG
+import com.example.eventreminder.logging.SYNC_TAG
 import com.example.eventreminder.sync.core.SyncBlockedReason
 
 
@@ -350,18 +351,18 @@ class ReminderViewModel @Inject constructor(
     // ============================================================
     fun syncRemindersWithServer() = viewModelScope.launch {
         if (_isSyncing.value) {
-            Timber.tag("SYNC").w("⛔ Sync ignored (already running) [ReminderViewModel.kt::syncRemindersWithServer]")
+            Timber.tag(SYNC_TAG).w("⛔ Sync ignored (already running) [ReminderViewModel.kt::syncRemindersWithServer]")
             return@launch
         }
 
         _isSyncing.value = true
-        Timber.tag("SYNC").i("▶️ Sync started [ReminderViewModel.kt::syncRemindersWithServer]")
+        Timber.tag(SYNC_TAG).i("▶️ Sync started [ReminderViewModel.kt::syncRemindersWithServer]")
 
         try {
             // --------------------------------------------------------
             // Step 1: Perform full remote ↔ local sync
             // --------------------------------------------------------
-            Timber.tag("SYNC").i("⏳ Calling SyncEngine.syncAll() [ReminderViewModel.kt::syncRemindersWithServer]")
+            Timber.tag(SYNC_TAG).i("⏳ Calling SyncEngine.syncAll() [ReminderViewModel.kt::syncRemindersWithServer]")
             val result = syncEngine.syncAll()
 
             // --------------------------------------------------------
@@ -369,25 +370,25 @@ class ReminderViewModel @Inject constructor(
             // --------------------------------------------------------
             when (result.blockedReason) {
                 SyncBlockedReason.USER_NOT_LOGGED_IN -> {
-                    Timber.tag("SYNC").w("🚫 Sync blocked: USER_NOT_LOGGED_IN [ReminderViewModel.kt::syncRemindersWithServer]")
+                    Timber.tag(SYNC_TAG).w("🌐 Sync blocked: NO_INTERNET [ReminderViewModel.kt::syncRemindersWithServer]")
                     _events.emit(UiEvent.ShowMessage("Please sign in to sync"))
                     return@launch
                 }
 
                 SyncBlockedReason.EMAIL_NOT_VERIFIED -> {
-                    Timber.tag("SYNC").w("🚫 Sync blocked: EMAIL_NOT_VERIFIED [ReminderViewModel.kt::syncRemindersWithServer]")
+                    Timber.tag(SYNC_TAG).w("🚫 Sync blocked: EMAIL_NOT_VERIFIED [ReminderViewModel.kt::syncRemindersWithServer]")
                     _events.emit(UiEvent.ShowMessage("Verify your email to enable sync"))
                     return@launch
                 }
 
                 SyncBlockedReason.NO_INTERNET -> {
-                    Timber.tag("SYNC").w("🌐 Sync blocked: NO_INTERNET [ReminderViewModel.kt::syncRemindersWithServer]")
+                    Timber.tag(SYNC_TAG).w("🌐 Sync blocked: NO_INTERNET [ReminderViewModel.kt::syncRemindersWithServer]")
                     _events.emit(UiEvent.ShowMessage("No internet connection"))
                     return@launch
                 }
 
                 null -> {
-                    Timber.tag("SYNC").i("✅ No sync blocks detected [ReminderViewModel.kt::syncRemindersWithServer]")
+                    //Timber.tag(SYNC_TAG).i("✅ No sync blocks detected [ReminderViewModel.kt::syncRemindersWithServer]")
                 }
             }
 
@@ -395,9 +396,7 @@ class ReminderViewModel @Inject constructor(
             // Step 2: Re-schedule all enabled reminders
             // --------------------------------------------------------
             val reminders = repo.getNonDeletedEnabled()
-            Timber.tag("SYNC").i(
-                "🔁 Rescheduling ${reminders.size} reminders after sync [ReminderViewModel.kt::syncRemindersWithServer]"
-            )
+            Timber.tag(SYNC_TAG).i("🔁 Rescheduling ${reminders.size} reminders after sync [ReminderViewModel.kt::syncRemindersWithServer]")
 
             reminders.forEach { reminder ->
                 schedulingEngine.processSavedReminder(reminder)
@@ -408,14 +407,12 @@ class ReminderViewModel @Inject constructor(
             // --------------------------------------------------------
             val message =
                 if (result.isEmpty()) {
-                    Timber.tag("SYNC").i("ℹ️ Sync completed with no changes [ReminderViewModel.kt::syncRemindersWithServer]")
+                    Timber.tag(SYNC_TAG).i("ℹ️ Sync completed with no changes [ReminderViewModel.kt::syncRemindersWithServer]")
                     "Sync completed (no changes)"
                 } else {
-                    Timber.tag("SYNC").i(
-                        "📊 Sync summary L→R(C:${result.localToRemoteCreated},U:${result.localToRemoteUpdated},D:${result.localToRemoteDeleted}) " +
+                    Timber.tag(SYNC_TAG).i("📊 Sync summary L→R(C:${result.localToRemoteCreated},U:${result.localToRemoteUpdated},D:${result.localToRemoteDeleted}) " +
                                 "R→L(C:${result.remoteToLocalCreated},U:${result.remoteToLocalUpdated},D:${result.remoteToLocalDeleted}) " +
-                                "[ReminderViewModel.kt::syncRemindersWithServer]"
-                    )
+                                "[ReminderViewModel.kt::syncRemindersWithServer]")
 
                     buildString {
                         append("Sync completed\n")
@@ -432,7 +429,7 @@ class ReminderViewModel @Inject constructor(
                     }
                 }
 
-            Timber.tag("SYNC").i("✅ Sync finished successfully [ReminderViewModel.kt::syncRemindersWithServer]")
+            Timber.tag(SYNC_TAG).i("✅ Sync finished successfully [ReminderViewModel.kt::syncRemindersWithServer]")
             _events.emit(UiEvent.ShowMessage(message))
         }
 
@@ -442,22 +439,22 @@ class ReminderViewModel @Inject constructor(
         catch (e: com.google.firebase.firestore.FirebaseFirestoreException) {
             val errorMsg = when (e.code) {
                 com.google.firebase.firestore.FirebaseFirestoreException.Code.PERMISSION_DENIED -> {
-                    Timber.tag("SYNC").e(e, "🚫 Firestore PERMISSION_DENIED [ReminderViewModel.kt::syncRemindersWithServer]")
+                    Timber.tag(SYNC_TAG).e(e, "🚫 Firestore PERMISSION_DENIED [ReminderViewModel.kt::syncRemindersWithServer]")
                     "Sync failed: permission denied"
                 }
 
                 com.google.firebase.firestore.FirebaseFirestoreException.Code.RESOURCE_EXHAUSTED -> {
-                    Timber.tag("SYNC").e(e, "📛 Firestore RESOURCE_EXHAUSTED [ReminderViewModel.kt::syncRemindersWithServer]")
+                    Timber.tag(SYNC_TAG).e(e, "📛 Firestore RESOURCE_EXHAUSTED [ReminderViewModel.kt::syncRemindersWithServer]")
                     "Sync failed: quota exceeded"
                 }
 
                 com.google.firebase.firestore.FirebaseFirestoreException.Code.UNAVAILABLE -> {
-                    Timber.tag("SYNC").e(e, "🌐 Firestore UNAVAILABLE [ReminderViewModel.kt::syncRemindersWithServer]")
+                    Timber.tag(SYNC_TAG).e(e, "🌐 Firestore UNAVAILABLE [ReminderViewModel.kt::syncRemindersWithServer]")
                     "Sync service unavailable"
                 }
 
                 else -> {
-                    Timber.tag("SYNC").e(e, "❌ Firestore error code=${e.code} [ReminderViewModel.kt::syncRemindersWithServer]")
+                    Timber.tag(SYNC_TAG).e(e, "❌ Firestore error code=${e.code} [ReminderViewModel.kt::syncRemindersWithServer]")
                     "Sync failed"
                 }
             }
@@ -472,12 +469,12 @@ class ReminderViewModel @Inject constructor(
             val errorMsg = when (e) {
                 is java.net.UnknownHostException,
                 is java.net.SocketTimeoutException -> {
-                    Timber.tag("SYNC").w("🌐 Network error during sync [ReminderViewModel.kt::syncRemindersWithServer]")
+                    Timber.tag(SYNC_TAG).w("🌐 Network error during sync [ReminderViewModel.kt::syncRemindersWithServer]")
                     "No internet connection"
                 }
 
                 else -> {
-                    Timber.tag("SYNC").e(e, "❌ Unexpected sync failure [ReminderViewModel.kt::syncRemindersWithServer]")
+                    Timber.tag(SYNC_TAG).e(e, "❌ Unexpected sync failure [ReminderViewModel.kt::syncRemindersWithServer]")
                     "Sync failed"
                 }
             }
@@ -486,7 +483,7 @@ class ReminderViewModel @Inject constructor(
         }
         finally {
             _isSyncing.value = false
-            Timber.tag("SYNC").i("🔓 Sync state reset (_isSyncing=false) [ReminderViewModel.kt::syncRemindersWithServer]")
+            Timber.tag(SYNC_TAG).i("🔓 Sync state reset (_isSyncing=false) [ReminderViewModel.kt::syncRemindersWithServer]")
         }
     }
 

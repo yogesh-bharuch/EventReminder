@@ -1,8 +1,5 @@
 package com.example.eventreminder.ui.screens
 
-// =============================================================
-// Imports
-// =============================================================
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
@@ -36,15 +33,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import timber.log.Timber
 import com.example.eventreminder.logging.SAVE_TAG
+import com.example.eventreminder.logging.SYNC_TAG
 
-// =============================================================
-// Constants
-// =============================================================
+
 private const val TAG = "HomeScreen"
 
-// =============================================================
-// HomeScreen Composable
-// =============================================================
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
@@ -192,6 +185,7 @@ fun HomeScreen(
                 },
                 onSyncClick = {
                     coroutineScope.launch {
+                        Timber.tag(SYNC_TAG).i("▶️ Sync clicked [HomeScreen.kt::onSyncClick]")
                         reminderVm.syncRemindersWithServer()
                     }
                 },

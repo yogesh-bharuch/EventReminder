@@ -19,6 +19,7 @@ const val AUTH_STATE_TAG = "AuthState"
 const val SAVE_TAG = "SaveReminder"
 const val DELETE_TAG = "DeleteReminder"
 const val DISMISS_TAG = "DismissReminder"
+const val SYNC_TAG = "SyncReminders"
 
 // -------------------------------------------------------------
 // Scheduling / Engine
