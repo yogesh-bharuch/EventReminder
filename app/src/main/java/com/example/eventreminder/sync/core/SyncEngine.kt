@@ -331,6 +331,17 @@ class SyncEngine(
                 maxRemoteUpdatedAt = remoteUpdatedAt
             }
 
+            // -----------------------------------------------------
+            // COUNT R2L CREATE vs UPDATE (MISSING PART)
+            // -----------------------------------------------------
+            val localUpdatedAt = config.daoAdapter.getLocalUpdatedAt(docId)
+
+            if (localUpdatedAt != null) {
+                result.remoteToLocalUpdated++
+            } else {
+                result.remoteToLocalCreated++
+            }
+
             toUpsert.add(config.fromRemote(docId, data))
         }
 
