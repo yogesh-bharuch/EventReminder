@@ -25,8 +25,39 @@ class RealAlarmRepository @Inject constructor(
 ) {
 
     /**
-     * Builds a list of AlarmEntry from actual reminders in the DB.
-     * Expands all offsets.
+     * Caller:
+     *  - RealReportBuilder.buildReport()
+     *
+     * Responsibility:
+     *  - Loads all enabled reminders for the currently logged-in user.
+     *  - Computes the NEXT firing time for each reminder using:
+     *      - event base time
+     *      - repeat rule
+     *      - reminder offsets
+     *  - Filters out past alarms.
+     *  - Expands reminders into individual alarm entries per offset.
+     *
+     * Input:
+     *  - None (uses UID from UserIdProvider).
+     *
+     * Output:
+     *  - List<AlarmEntry> where each entry represents:
+     *      - one reminder
+     *      - one offset
+     *      - one future firing time
+     *
+     * Ordering:
+     *  - No guaranteed order (caller is responsible for sorting).
+     *
+     * Failure Conditions:
+     *  - Throws if user is not logged in (UID is null).
+     *
+     * Time Semantics:
+     *  - All time calculations are in epoch millis.
+     *  - Uses NextOccurrenceCalculator as the single recurrence engine.
+     *
+     * Side Effects:
+     *  - None (read-only database access).
      */
     suspend fun loadActiveAlarms(): List<AlarmEntry> {
 
