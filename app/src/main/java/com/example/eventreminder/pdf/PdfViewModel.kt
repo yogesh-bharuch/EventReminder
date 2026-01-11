@@ -5,15 +5,14 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
-import android.util.Log
-import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.flow.StateFlow
 import com.example.eventreminder.ui.viewmodels.ReminderViewModel
 
 
@@ -22,7 +21,8 @@ import com.example.eventreminder.ui.viewmodels.ReminderViewModel
 class PdfViewModel @Inject constructor(
     @ApplicationContext private val appContext: Context,
     private val pdfGenerator: PdfGenerator,
-    private val realReportBuilder: RealReportBuilder
+    private val realReportBuilder: RealReportBuilder,
+    private val reminderListReportBuilder: ReminderListReportBuilder
 ) : ViewModel() {
 
     // ---------------------------------------------------------
@@ -67,14 +67,14 @@ class PdfViewModel @Inject constructor(
                 _todo3PdfUri.value = uri
                 _openPdfEvent.send(uri)
 
-                Log.d("PDF URI", "Pdf file: $uri")
+                Timber.tag(SAVE_TAG).d("📄 Alarm PDF generated → $uri [PdfViewModel.kt::runTodo3RealReport]")
 
                 // ✅ success feedback
                 ReminderViewModel.UiEvent.ShowMessage("PDF generated successfully")
                     .also { /* handled by HomeScreen */ }
 
             } catch (e: Exception) {
-                Log.e("PDF", "PDF generation error", e)
+                Timber.tag(SAVE_TAG).e(e, "💥 Alarm PDF generation error [PdfViewModel.kt::runTodo3RealReport]")
                 ReminderViewModel.UiEvent.ShowMessage("PDF generation failed")
                     .also { /* handled by HomeScreen */ }
 
@@ -84,4 +84,38 @@ class PdfViewModel @Inject constructor(
         }
     }
 
+    // =========================================================
+    // REMINDER LIST PDF (NEW FEATURE – NO OFFSETS)
+    // =========================================================
+    fun runReminderListReport() {
+        viewModelScope.launch {
+            if (_isGeneratingPdf.value) return@launch
+            _isGeneratingPdf.value = true
+
+            try {
+                val report = reminderListReportBuilder.buildReport()
+                val uri = pdfGenerator
+                    .generateReminderListPdf(appContext, report)
+                    .getOrNull()
+
+                if (uri == null) {
+                    ReminderViewModel.UiEvent.ShowMessage("Export failed")
+                        .also { /* handled by HomeScreen */ }
+                    return@launch
+                }
+
+                _openPdfEvent.send(uri)
+
+                Timber.tag(SAVE_TAG).d("📄 Reminder list PDF generated → $uri [PdfViewModel.kt::runReminderListReport]")
+
+            } catch (e: Exception) {
+                Timber.tag(SAVE_TAG).e(e, "💥 Reminder list PDF error [PdfViewModel.kt::runReminderListReport]")
+                ReminderViewModel.UiEvent.ShowMessage("Export failed")
+                    .also { /* handled by HomeScreen */ }
+
+            } finally {
+                _isGeneratingPdf.value = false
+            }
+        }
+    }
 }
