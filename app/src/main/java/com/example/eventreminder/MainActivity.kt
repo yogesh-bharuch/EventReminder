@@ -17,6 +17,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.view.WindowCompat
 import androidx.navigation.compose.rememberNavController
 import com.example.eventreminder.navigation.AppNavGraph
 import com.example.eventreminder.navigation.HomeGraphRoute
@@ -47,6 +48,9 @@ class MainActivity : ComponentActivity() {
         // Extract pending reminder (if launched from notification)
         pendingReminderId = intent.getStringExtra(EXTRA_REMINDER_ID_STRING)
         Timber.tag(TAG).d("onCreate → pendingReminderId=$pendingReminderId")
+
+        // ✅ Tell Android to fit system windows (no edge-to-edge)
+        WindowCompat.setDecorFitsSystemWindows(window, true)
 
         setContent {
 

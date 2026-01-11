@@ -46,7 +46,7 @@ class SyncEngine(
         val result = SyncResult()
         var networkFailure = false   // ⭐ NEW
 
-        Timber.tag(SYNC_TAG).i("Sync requested [SyncEngine.kt::syncAll]")
+        //Timber.tag(SYNC_TAG).i("Sync requested [SyncEngine.kt::syncAll]")
 
         // 🔐 AUTH HARD GATE
         val auth = FirebaseAuth.getInstance()
@@ -72,7 +72,7 @@ class SyncEngine(
         }
 
         val userId = user.uid
-        Timber.tag(SYNC_TAG).i("SYNC START → uid=$userId [SyncEngine.kt::syncAll]")
+        //Timber.tag(SYNC_TAG).i("SYNC START → uid=$userId [SyncEngine.kt::syncAll]")
 
         // ENTITY LOOP
         for (raw in syncConfig.entities) {
@@ -87,7 +87,7 @@ class SyncEngine(
                     SyncDirection.REMOTE_TO_LOCAL -> syncRemoteToLocal(userId, config, result)
 
                     SyncDirection.BIDIRECTIONAL -> {
-                        //Timber.tag(SYNC_TAG).i("Bi_direction Sync requested [SyncEngine.kt::syncAll]")
+                        Timber.tag(SYNC_TAG).i("Bi_direction Sync requested [SyncEngine.kt::syncAll]")
                         syncLocalToRemote(userId, config, result)
                         syncRemoteToLocal(userId, config, result)
                     }
@@ -111,7 +111,7 @@ class SyncEngine(
             result.blockedReason = SyncBlockedReason.NO_INTERNET
         }
 
-        Timber.tag(SYNC_TAG).i("SYNC COMPLETE ↑C:${result.localToRemoteCreated} ↑U:${result.localToRemoteUpdated} ↑D:${result.localToRemoteDeleted} " + "↓C:${result.remoteToLocalCreated} ↓U:${result.remoteToLocalUpdated} ↓D:${result.remoteToLocalDeleted} [SyncEngine.kt::syncAll]")
+        //Timber.tag(SYNC_TAG).i("SYNC COMPLETE ↑C:${result.localToRemoteCreated} ↑U:${result.localToRemoteUpdated} ↑D:${result.localToRemoteDeleted} " + "↓C:${result.remoteToLocalCreated} ↓U:${result.remoteToLocalUpdated} ↓D:${result.remoteToLocalDeleted} [SyncEngine.kt::syncAll]")
 
         return result
     }
@@ -124,14 +124,14 @@ class SyncEngine(
         config: EntitySyncConfig<Local>,
         result: SyncResult
     ) {
-        Timber.tag(SYNC_TAG).d("▶️ L2R ENTER key=${config.key} Sync Started [SyncEngine.kt::syncLocalToRemote]")
+        Timber.tag(SYNC_TAG).i("▶️ L2R Started for key=${config.key} [SyncEngine.kt::syncLocalToRemote]")
 
         val meta = syncMetadataDao.get(config.key)
         val lastLocalSyncAt = meta?.lastLocalSyncAt
-        Timber.tag(SYNC_TAG).d("L2R lastLocalSyncAt=$lastLocalSyncAt [SyncEngine.kt::syncLocalToRemote]")
+        //Timber.tag(SYNC_TAG).d("L2R lastLocalSyncAt=$lastLocalSyncAt: ${formatEpochMillis(lastLocalSyncAt)} Hrs. [SyncEngine.kt::syncLocalToRemote]")
 
         val changedLocals = config.daoAdapter.getLocalsChangedAfter(lastLocalSyncAt)
-        Timber.tag(SYNC_TAG).d("L2R changedLocals.size=${changedLocals.size} [SyncEngine.kt::syncLocalToRemote]")
+        Timber.tag(SYNC_TAG).d("L2R ${changedLocals.size ?: 0} updated records found. after lastLocalSyncAt= ${formatEpochMillis(lastLocalSyncAt)} Hrs. ($lastLocalSyncAt). [SyncEngine.kt::syncLocalToRemote]")
 
         if (changedLocals.isEmpty()) return
 
@@ -140,7 +140,7 @@ class SyncEngine(
         var maxUpdatedAt = lastLocalSyncAt
 
         for ((index, local) in changedLocals.withIndex()) {
-            //Timber.tag(SYNC_TAG).d("➡️ L2R[$index] START")
+            //Timber.tag(SYNC_TAG).d("➡️ L2R[$index] START. [SyncEngine.kt::syncLocalToRemote]")
 
             val localUpdatedAt = config.getUpdatedAt(local)
             val docId = config.getLocalId(local)
@@ -154,7 +154,7 @@ class SyncEngine(
             // 🔥 LOCAL TOMBSTONE ALWAYS WINS
             // -----------------------------------------------------
             if (config.isDeleted(local)) {
-                //Timber.tag(SYNC_TAG).d("L2R[$index] isDeleted=true → batch.set")
+                //Timber.tag(SYNC_TAG).d("L2R[$index] isDeleted=true → batch.set. [SyncEngine.kt::syncLocalToRemote]")
                 result.localToRemoteDeleted++
 
                 batch.set(
@@ -180,24 +180,22 @@ class SyncEngine(
             // -----------------------------------------------------
             // 🌐 NETWORK READ (GUARDED)
             // -----------------------------------------------------
-            //Timber.tag(SYNC_TAG).d("🌐 L2R[$index] BEFORE docRef.get()")
+            //Timber.tag(SYNC_TAG).d("🌐 L2R[$index] BEFORE docRef.get(). [SyncEngine.kt::syncLocalToRemote]")
             val remoteSnapshot = try {
                 docRef.get().await()
             } catch (t: Throwable) {
                 if (t is java.net.UnknownHostException || t is java.net.SocketTimeoutException) {
-                    Timber.tag(SYNC_TAG).w("🌐 L2R[$index] network down → abort L2R")
+                    Timber.tag(SYNC_TAG).w("🌐 L2R[$index] network down → abort L2R. [SyncEngine.kt::syncLocalToRemote]")
                     result.blockedReason = SyncBlockedReason.NO_INTERNET
                     return
                 }
                 throw t
             }
-            //Timber.tag(SYNC_TAG).d("🌐 L2R[$index] AFTER docRef.get() exists=${remoteSnapshot.exists()}")
+            //Timber.tag(SYNC_TAG).d("🌐 L2R[$index] AFTER docRef.get() exists=${remoteSnapshot.exists()}. [SyncEngine.kt::syncLocalToRemote]")
 
             val remoteData = remoteSnapshot.data
-            val remoteDeleted =
-                remoteData?.get("isDeleted") as? Boolean ?: false
-            val remoteUpdatedAt =
-                (remoteData?.get("updatedAt") as? Number)?.toLong()
+            val remoteDeleted = remoteData?.get("isDeleted") as? Boolean ?: false
+            val remoteUpdatedAt = (remoteData?.get("updatedAt") as? Number)?.toLong()
 
             if (remoteDeleted) {
                 result.localToRemoteSkipped++
@@ -229,7 +227,7 @@ class SyncEngine(
             batch.commit().await()
         } catch (t: Throwable) {
             if (t is java.net.UnknownHostException || t is java.net.SocketTimeoutException) {
-                Timber.tag(SYNC_TAG).w("🌐 L2R network down during commit → abort")
+                Timber.tag(SYNC_TAG).w("🌐 L2R network down during commit → abort. [SyncEngine.kt::syncLocalToRemote]")
                 result.blockedReason = SyncBlockedReason.NO_INTERNET
                 return
             }
@@ -245,15 +243,11 @@ class SyncEngine(
                     lastRemoteSyncAt = meta?.lastRemoteSyncAt
                 )
             )
-            val humanReadable = Instant.ofEpochMilli(maxUpdatedAt?.toLong() ?: System.currentTimeMillis())
-                .atZone(ZoneId.systemDefault())   // or ZoneId.of("Asia/Kolkata")
-                .format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"))
+            Timber.tag(SYNC_TAG).d("L2R syncMetadata table updated for ${config.key} lastLocalSyncAt → ${formatEpochMillis(maxUpdatedAt)} ($maxUpdatedAt). [SyncEngine.kt::syncLocalToRemote]")
 
-
-            Timber.tag(SYNC_TAG).d("L2R syncMetadata table updated for ${config.key}  lastLocalSyncAt → $humanReadable")
         }
 
-        Timber.tag(SYNC_TAG).d("✅ L2R Completed for key=${config.key}")
+        Timber.tag(SYNC_TAG).d("✅ L2R Sync Completed for key=${config.key}. [SyncEngine.kt::syncLocalToRemote]")
     }
 
 
@@ -265,7 +259,7 @@ class SyncEngine(
         config: EntitySyncConfig<Local>,
         result: SyncResult
     ) {
-        Timber.tag(SYNC_TAG).d("▶️ R2L ENTER key=${config.key} [SyncEngine.kt::syncRemoteToLocal]")
+        Timber.tag(SYNC_TAG).d("▶️ R2L Started for key=${config.key}. [SyncEngine.kt::syncRemoteToLocal]")
 
         val meta = syncMetadataDao.get(config.key)
         val lastRemoteSyncAt = meta?.lastRemoteSyncAt
@@ -274,7 +268,7 @@ class SyncEngine(
         // -----------------------------------------------------
         // 🌐 NETWORK READ (GUARDED)
         // -----------------------------------------------------
-        //Timber.tag(SYNC_TAG).d("🌐 R2L BEFORE collection.get()")
+        //Timber.tag(SYNC_TAG).d("🌐 R2L BEFORE collection.get(). [SyncEngine.kt::syncRemoteToLocal]")
         val snapshot = try {
             config.getCollectionRef()
                 .whereEqualTo("uid", userId)
@@ -289,7 +283,7 @@ class SyncEngine(
             }
             throw t
         }
-        Timber.tag(SYNC_TAG).d("🌐 R2L AFTER collection.get() size=${snapshot.size()} [SyncEngine.kt::syncRemoteToLocal]")
+        Timber.tag(SYNC_TAG).d("🌐 R2L total: ${snapshot.size()} fetched. [SyncEngine.kt::syncRemoteToLocal]")
 
         if (snapshot.isEmpty) return
 
@@ -367,10 +361,19 @@ class SyncEngine(
                     lastRemoteSyncAt = maxRemoteUpdatedAt
                 )
             )
-            Timber.tag(SYNC_TAG).d("R2L cursor advanced → $maxRemoteUpdatedAt [SyncEngine.kt::syncRemoteToLocal]")
+            Timber.tag(SYNC_TAG).d("R2L syncMetadata table updated for lastRemoteSyncAt→ ${formatEpochMillis(maxRemoteUpdatedAt)}. ($maxRemoteUpdatedAt) [SyncEngine.kt::syncRemoteToLocal]")
         }
 
-        Timber.tag(SYNC_TAG).d("✅ R2L EXIT key=${config.key} [SyncEngine.kt::syncRemoteToLocal]")
+        Timber.tag(SYNC_TAG).d(
+            "✅ R2L Completed for key=${config.key} " +
+                    "[created=${result.remoteToLocalCreated}, " +
+                    "updated=${result.remoteToLocalUpdated}, " +
+                    "deleted=${result.remoteToLocalDeleted}, " +
+                    "skipped=${result.remoteToLocalSkipped}]\n" +
+                    "after lastRemoteSyncAt= ${formatEpochMillis(lastRemoteSyncAt)} Hrs. ($lastRemoteSyncAt).\n" +
+                    "[SyncEngine.kt::syncRemoteToLocal]"
+        )
+        //Timber.tag(SYNC_TAG).d("✅ R2L Completed for key=${config.key} [SyncEngine.kt::syncRemoteToLocal]")
     }
 
 
@@ -395,5 +398,11 @@ class SyncEngine(
         return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
     }
 
+    private fun formatEpochMillis(epochMillis: Long?): String {
+        if (epochMillis == null) return "—"
+        return Instant.ofEpochMilli(epochMillis)
+            .atZone(ZoneId.systemDefault())   // Asia/Kolkata implicitly
+            .format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"))
+    }
 
 }

@@ -62,25 +62,33 @@ fun HomeScreen(
     val coroutineScope = rememberCoroutineScope()
 
     LaunchedEffect(reminderVm) {
-        Timber.tag(SAVE_TAG).d("📥 HomeScreen UiEvent collector STARTED")
+        //Timber.tag(SAVE_TAG).d("📥 HomeScreen UiEvent collector STARTED. [HomeScreen.kt::UiEventCollector]")
 
         reminderVm.events.collect { event ->
             when (event) {
 
                 is ReminderViewModel.UiEvent.SaveSuccess -> {
-                    Timber.tag(SAVE_TAG).d("🔔 Snackbar → ${event.message}")
+                    Timber.tag(SAVE_TAG).d("🔔 Snackbar → ${event.message} [HomeScreen.kt::LaunchedEffect(reminderVm)]")
                     snackbarHostState.showSnackbar(event.message)
+                    reminderVm.clearUiEvent()
                 }
 
                 is ReminderViewModel.UiEvent.SaveError -> {
-                    Timber.tag(SAVE_TAG).d("❌ Snackbar → ${event.message}")
+                    Timber.tag(SAVE_TAG).d("❌ Snackbar → ${event.message} [HomeScreen.kt::LaunchedEffect(reminderVm)]")
                     snackbarHostState.showSnackbar(event.message)
+                    reminderVm.clearUiEvent()
                 }
 
                 is ReminderViewModel.UiEvent.ShowMessage -> {
-                    Timber.tag(SAVE_TAG).d("ℹ️ Snackbar → ${event.message}")
+                    Timber.tag(SAVE_TAG).d("ℹ️ Snackbar → ${event.message} [HomeScreen.kt::LaunchedEffect(reminderVm)]")
                     snackbarHostState.showSnackbar(event.message)
+                    reminderVm.clearUiEvent()
                 }
+
+                ReminderViewModel.UiEvent.Consumed -> {
+                    // Intentionally ignored — used only to clear replay cache
+                }
+
             }
         }
     }
@@ -158,7 +166,6 @@ fun HomeScreen(
         onManageRemindersClick = {
             navController.navigate(ReminderManagerRoute)
         },
-
         bottomBar = {
             HomeBottomTray(
                 isSyncing = isSyncing,
@@ -179,8 +186,9 @@ fun HomeScreen(
                 },
                 onExportClick = {
                     coroutineScope.launch {
-                        reminderVm.exportRemindersCsv()
-                        snackbarHostState.showSnackbar("Export complete")
+                        //reminderVm.exportRemindersCsv()
+                        pdfviewModel.runReminderListReport()
+                        //snackbarHostState.showSnackbar("Export complete")
                     }
                 },
                 onSyncClick = {

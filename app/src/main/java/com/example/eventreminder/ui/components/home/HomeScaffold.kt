@@ -4,6 +4,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.Add
@@ -19,6 +23,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,8 +41,16 @@ fun HomeScaffold(
     content: @Composable (Modifier) -> Unit
 ) {
     Scaffold(
+        // ---------------------------------------------------------
+        // System window insets (status bar + navigation bar safe)
+        // ---------------------------------------------------------
+        contentWindowInsets = WindowInsets.safeDrawing,
+
         topBar = {
             TopAppBar(
+                // ✅ Ensure TopAppBar stays below status bar
+                windowInsets = TopAppBarDefaults.windowInsets,
+
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
@@ -71,7 +84,14 @@ fun HomeScaffold(
                 Icon(Icons.Default.Add, "Add")
             }
         },
-        bottomBar = { bottomBar() }
+        bottomBar = {
+            // ✅ Ensure bottom tray stays above navigation bar
+            Row(
+                modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars)
+            ) {
+                bottomBar()
+            }
+        }
     ) { padding ->
 
         content(

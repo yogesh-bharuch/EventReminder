@@ -47,13 +47,15 @@ class ReminderViewModel @Inject constructor(
 
     private val deleteInProgress = mutableSetOf<String>()
 
-    private val _events = MutableSharedFlow<UiEvent>(replay = 0, extraBufferCapacity = 1)
+    private val _events = MutableSharedFlow<UiEvent>(replay = 1, extraBufferCapacity = 1)
     val events = _events.asSharedFlow()
 
     sealed class UiEvent {
         data class SaveSuccess(val message: String) : UiEvent()
         data class SaveError(val message: String) : UiEvent()
         data class ShowMessage(val message: String) : UiEvent()
+
+        object Consumed : UiEvent()
     }
 
     private val _isSyncing = MutableStateFlow(false)
@@ -64,6 +66,13 @@ class ReminderViewModel @Inject constructor(
 
     private val _isRestoring = MutableStateFlow(false)
     val isRestoring: StateFlow<Boolean> = _isRestoring
+
+    fun clearUiEvent() {
+        viewModelScope.launch {
+            _events.emit(UiEvent.Consumed)
+            Timber.tag(SAVE_TAG).d("🧹 UiEvent replay cleared [ReminderViewModel.kt::clearUiEvent]")
+        }
+    }
 
     // ============================================================
     // UI STATE
@@ -356,7 +365,7 @@ class ReminderViewModel @Inject constructor(
         }
 
         _isSyncing.value = true
-        Timber.tag(SYNC_TAG).i("▶️ Sync started [ReminderViewModel.kt::syncRemindersWithServer]")
+        //Timber.tag(SYNC_TAG).i("▶️ Sync started [ReminderViewModel.kt::syncRemindersWithServer]")
 
         try {
             // --------------------------------------------------------
@@ -396,7 +405,7 @@ class ReminderViewModel @Inject constructor(
             // Step 2: Re-schedule all enabled reminders
             // --------------------------------------------------------
             val reminders = repo.getNonDeletedEnabled()
-            Timber.tag(SYNC_TAG).i("🔁 Rescheduling ${reminders.size} reminders after sync [ReminderViewModel.kt::syncRemindersWithServer]")
+            Timber.tag(SYNC_TAG).i("🔁 Alarms Rescheduling ${reminders.size} reminders after sync [ReminderViewModel.kt::syncRemindersWithServer]")
 
             reminders.forEach { reminder ->
                 schedulingEngine.processSavedReminder(reminder)
@@ -407,7 +416,7 @@ class ReminderViewModel @Inject constructor(
             // --------------------------------------------------------
             val message =
                 if (result.isEmpty()) {
-                    Timber.tag(SYNC_TAG).i("ℹ️ Sync completed with no changes [ReminderViewModel.kt::syncRemindersWithServer]")
+                    //Timber.tag(SYNC_TAG).i("ℹ️ Sync completed with no changes [ReminderViewModel.kt::syncRemindersWithServer]")
                     "Sync completed (no changes)"
                 } else {
                     Timber.tag(SYNC_TAG).i("📊 Sync summary L→R(C:${result.localToRemoteCreated},U:${result.localToRemoteUpdated},D:${result.localToRemoteDeleted}) " +
@@ -429,7 +438,7 @@ class ReminderViewModel @Inject constructor(
                     }
                 }
 
-            Timber.tag(SYNC_TAG).i("✅ Sync finished successfully → $message [ReminderViewModel.kt::syncRemindersWithServer]")
+            Timber.tag(SYNC_TAG).i("✅ Sync finished and rescheduled alarms successfully → $message [ReminderViewModel.kt::syncRemindersWithServer]")
             _events.emit(UiEvent.ShowMessage(message))
         }
 
@@ -483,7 +492,7 @@ class ReminderViewModel @Inject constructor(
         }
         finally {
             _isSyncing.value = false
-            Timber.tag(SYNC_TAG).i("🔓 Sync state reset (_isSyncing=false) [ReminderViewModel.kt::syncRemindersWithServer]")
+            //Timber.tag(SYNC_TAG).i("🔓 Sync state reset (_isSyncing=false) [ReminderViewModel.kt::syncRemindersWithServer]")
         }
     }
 
