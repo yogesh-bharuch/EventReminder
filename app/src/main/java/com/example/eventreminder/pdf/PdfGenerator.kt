@@ -31,7 +31,7 @@ class PdfGenerator @Inject constructor(
 ) {
 
     // Page geometry (A4-like)
-    private val pageWidth = 700 //595 // A4 size
+    private val pageWidth = 500 //595 // A4 size
     private val pageHeight = 842
 
     // Outer margins & breathing
@@ -44,11 +44,7 @@ class PdfGenerator @Inject constructor(
     private val titleSize = 12f              // report title (reduced)
     private val groupHeaderSize = 13f        // group header (bold, slightly larger than row)
     private val bodySize = 12f               // row font
-    private val flatPageBodySize = 10f               // row font
     private val smallSize = 11f              // footer / small text
-
-    // Emoji icon size
-    private val iconSize = 12f
 
     // Row band heights — medium spacing (1.4x) plus breathing for description column
     private val rowBandHeight = bodySize * 1.4f + 14f
@@ -59,9 +55,6 @@ class PdfGenerator @Inject constructor(
 
     private val headerDateFormatter = DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm")
     private val alarmDateFormatter = DateTimeFormatter.ofPattern("dd MMM yyyy, hh:mm a")
-
-    private val summaryBoxHeight = 125f
-    private val summaryBottomPadding = 24f
 
     // Emoji mappings (fallbacks; group icon will use first event emoji if group has alarms)
     private val groupEmojiMap = mapOf(
@@ -82,6 +75,8 @@ class PdfGenerator @Inject constructor(
         "home" to "🏠",
         "celebration" to "🎉",
         "time" to "🕒"
+        //"Work" to "💼",
+        //"Other" to "📌"
     )
 
     // =============================================================
@@ -121,12 +116,10 @@ class PdfGenerator @Inject constructor(
             }) ?: return Result.failure(IllegalStateException("Failed to create MediaStore entry"))
 
             val pdf = PdfDocument()
-            val (groupedPagesCount, flatPagesCount) = simulatePageCounts(report)
-            val totalPages = groupedPagesCount + flatPagesCount
+            val totalPages = simulatePageCounts(report)
 
             var pageNumber = 1
-            pageNumber = renderGroupedPages(pdf, report, pageNumber, groupedPagesCount, totalPages, drawSummary = flatPagesCount == 0)
-            //pageNumber = renderFlatPages(pdf, report, pageNumber, flatPagesCount, totalPages, drawSummary = true)
+            pageNumber = renderGroupedPages(pdf, report, pageNumber, totalPages)
 
             resolver.openOutputStream(targetUri, "w")?.use { outputStream ->
                 pdf.writeTo(outputStream)
@@ -138,226 +131,6 @@ class PdfGenerator @Inject constructor(
             Result.failure(e)
         }
     }
-
-    /**
-     * Caller:
-     *  - renderGroupedPages()
-     *  - renderFlatPages()
-     *  - renderReminderListPages()
-     *
-     * Responsibility:
-     *  - Computes a footer-safe Y position for the summary box.
-     *  - Ensures summary never overlaps footer content.
-     *
-     * Output:
-     *  - Float Y-coordinate for summary box top.
-     *
-     * Side Effects:
-     *  - None (pure calculation).
-     */
-    private fun computeSummaryTop(): Float {
-        return pageHeight -
-                margin -
-                footerExtra -
-                summaryBottomPadding -
-                summaryBoxHeight
-    }
-
-    /**
-     * Caller:
-     *  - PdfViewModel.runReminderListReport()
-     *
-     * Responsibility:
-     *  - Generates the Reminder List PDF (no offsets, no alarms).
-     *  - Delegates rendering to renderReminderListPages().
-     *  - Saves the PDF into public Documents via MediaStore.
-     *
-     * Input:
-     *  - context: Application context for ContentResolver.
-     *  - report: ReminderListReport containing grouped reminder rows.
-     *
-     * Output:
-     *  - Result<Uri> pointing to the generated PDF file.
-     *
-     * Side Effects:
-     *  - Writes a PDF file to device storage.
-     */
-    /*fun generateReminderListPdf(context: Context, report: ReminderListReport): Result<Uri> {
-        return try {
-            val resolver = context.contentResolver
-            val fileName = "reminder_list_${System.currentTimeMillis()}.pdf"
-
-            val uri = resolver.insert(
-                MediaStore.Files.getContentUri("external"),
-                ContentValues().apply {
-                    put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
-                    put(MediaStore.MediaColumns.MIME_TYPE, "application/pdf")
-                    put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOCUMENTS)
-                }
-            ) ?: return Result.failure(
-                IllegalStateException("MediaStore insert failed")
-            )
-
-            val pdf = PdfDocument()
-
-            // 🔹 render reminder list pages (your existing logic)
-            renderReminderListPages(
-                pdf = pdf,
-                report = report
-            )
-
-            resolver.openOutputStream(uri)?.use {
-                pdf.writeTo(it)
-            }
-            pdf.close()
-
-            Result.success(uri)
-
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }*/
-
-    /**
-     * Caller:
-     *  - generateReminderListPdf()
-     *
-     * Responsibility:
-     *  - Renders reminder list pages with pagination.
-     *  - Ensures rows never overlap footer.
-     *  - Draws section headers, rows, summary, and footer.
-     *
-     * Input:
-     *  - pdf: PdfDocument instance being written.
-     *  - report: ReminderListReport containing grouped reminder data.
-     *
-     * Side Effects:
-     *  - Mutates PdfDocument by adding pages.
-     */
-    /*private fun renderReminderListPages(
-        pdf: PdfDocument,
-        report: ReminderListReport
-    ) {
-        var pageNumber = 1
-
-        var page = pdf.startPage(
-            PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber).create()
-        )
-        var canvas = page.canvas
-
-        val generatedAt = headerDateFormatter.format(report.generatedAt)
-
-        drawHeader(
-            canvas = canvas,
-            titleText = "Reminder List Report",
-            generatedAtStr = generatedAt
-        )
-
-        // First content Y position
-        var y = margin + titleSize + headerExtra
-
-        val titlePaint = Paint().apply {
-            isAntiAlias = true
-            textSize = groupHeaderSize
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        }
-
-        val bodyPaint = TextPaint().apply {
-            isAntiAlias = true
-            textSize = bodySize
-            color = Color.DKGRAY
-        }
-
-        // ---------------------------------------------------------
-        // Footer-safe bottom boundary (CRITICAL)
-        // Matches Alarm PDF spacing philosophy
-        // ---------------------------------------------------------
-        val contentBottom =
-            pageHeight - margin - footerExtra - smallSize
-
-        for (section in report.groupedByTitle) {
-
-            // -----------------------------------------------------
-            // Page break BEFORE section header if needed
-            // -----------------------------------------------------
-            if (y + groupHeaderBand > contentBottom) {
-                drawFooter(canvas, pageNumber, pageNumber, generatedAt)
-                pdf.finishPage(page)
-
-                pageNumber++
-                page = pdf.startPage(
-                    PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber).create()
-                )
-                canvas = page.canvas
-
-                drawHeader(canvas, "Reminder List Report", generatedAt)
-                y = margin + titleSize + headerExtra
-            }
-
-            val headerBaseline =
-                computeBaselineForRow(titlePaint, y, groupHeaderBand)
-
-            canvas.drawText(section.title, margin, headerBaseline, titlePaint)
-            y += groupHeaderBand
-
-            for (row in section.reminders) {
-
-                // -------------------------------------------------
-                // Page break BEFORE row if needed
-                // -------------------------------------------------
-                if (y + rowBandHeight > contentBottom) {
-                    drawFooter(canvas, pageNumber, pageNumber, generatedAt)
-                    pdf.finishPage(page)
-
-                    pageNumber++
-                    page = pdf.startPage(
-                        PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber).create()
-                    )
-                    canvas = page.canvas
-
-                    drawHeader(canvas, "Reminder List Report", generatedAt)
-                    y = margin + titleSize + headerExtra
-                }
-
-                val baseline =
-                    computeBaselineForRow(bodyPaint, y, rowBandHeight)
-
-                canvas.drawText(row.shortId, margin, baseline, bodyPaint)
-
-                canvas.drawText(
-                    ellipsize(row.description, bodyPaint, 220f),
-                    margin + 120f,
-                    baseline,
-                    bodyPaint
-                )
-
-                canvas.drawText(
-                    row.eventDateTime,
-                    margin + 360f,
-                    baseline,
-                    bodyPaint
-                )
-
-                y += rowBandHeight
-            }
-
-            // Visual breathing between sections
-            y += 8f
-        }
-
-        // ---------------------------------------------------------
-        // Summary (footer-safe)
-        // ---------------------------------------------------------
-        drawSimpleSummaryBox(
-            canvas = canvas,
-            top = computeSummaryTop(),
-            totalReminders = report.groupedByTitle.sumOf { it.reminders.size },
-            totalSections = report.groupedByTitle.size
-        )
-
-        drawFooter(canvas, pageNumber, pageNumber, generatedAt)
-        pdf.finishPage(page)
-    }*/
 
     /**
      * Caller:
@@ -376,30 +149,45 @@ class PdfGenerator @Inject constructor(
      * Side Effects:
      *  - None (pure calculation).
      */
-    private fun simulatePageCounts(report: ActiveAlarmReport): Pair<Int, Int> {
-        // compute content top/bottom taking into account header/footer breathing and column header height
-        val contentTop = margin + titleSize + headerExtra + (bodySize + 14f) // includes column header height
-        val contentBottom = pageHeight - margin - footerExtra - smallSize
+    private fun simulatePageCounts(report: ActiveAlarmReport): Int {
+        // ---------------------------------------------------------
+        // Compute usable vertical space (header + footer safe)
+        // ---------------------------------------------------------
+        val contentTop =
+            margin + titleSize + headerExtra + (bodySize + 14f) // includes column header height
+
+        val contentBottom =
+            pageHeight - margin - footerExtra - smallSize
+
         val usableHeight = contentBottom - contentTop
 
-        // compute how many data rows fit (rowsPerPage)
-        val rowsPerPage = max(1, (usableHeight / rowBandHeight).toInt())
+        // ---------------------------------------------------------
+        // Rows per page
+        // ---------------------------------------------------------
+        val rowsPerPage =
+            max(1, (usableHeight / rowBandHeight).toInt())
 
-        // grouped rows: group header (1) + number of alarms (each alarm is one row)
+        // ---------------------------------------------------------
+        // Count grouped rows
+        //  - 1 row per group header
+        //  - 1 row per valid alarm
+        // ---------------------------------------------------------
         var groupedRowCount = 0
+
         for (group in report.groupedByTitle) {
             if (group.alarms.isEmpty()) continue
-            groupedRowCount += 1 // group header row
-            // only count alarms that have an actionable nextTrigger (>0)
-            groupedRowCount += group.alarms.count { it.eventTitle.isNotBlank() && it.nextTrigger > 0L }
+
+            groupedRowCount += 1 // group header
+
+            groupedRowCount += group.alarms.count {
+                it.eventTitle.isNotBlank() && it.nextTrigger > 0L
+            }
         }
-        val groupedPages = max(1, (groupedRowCount + rowsPerPage - 1) / rowsPerPage)
 
-        // flat rows: number of alarms that will be shown in flat list
-        val flatRowCount = report.sortedAlarms.count { it.eventTitle.isNotBlank() && it.nextTrigger > 0L }
-        val flatPages = max(1, (flatRowCount + rowsPerPage - 1) / rowsPerPage)
-
-        return Pair(groupedPages, flatPages)
+        // ---------------------------------------------------------
+        // Compute required pages
+        // ---------------------------------------------------------
+        return max(1, (groupedRowCount + rowsPerPage - 1) / rowsPerPage)
     }
 
     /**
@@ -415,9 +203,7 @@ class PdfGenerator @Inject constructor(
      *  - pdf: PdfDocument instance.
      *  - report: ActiveAlarmReport.
      *  - startPageNumber: Page number to begin rendering from.
-     *  - pagesCount: Total grouped pages.
      *  - totalPages: Total pages across grouped + flat.
-     *  - drawSummary: Whether summary should be drawn.
      *
      * Output:
      *  - Next page number after finishing grouped pages.
@@ -425,7 +211,12 @@ class PdfGenerator @Inject constructor(
      * Side Effects:
      *  - Adds pages to PdfDocument.
      */
-    private fun renderGroupedPages(pdf: PdfDocument, report: ActiveAlarmReport, startPageNumber: Int, pagesCount: Int, totalPages: Int, drawSummary: Boolean): Int {
+    private fun renderGroupedPages(
+        pdf: PdfDocument,
+        report: ActiveAlarmReport,
+        startPageNumber: Int,
+        totalPages: Int
+    ): Int {
 
         if (report.groupedByTitle.isEmpty()) return startPageNumber
 
@@ -440,25 +231,21 @@ class PdfGenerator @Inject constructor(
         val headerTitle =
             "Event Reminder Report — ${context.getStringResourceOrDefault("app_name", "Event Reminder")}"
 
-        // column layout (same as drawColumnHeaderGrouped)
+        // column layout (Event Date & Time REMOVED)
         val columnWidths = listOf(
-            200f, // Event Date & Time
-            160f, // Description
-            120f, // Trigger Time
-            80f   // Offset
+            200f, // Description
+            150f, // Trigger Time
+            100f  // Offset
         )
 
         val firstColumnX = margin + 6f
 
+        // ✅ All columns LEFT aligned
         val columnStarts = buildList {
             var x = firstColumnX
-            for (i in columnWidths.indices) {
-                if (i == columnWidths.lastIndex) {
-                    add(pageWidth - margin - columnWidths[i]) // right-align last column
-                } else {
-                    add(x)
-                    x += columnWidths[i]
-                }
+            for (width in columnWidths) {
+                add(x)
+                x += width
             }
         }
 
@@ -475,13 +262,11 @@ class PdfGenerator @Inject constructor(
             textSize = groupHeaderSize
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
-
         val body = TextPaint().apply {
             isAntiAlias = true
             color = Color.DKGRAY
             textSize = bodySize
         }
-
         val sepPaint = Paint().apply {
             color = separatorColor
             strokeWidth = 1f
@@ -498,14 +283,17 @@ class PdfGenerator @Inject constructor(
             val firstAlarm = group.alarms.first()
             val groupEmoji = pickEventEmoji(firstAlarm.eventTitle)
 
-            val groupText = "$groupEmoji  ${group.title}"
+            // ✅ Count ONLY rendered alarms (same filter as rows)
+            val groupCount = group.alarms.count {
+                it.eventTitle.isNotBlank() && it.nextTrigger > 0L
+            }
+            val groupText = "$groupEmoji  ${group.title} ($groupCount)"
 
             // Check if next header fits, else page-break
             if (y + groupHeaderBand > contentBottom) {
                 drawFooter(canvas, pageNumber, totalPages, generatedAt)
                 pdf.finishPage(page)
 
-                // new page
                 pageNumber++
                 page = pdf.startPage(
                     PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber).create()
@@ -533,7 +321,6 @@ class PdfGenerator @Inject constructor(
                     drawFooter(canvas, pageNumber, totalPages, generatedAt)
                     pdf.finishPage(page)
 
-                    // new page
                     pageNumber++
                     page = pdf.startPage(
                         PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber).create()
@@ -551,45 +338,54 @@ class PdfGenerator @Inject constructor(
                 }
 
                 // -------------------------------------------
-                // Column 1 — Event Date & Time
-                // -------------------------------------------
-                val eventDateEpoch = alarm.eventDateEpoch ?: alarm.nextTrigger
-                val eventDateText = formatDate(eventDateEpoch)
-                canvas.drawText(truncate(eventDateText, body, columnWidths[0]), columnStarts[0], baseline, body)
-
-                // -------------------------------------------
-                // Column 2 — Description / Name
+                // Column 1 — Description / Name
                 // -------------------------------------------
                 val desc = alarm.description?.takeIf { it.isNotBlank() } ?: "-"
-                canvas.drawText(truncate(desc, body, columnWidths[1]), columnStarts[1], baseline, body)
+                canvas.drawText(truncate(desc, body, columnWidths[0]), columnStarts[0], baseline, body)
 
                 // -------------------------------------------
-                // Column 3 — Trigger Time
+                // Column 2 — Trigger Time
                 // -------------------------------------------
                 val trigText = formatDate(alarm.nextTrigger)
-                canvas.drawText(truncate(trigText, body, columnWidths[2]), columnStarts[2], baseline, body)
+                canvas.drawText(truncate(trigText, body, columnWidths[1]), columnStarts[1], baseline, body)
 
                 // -------------------------------------------
-                // Column 4 — Offset (right aligned)
+                // Column 3 — Offset (LEFT aligned)
                 // -------------------------------------------
                 val offsetText = formatOffset(alarm.offsetMinutes)
-                val offsetX = columnStarts[3] + columnWidths[3] - body.measureText(offsetText)
-                canvas.drawText(offsetText, offsetX, baseline, body)
+                canvas.drawText(truncate(offsetText, body, columnWidths[2]), columnStarts[2], baseline, body)
 
                 y += rowBandHeight
 
                 // horizontal separator
-                canvas.drawLine(margin, y + 1f, pageWidth - margin, y + 1f, sepPaint)
+                if (group != report.groupedByTitle.last()) {
+                    canvas.drawLine(margin, y + 1f, pageWidth - margin, y + 1f, sepPaint)
+                }
                 y += 8f
             }
 
             y += 6f
         }
 
-        if (drawSummary) {
-            val summaryTop = pageHeight - margin - footerExtra - 140f
-            drawSummaryBox(canvas, summaryTop, report)
+        // FINAL PAGE: Summary block (grouped report always ends document)
+
+        val summarySpacing = 16f
+        val summaryHeight = getSummaryBoxHeight(report)
+
+        if (y + summarySpacing + summaryHeight > contentBottom) {
+            drawFooter(canvas, pageNumber, totalPages, generatedAt)
+            pdf.finishPage(page)
+
+            pageNumber++
+            page = pdf.startPage(
+                PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber).create()
+            )
+            canvas = page.canvas
+            drawHeader(canvas, headerTitle, generatedAt)
+            y = margin + titleSize + headerExtra
         }
+
+        drawSummaryBox(canvas, y + summarySpacing, report)
 
         // Finish last grouped page
         drawFooter(canvas, pageNumber, totalPages, generatedAt)
@@ -598,172 +394,6 @@ class PdfGenerator @Inject constructor(
         return pageNumber + 1
     }
 
-    /**
-     * Caller:
-     *  - generateReportPdf()
-     *
-     * Responsibility:
-     *  - Renders flat alarm list pages with icons.
-     *  - Handles pagination and footer safety.
-     *  - Draws summary ONLY on the final page.
-     *
-     * Input:
-     *  - pdf: PdfDocument instance.
-     *  - report: ActiveAlarmReport.
-     *  - startPageNumber: Page number to begin rendering.
-     *  - pagesCount: Flat page count.
-     *  - totalPages: Total pages across entire document.
-     *  - drawSummary: Whether summary should be drawn.
-     *
-     * Output:
-     *  - Next page number after finishing flat pages.
-     *
-     * Side Effects:
-     *  - Adds pages to PdfDocument.
-     */
-    /*private fun renderFlatPages(pdf: PdfDocument, report: ActiveAlarmReport, startPageNumber: Int, pagesCount: Int, totalPages: Int, drawSummary: Boolean): Int {
-
-        var pageNumber = startPageNumber
-
-        var page = pdf.startPage(
-            PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber).create()
-        )
-        var canvas = page.canvas
-
-        val generatedAtStr = headerDateFormatter.format(report.generatedAt)
-        val headerTitle =
-            "Event Reminder Report — ${context.getStringResourceOrDefault("app_name", "Event Reminder")}"
-
-        // Define column widths (same as header layout)
-        val columnWidths = listOf(
-            180f, // Emoji + Title
-            100f, // Description
-            120f, // Event Date
-            120f, // Trigger Time
-            80f   // Offset
-        )
-
-        val firstColumnX = margin + 6f
-
-        val columnStarts = buildList {
-            var x = firstColumnX
-            for (i in columnWidths.indices) {
-                if (i == columnWidths.lastIndex) {
-                    // Right-align last column
-                    add(pageWidth - margin - columnWidths[i])
-                } else {
-                    add(x)
-                    x += columnWidths[i]
-                }
-            }
-        }
-
-
-        drawHeader(canvas, headerTitle, generatedAtStr)
-
-        var y = margin + titleSize + headerExtra
-        y = drawColumnHeaderFlat(canvas, y)   // Draw "Event / Desc / EventDate / Trigger / Offset"
-
-        val bodyPaint = TextPaint().apply {
-            isAntiAlias = true
-            textSize = flatPageBodySize
-            color = Color.DKGRAY
-        }
-        val emojiPaint = Paint().apply {
-            isAntiAlias = true
-            textSize = iconSize
-            color = Color.DKGRAY
-        }
-        val sepPaint = Paint().apply {
-            color = separatorColor
-            strokeWidth = 1f
-        }
-
-        val contentBottomLimit = pageHeight - margin - footerExtra - smallSize
-
-        for (alarm in report.sortedAlarms) {
-
-            if (alarm.eventTitle.isBlank()) continue
-            if (alarm.nextTrigger <= 0L) continue
-
-            // Page break check
-            if (y + rowBandHeight > contentBottomLimit) {
-
-                drawFooter(canvas, pageNumber, totalPages, generatedAtStr)
-                pdf.finishPage(page)
-
-                pageNumber++
-                page = pdf.startPage(
-                    PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber).create()
-                )
-                canvas = page.canvas
-
-                drawHeader(canvas, headerTitle, generatedAtStr)
-
-                y = margin + titleSize + headerExtra
-                y = drawColumnHeaderFlat(canvas, y)
-            }
-
-            val baseline = computeBaselineForRow(bodyPaint, y, rowBandHeight)
-
-            // Helper for truncation
-            fun truncate(text: String, paint: TextPaint, maxWidth: Float): String {
-                return TextUtils.ellipsize(text, paint, maxWidth, TextUtils.TruncateAt.END).toString()
-            }
-
-            // ---------------------------------------------------
-            // Column 1 — Event (emoji + title)
-            // ---------------------------------------------------
-            val emoji = pickEventEmoji(alarm.eventTitle)
-            val emojiBlockWidth =16f
-            val titleMaxWidth = columnWidths[0] - emojiBlockWidth - 6f
-            val titleX = columnStarts[0] + emojiBlockWidth + 6f
-            canvas.drawText(emoji, columnStarts[0], baseline, emojiPaint)
-            canvas.drawText(truncate(alarm.eventTitle, bodyPaint, titleMaxWidth), titleX, baseline, bodyPaint)
-
-            // ---------------------------------------------------
-            // Column 2 — Description (or "-")
-            // ---------------------------------------------------
-            val desc = alarm.description?.takeIf { it.isNotBlank() } ?: "-"
-            canvas.drawText(truncate(desc, bodyPaint, columnWidths[1]), columnStarts[1], baseline, bodyPaint)
-
-            // ---------------------------------------------------
-            // Column 3 — Event Date & Time
-            // ---------------------------------------------------
-            val eventDateText = formatDate(alarm.eventDateEpoch ?: alarm.nextTrigger)
-            canvas.drawText(truncate(eventDateText, bodyPaint, columnWidths[2]), columnStarts[2], baseline, bodyPaint)
-
-            // ---------------------------------------------------
-            // Column 4 — Trigger Time
-            // ---------------------------------------------------
-            val triggerText = formatDate(alarm.nextTrigger)
-            canvas.drawText(truncate(triggerText, bodyPaint, columnWidths[3]), columnStarts[3], baseline, bodyPaint)
-
-            // ---------------------------------------------------
-            // Column 5 — Offset (right aligned)
-            // ---------------------------------------------------
-            val offsetText = formatOffset(alarm.offsetMinutes)
-            val offsetX = columnStarts[4] + columnWidths[4] - bodyPaint.measureText(offsetText)
-            canvas.drawText(offsetText, offsetX, baseline, bodyPaint)
-
-            // Row separator
-            y += rowBandHeight
-            canvas.drawLine(margin, y + 1f, pageWidth - margin, y + 1f, sepPaint)
-            y += 6f
-        }
-
-        // ---------------------------------------------------
-        // FINAL PAGE: Summary block (only here)
-        // ---------------------------------------------------
-        if (drawSummary && pageNumber == totalPages) {
-            drawSummaryBox(canvas, computeSummaryTop(), report)
-        }
-
-        drawFooter(canvas, pageNumber, totalPages, generatedAtStr)
-        pdf.finishPage(page)
-
-        return pageNumber + 1
-    }*/
 
     // =============================================================
     // COLUMN HEADER — GROUPED PAGE
@@ -781,65 +411,17 @@ class PdfGenerator @Inject constructor(
         val bottom = top + bodySize + 14f
         canvas.drawRect(RectF(margin, top, pageWidth - margin, bottom), bg)
 
-        // ✅ Define columns as header + width pairs
+        // ✅ Updated columns (Event Date & Time REMOVED, all LEFT aligned)
         val columns = listOf(
-            "Event Date & Time" to 200f,
-            "Description"       to 160f,
-            "Trigger Time"      to 120f,
-            "Offset"            to 80f
+            "Description"  to 200f,
+            "Trigger Time" to 150f,
+            "Offset"       to 100f
         )
 
         var x = margin + 6f
-        for ((i, column) in columns.withIndex()) {
-            val (header, width) = column
-            val startX = if (i == columns.lastIndex) {
-                // Right-align last column
-                pageWidth - margin - text.measureText(header)
-            } else {
-                x
-            }
-            canvas.drawText(header, startX, bottom - 6f, text)
-            if (i < columns.lastIndex) x += width
-        }
-
-        return bottom + 10f
-    }
-
-    // =============================================================
-    // COLUMN HEADER — FLAT PAGE (Event | Desc | EventDate | Trigger | Offset)
-    // =============================================================
-    private fun drawColumnHeaderFlat(canvas: Canvas, startY: Float): Float {
-        val bg = Paint().apply { color = Color.rgb(245, 245, 245) }
-        val text = Paint().apply {
-            color = Color.BLACK
-            isAntiAlias = true
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            textSize = bodySize
-        }
-
-        val top = startY
-        val bottom = top + bodySize + 14f
-        canvas.drawRect(RectF(margin, top, pageWidth - margin, bottom), bg)
-
-        val columns: List<Pair<String, Float>> = listOf(
-            "Event" to 180f,
-            "Description" to 100f,
-            "Event Date & Time" to 120f,
-            "Trigger Time" to 120f,
-            "Offset" to 80f
-        )
-
-        var x = margin + 6f
-        for ((i, column) in columns.withIndex()) {
-            val (header, width) = column
-            val startX = if (i == columns.lastIndex) {
-                // Right-align last column
-                pageWidth - margin - text.measureText(header)
-            } else {
-                x
-            }
-            canvas.drawText(header, startX, bottom - 6f, text)
-            if (i < columns.lastIndex) x += width
+        for ((header, width) in columns) {
+            canvas.drawText(header, x, bottom - 6f, text)
+            x += width
         }
 
         return bottom + 10f
@@ -881,23 +463,9 @@ class PdfGenerator @Inject constructor(
             textSize = smallSize
         }
 
-        // ---------------------------------------------------------
-        // Separator line above footer (NEW)
-        // ---------------------------------------------------------
-        val linePaint = Paint().apply {
-            isAntiAlias = true
-            color = Color.argb(40, 0, 0, 0)   // subtle, light line
-            strokeWidth = 1f
-        }
-
-        val lineY = pageHeight - margin - footerExtra
-        canvas.drawLine(margin, lineY, pageWidth - margin, lineY, linePaint)
-
-        // ---------------------------------------------------------
         // Footer text
-        // ---------------------------------------------------------
         val footerTextPadding = 8f
-        val y = lineY + footerTextPadding + smallSize
+        val y = pageHeight - margin + footerTextPadding
 
         canvas.drawText("Event Reminder System", margin, y, paint)
 
@@ -945,6 +513,8 @@ class PdfGenerator @Inject constructor(
             listOf("plant", "plants", "water", "garden").any { t.contains(it) } -> eventEmojiMap["home"]!!
             listOf("birthday", "party", "anniversary", "celebration").any { t.contains(it) } -> eventEmojiMap["celebration"]!!
             listOf("debug", "test").any { t.contains(it) } -> eventEmojiMap["time"]!!
+            //listOf("work").any { t.contains(it) } -> eventEmojiMap["work"]!!
+            //listOf("other").any { t.contains(it) } -> eventEmojiMap["other"]!!
             else -> eventEmojiMap["default"]!!
         }
     }
@@ -957,97 +527,66 @@ class PdfGenerator @Inject constructor(
             default
         }
 
-    /*private fun ellipsize(text: String, paint: TextPaint, maxWidth: Float): String {
-        return TextUtils.ellipsize(
-            text,
-            paint,
-            maxWidth,
-            TextUtils.TruncateAt.END
-        ).toString()
-    }*/
-
-    /*private fun drawSimpleSummaryBox(canvas: Canvas, top: Float, totalReminders: Int, totalSections: Int) {
-        val left = margin
-        val right = pageWidth - margin
-        val bottom = top + 80f
-
-        val boxPaint = Paint().apply { color = Color.argb(20, 0, 0, 0) }
-        canvas.drawRect(RectF(left, top, right, bottom), boxPaint)
-
-        // Header text (bold)
-        val headerPaint = Paint().apply {
-            isAntiAlias = true
-            color = Color.BLACK
-            textSize = groupHeaderSize
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        }
-
-        // Body text (regular)
-        val bodyPaint = Paint().apply {
-            isAntiAlias = true
-            textSize = bodySize
-            color = Color.DKGRAY
-        }
-
-        // Print Summary
-        var y = top + 28f
-        canvas.drawText("Summary", left + 16f, y, headerPaint)
-
-        y += groupHeaderSize + 6f
-        canvas.drawText("Total Reminders: $totalReminders", left + 16f, y, bodyPaint)
-
-        y += bodySize + 6f
-        canvas.drawText("Sections: $totalSections", left + 16f, y, bodyPaint)
-    }*/
-
     private fun drawSummaryBox(canvas: Canvas, top: Float, report: ActiveAlarmReport) {
+
         val left = margin
         val right = pageWidth - margin
-        val bottom = top + 125f  // summary height
 
-        // Light grey background
-        val boxPaint = Paint().apply { color = Color.argb(22, 0, 0, 0) }
-        canvas.drawRect(RectF(left, top, right, bottom), boxPaint)
-
-        // Header text (bold)
-        val headerPaint = Paint().apply {
-            isAntiAlias = true
-            color = Color.BLACK
-            textSize = groupHeaderSize      // same as group title
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        // ---------------------------------------------------------
+        // Calculate total events (same filter as rows)
+        // ---------------------------------------------------------
+        val totalEvents = report.groupedByTitle.sumOf { group ->
+            group.alarms.count {
+                it.eventTitle.isNotBlank() && it.nextTrigger > 0L
+            }
         }
 
-        // Body text (regular)
-        val bodyPaint = Paint().apply {
+        // ---------------------------------------------------------
+        // Compact fixed height for single-line summary
+        // ---------------------------------------------------------
+        val boxHeight = bodySize + 28f
+        val bottom = top + boxHeight
+
+        // ---------------------------------------------------------
+        // Background
+        // ---------------------------------------------------------
+        val boxPaint = Paint().apply {
+            color = Color.argb(22, 0, 0, 0)
+        }
+        canvas.drawRect(RectF(left, top, right, bottom), boxPaint)
+
+        // ---------------------------------------------------------
+        // Text paint
+        // ---------------------------------------------------------
+        val textPaint = Paint().apply {
             isAntiAlias = true
             color = Color.DKGRAY
             textSize = bodySize
         }
 
-        // Extract summary data
-        val totalEvents = report.groupedByTitle.sumOf { it.alarms.size }
-        val earliest = report.sortedAlarms.minByOrNull { it.nextTrigger }?.nextTrigger
-        val latest = report.sortedAlarms.maxByOrNull { it.nextTrigger }?.nextTrigger
+        // ---------------------------------------------------------
+        // Vertically centered baseline
+        // ---------------------------------------------------------
+        val fm = textPaint.fontMetrics
+        val centerY = top + boxHeight / 2f
+        val baseline = centerY - (fm.ascent + fm.descent) / 2f
 
-        val earliestStr = earliest?.let { formatDate(it) } ?: "-"
-        val latestStr = latest?.let { formatDate(it) } ?: "-"
-        val totalSections = report.groupedByTitle.size
+        // ---------------------------------------------------------
+        // Draw ONLY total events
+        // ---------------------------------------------------------
+        canvas.drawText(
+            "Total Events: $totalEvents",
+            left + 16f,
+            baseline,
+            textPaint
+        )
+    }
 
-        // Print Summary
-        var y = top + 30f
-        canvas.drawText("Summary", left + 16f, y, headerPaint)
-
-        y += groupHeaderSize + 4f
-        canvas.drawText("Total Events: $totalEvents", left + 16f, y, bodyPaint)
-
-        y += bodySize + 6f
-        canvas.drawText("Earliest Event: $earliestStr", left + 16f, y, bodyPaint)
-
-        y += bodySize + 6f
-        canvas.drawText("Latest Event: $latestStr", left + 16f, y, bodyPaint)
-
-        y += bodySize + 6f
-        canvas.drawText("Sections: $totalSections", left + 16f, y, bodyPaint)
+    private fun getSummaryBoxHeight(report: ActiveAlarmReport): Float {
+        // Only ONE line: "Total Events: X"
+        return 30f +          // top padding
+                bodySize +     // text height
+                20f            // bottom padding
     }
 
 }
