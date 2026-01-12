@@ -48,19 +48,13 @@ class ReminderListReportBuilder @Inject constructor(
                             ReminderListRow(
                                 shortId = shortenId(reminder.id),
                                 description = reminder.description ?: "-",
-                                eventDateTime = formatEventDateTime(
-                                    reminder.eventEpochMillis,
-                                    reminder.timeZone
-                                )
+                                eventDateTime = formatEventDateTime(reminder.eventEpochMillis, reminder.timeZone)
                             )
                         }
                 )
             }
 
-        return ReminderListReport(
-            groupedByTitle = grouped,
-            generatedAt = LocalDateTime.now()
-        )
+        return ReminderListReport(groupedByTitle = grouped, generatedAt = LocalDateTime.now())
     }
 
     // ---------------------------------------------------------
@@ -71,10 +65,7 @@ class ReminderListReportBuilder @Inject constructor(
         else "${id.take(2)}..${id.takeLast(2)}"
     }
 
-    private fun formatEventDateTime(
-        epochMillis: Long,
-        zoneId: String
-    ): String {
+    private fun formatEventDateTime(epochMillis: Long, zoneId: String): String {
         val zoned = Instant.ofEpochMilli(epochMillis)
             .atZone(ZoneId.of(zoneId))
 

@@ -26,11 +26,8 @@ import com.example.eventreminder.ui.components.home.HomeScaffold
 import com.example.eventreminder.ui.viewmodels.GroupedEventsViewModel
 import com.example.eventreminder.ui.viewmodels.ReminderViewModel
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.auth.FirebaseUser
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.suspendCancellableCoroutine
 import timber.log.Timber
 import com.example.eventreminder.logging.SAVE_TAG
 import com.example.eventreminder.logging.SYNC_TAG
@@ -181,14 +178,14 @@ fun HomeScreen(
                 },
                 onGeneratePdfClick = {
                     coroutineScope.launch {
-                        pdfviewModel.runTodo3RealReport()
+                        pdfviewModel.allAlarmsReport()
                     }
                 },
                 onExportClick = {
                     coroutineScope.launch {
                         //reminderVm.exportRemindersCsv()
-                        pdfviewModel.runReminderListReport()
-                        //snackbarHostState.showSnackbar("Export complete")
+                        //pdfviewModel.runReminderListReport()
+                        snackbarHostState.showSnackbar("Export complete")
                     }
                 },
                 onSyncClick = {

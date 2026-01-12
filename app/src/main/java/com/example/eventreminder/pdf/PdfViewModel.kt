@@ -4,19 +4,47 @@ import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.eventreminder.logging.SAVE_TAG
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import com.example.eventreminder.ui.viewmodels.ReminderViewModel
+import timber.log.Timber
 
-
-
+/**
+ * PdfViewModel
+ *
+ * Caller(s):
+ *  - HomeScreen
+ *
+ * Responsibility:
+ *  - Acts as the single orchestration point for all PDF generation flows.
+ *  - Coordinates report building and PDF rendering.
+ *  - Guards against concurrent / duplicate generation requests.
+ *  - Emits one-time UI events for opening generated PDF files.
+ *
+ * Managed Reports:
+ *  - Active Alarm Report (grouped + flat view)
+ *  - Reminder List Report (new feature, no offsets)
+ *
+ * State:
+ *  - Exposes generation progress via StateFlow.
+ *  - Emits generated PDF Uri via one-time Channel.
+ *
+ * Side Effects:
+ *  - Writes PDF files to public Documents storage.
+ *  - Logs generation lifecycle using Timber.
+ *
+ * Notes:
+ *  - Contains NO rendering logic.
+ *  - Contains NO database access.
+ *  - Delegates all heavy work to builders and PdfGenerator.
+ */
 @HiltViewModel
 class PdfViewModel @Inject constructor(
     @ApplicationContext private val appContext: Context,
@@ -26,13 +54,8 @@ class PdfViewModel @Inject constructor(
 ) : ViewModel() {
 
     // ---------------------------------------------------------
-    // StateFlows for each PDF
+    // StateFlows
     // ---------------------------------------------------------
-    private val _pdfUri = MutableStateFlow<Uri?>(null)
-    val pdfUri = _pdfUri.asStateFlow()
-
-    private val _todo3PdfUri = MutableStateFlow<Uri?>(null)
-    val todo3PdfUri = _todo3PdfUri.asStateFlow()
 
     private val _isGeneratingPdf = MutableStateFlow(false)
     val isGeneratingPdf: StateFlow<Boolean> = _isGeneratingPdf
@@ -46,7 +69,29 @@ class PdfViewModel @Inject constructor(
     // =========================================================
     // REAL DB DATA → PDF REPORT
     // =========================================================
-    fun runTodo3RealReport() {
+    /**
+     * Caller(s):
+     *  - HomeScreen → onGeneratePdfClick()
+     *
+     * Responsibility:
+     *  - Builds the ACTIVE ALARM report using real database data.
+     *  - Delegates PDF rendering to PdfGenerator.
+     *  - Guards against concurrent / double-tap generation.
+     *  - Emits a one-time open-PDF UI event on success.
+     *
+     * Output:
+     *  - Emits Uri via openPdfEvent on successful generation.
+     *  - Updates isGeneratingPdf StateFlow for UI loading state.
+     *
+     * Side Effects:
+     *  - Writes a PDF file to public Documents storage.
+     *
+     * Failure Handling:
+     *  - Errors are logged via Timber.
+     *  - UI failure message is emitted.
+     *  - isGeneratingPdf is always reset.
+     */
+    fun allAlarmsReport() {
         viewModelScope.launch {
             if (_isGeneratingPdf.value) return@launch   // ⛔ double-tap guard
             _isGeneratingPdf.value = true
@@ -54,7 +99,7 @@ class PdfViewModel @Inject constructor(
             try {
                 val report = realReportBuilder.buildReport()
                 val uri = pdfGenerator
-                    .generateReportPdf(appContext, report)
+                    .generateAlarmsReportPdf(appContext, report)
                     .getOrNull()
 
                 if (uri == null) {
@@ -64,7 +109,7 @@ class PdfViewModel @Inject constructor(
                     return@launch
                 }
 
-                _todo3PdfUri.value = uri
+                //_todo3PdfUri.value = uri
                 _openPdfEvent.send(uri)
 
                 Timber.tag(SAVE_TAG).d("📄 Alarm PDF generated → $uri [PdfViewModel.kt::runTodo3RealReport]")
@@ -84,38 +129,4 @@ class PdfViewModel @Inject constructor(
         }
     }
 
-    // =========================================================
-    // REMINDER LIST PDF (NEW FEATURE – NO OFFSETS)
-    // =========================================================
-    fun runReminderListReport() {
-        viewModelScope.launch {
-            if (_isGeneratingPdf.value) return@launch
-            _isGeneratingPdf.value = true
-
-            try {
-                val report = reminderListReportBuilder.buildReport()
-                val uri = pdfGenerator
-                    .generateReminderListPdf(appContext, report)
-                    .getOrNull()
-
-                if (uri == null) {
-                    ReminderViewModel.UiEvent.ShowMessage("Export failed")
-                        .also { /* handled by HomeScreen */ }
-                    return@launch
-                }
-
-                _openPdfEvent.send(uri)
-
-                Timber.tag(SAVE_TAG).d("📄 Reminder list PDF generated → $uri [PdfViewModel.kt::runReminderListReport]")
-
-            } catch (e: Exception) {
-                Timber.tag(SAVE_TAG).e(e, "💥 Reminder list PDF error [PdfViewModel.kt::runReminderListReport]")
-                ReminderViewModel.UiEvent.ShowMessage("Export failed")
-                    .also { /* handled by HomeScreen */ }
-
-            } finally {
-                _isGeneratingPdf.value = false
-            }
-        }
-    }
 }

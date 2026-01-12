@@ -3,6 +3,26 @@ package com.example.eventreminder.pdf
 import java.time.LocalDateTime
 import javax.inject.Inject
 
+/**
+ * RealReportBuilder
+ *
+ * Caller(s):
+ *  - PdfViewModel.allAlarmsReport()
+ *
+ * Responsibility:
+ *  - Builds an in-memory report model representing all ACTIVE alarms.
+ *  - Loads alarms from the repository (already UID-scoped).
+ *  - Groups alarms by event title (A → Z).
+ *  - Sorts alarms by next trigger time (earliest first).
+ *  - Produces a structured report object for PDF rendering.
+ *
+ * Guarantees:
+ *  - Returned report contains ONLY enabled, upcoming alarms.
+ *  - Ordering is deterministic and stable.
+ *
+ * Side Effects:
+ *  - None (pure data construction).
+ */
 class RealReportBuilder @Inject constructor(
     private val alarmRepo: RealAlarmRepository
 ) {
