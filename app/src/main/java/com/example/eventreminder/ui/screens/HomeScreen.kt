@@ -181,11 +181,17 @@ fun HomeScreen(
                         pdfviewModel.allAlarmsReport()
                     }
                 },
+                on7DaysPdfClick = {
+                    coroutineScope.launch {
+                        pdfviewModel.generateNext7DaysRemindersPdf()
+                    }
+                },
                 onExportClick = {
                     coroutineScope.launch {
                         //reminderVm.exportRemindersCsv()
                         //pdfviewModel.runReminderListReport()
-                        snackbarHostState.showSnackbar("Export complete")
+                        pdfviewModel.generateContactsPdf()
+                        //snackbarHostState.showSnackbar("Export complete")
                     }
                 },
                 onSyncClick = {

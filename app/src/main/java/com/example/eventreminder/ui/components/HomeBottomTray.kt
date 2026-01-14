@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Backup
+import androidx.compose.material.icons.filled.CalendarViewWeek
 import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.PictureAsPdf
@@ -56,6 +57,7 @@ fun HomeBottomTray(
     isGeneratingPdf: Boolean,
     onCleanupClick: () -> Unit,
     onGeneratePdfClick: () -> Unit,
+    on7DaysPdfClick: () -> Unit,
     onExportClick: () -> Unit = {},
     onSyncClick: () -> Unit = {},
     onBackupClick: () -> Unit,
@@ -102,6 +104,26 @@ fun HomeBottomTray(
                     onClick = {
                         Timber.tag(TAG).d("PDF Report clicked")
                         onGeneratePdfClick()
+                    }
+                )
+            }
+
+            item {
+                ActionChip(
+                    label = if (isGeneratingPdf) "Generating..." else "7Days Reminders",
+                    icon = if (isGeneratingPdf) null else Icons.Default.CalendarViewWeek,
+                    enabled = !isGeneratingPdf,
+                    trailing = {
+                        if (isGeneratingPdf) {
+                            androidx.compose.material3.CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp
+                            )
+                        }
+                    },
+                    onClick = {
+                        Timber.tag(TAG).d("7Days Reminders clicked")
+                        on7DaysPdfClick()
                     }
                 )
             }

@@ -4,7 +4,7 @@ import java.time.LocalDateTime
 import javax.inject.Inject
 
 /**
- * RealReportBuilder
+ * ReminderReportDataBuilder
  *
  * Caller(s):
  *  - PdfViewModel.allAlarmsReport()
@@ -23,7 +23,7 @@ import javax.inject.Inject
  * Side Effects:
  *  - None (pure data construction).
  */
-class RealReportBuilder @Inject constructor(
+class ReminderReportDataBuilder @Inject constructor(
     private val alarmRepo: RealAlarmRepository
 ) {
 
@@ -54,7 +54,7 @@ class RealReportBuilder @Inject constructor(
      * Side Effects:
      *  - None (pure data construction).
      */
-    suspend fun buildReport(): ActiveAlarmReport {
+    suspend fun buildActiveAlarmReport(): ActiveAlarmReport {
 
         val alarms = alarmRepo.loadActiveAlarms()
 

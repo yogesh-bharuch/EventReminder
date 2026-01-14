@@ -26,7 +26,7 @@ class RealAlarmRepository @Inject constructor(
 
     /**
      * Caller:
-     *  - RealReportBuilder.buildReport()
+     *  - ReminderReportDataBuilder.buildReport()
      *
      * Responsibility:
      *  - Loads all enabled reminders for the currently logged-in user.
