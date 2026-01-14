@@ -77,4 +77,42 @@ class RealReportBuilder @Inject constructor(
             generatedAt = LocalDateTime.now()
         )
     }
+
+    // =========================================================
+    // NEXT 7 DAYS REMINDERS (FLAT, SORTED)
+    // =========================================================
+    /**
+     * Caller(s):
+     *  - PdfViewModel.generateNext7DaysRemindersPdf()
+     *
+     * Responsibility:
+     *  - Loads ACTIVE alarm entries from the repository.
+     *  - Filters alarms whose next trigger time lies within the next 7 days.
+     *  - Returns a flat list sorted strictly by next trigger time.
+     *
+     * Output:
+     *  - List<AlarmEntry> suitable for flat PDF table rendering.
+     *
+     * Guarantees:
+     *  - Returned list contains ONLY enabled, upcoming alarms.
+     *  - No grouping is applied.
+     *  - Ordering is deterministic and time-based.
+     *
+     * Side Effects:
+     *  - None (pure data construction).
+     */
+    suspend fun buildNext7DaysReminders(): List<AlarmEntry> {
+
+        val now = System.currentTimeMillis()
+        val sevenDaysLater = now + (7L * 24 * 60 * 60 * 1000)
+
+        val alarms = alarmRepo.loadActiveAlarms()
+
+        return alarms
+            .filter { alarm ->
+                alarm.nextTrigger in now..sevenDaysLater
+            }
+            .sortedBy { it.nextTrigger }
+    }
+
 }
