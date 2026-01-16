@@ -59,8 +59,8 @@ class PdfViewModel @Inject constructor(
     // StateFlows
     // ---------------------------------------------------------
 
-    private val _isGeneratingPdf = MutableStateFlow(false)
-    val isGeneratingPdf: StateFlow<Boolean> = _isGeneratingPdf
+    private val _isWorkingPDF = MutableStateFlow(false)
+    val isWorkingPDF: StateFlow<Boolean> = _isWorkingPDF
 
     // ---------------------------------------------------------
     // Auto-open one-time event
@@ -95,8 +95,9 @@ class PdfViewModel @Inject constructor(
      */
     fun allAlarmsReport() {
         viewModelScope.launch {
-            if (_isGeneratingPdf.value) return@launch   // ⛔ double-tap guard
-            _isGeneratingPdf.value = true
+            // ⛔ double-tap guard
+            if (_isWorkingPDF.value) return@launch
+            _isWorkingPDF.value = true
 
             try {
                 val report = reminderReportDataBuilder.buildActiveAlarmReport()
@@ -120,13 +121,15 @@ class PdfViewModel @Inject constructor(
                 ReminderViewModel.UiEvent.ShowMessage("PDF generated successfully")
                     .also { /* handled by HomeScreen */ }
 
-            } catch (e: Exception) {
+            }
+            catch (e: Exception) {
                 Timber.tag(SAVE_TAG).e(e, "💥 Alarm PDF generation error [PdfViewModel.kt::runTodo3RealReport]")
                 ReminderViewModel.UiEvent.ShowMessage("PDF generation failed")
                     .also { /* handled by HomeScreen */ }
 
-            } finally {
-                _isGeneratingPdf.value = false   // ✅ ALWAYS reset
+            }
+            finally {
+                _isWorkingPDF.value = false   // ✅ ALWAYS reset
             }
         }
     }
@@ -137,8 +140,9 @@ class PdfViewModel @Inject constructor(
     // =========================================================
     fun generateContactsPdf() {
         viewModelScope.launch(Dispatchers.IO) {
-            if (_isGeneratingPdf.value) return@launch   // ⛔ double-tap guard
-            _isGeneratingPdf.value = true
+            // ⛔ double-tap guard
+            if (_isWorkingPDF.value) return@launch
+            _isWorkingPDF.value = true
 
             Timber.tag(DEBUG_TAG).d("viewmodel called. [PdfViewModel.kt::generateContactsPdf]")
 
@@ -192,12 +196,14 @@ class PdfViewModel @Inject constructor(
                 ReminderViewModel.UiEvent.ShowMessage("PDF generated successfully")
                     .also { /* handled by HomeScreen */ }
 
-            } catch (e: Exception) {
+            }
+            catch (e: Exception) {
                 Timber.tag(SAVE_TAG).e(e, "💥 Contacts PDF generation error [PdfViewModel.kt::generateContactsPdf]")
                 ReminderViewModel.UiEvent.ShowMessage("PDF generation failed")
                     .also { /* handled by HomeScreen */ }
-            } finally {
-                _isGeneratingPdf.value = false   // ✅ ALWAYS reset
+            }
+            finally {
+                _isWorkingPDF.value = false   // ✅ ALWAYS reset
             }
         }
     }
@@ -222,8 +228,9 @@ class PdfViewModel @Inject constructor(
      */
     fun generateNext7DaysRemindersPdf() {
         viewModelScope.launch(Dispatchers.IO) {
-            if (_isGeneratingPdf.value) return@launch   // ⛔ double-tap guard
-            _isGeneratingPdf.value = true
+            // ⛔ double-tap guard
+            if (_isWorkingPDF.value) return@launch
+            _isWorkingPDF.value = true
 
             Timber.tag(DEBUG_TAG).d("Next 7 days reminders PDF requested. [PdfViewModel.kt::generateNext7DaysRemindersPdf]")
 
@@ -263,7 +270,8 @@ class PdfViewModel @Inject constructor(
                     // -------------------------------
                     // TODAY SECTION
                     // -------------------------------
-                    if (todayReminders.isEmpty()) {
+                    if (todayReminders.isEmpty())
+                    {
                         add(
                             listOf(
                                 PdfCell.TextCell("Today  -  No Reminder"),
@@ -282,10 +290,11 @@ class PdfViewModel @Inject constructor(
 
                         todayReminders.forEach { alarm ->
                             val localDateTime = toLocalDateTime(alarm.nextTrigger, zoneId)
+                            val descriptionText = "${pickEventEmoji(alarm.description ?: "")} ${alarm.description ?: "-"}"
 
                             add(
                                 listOf(
-                                    PdfCell.TextCell(alarm.description ?: "-"),
+                                    PdfCell.TextCell(descriptionText),
                                     PdfCell.TextCell(localDateTime.format(dateFormatter)),
                                     PdfCell.TextCell(formatOffsetText(alarm.offsetMinutes))
                                 )
@@ -296,7 +305,8 @@ class PdfViewModel @Inject constructor(
                     // -------------------------------
                     // UPCOMING SECTION
                     // -------------------------------
-                    if (upcomingReminders.isEmpty()) {
+                    if (upcomingReminders.isEmpty())
+                    {
                         add(
                             listOf(
                                 PdfCell.TextCell("Upcoming  -  No Reminder"),
@@ -315,10 +325,11 @@ class PdfViewModel @Inject constructor(
 
                         upcomingReminders.forEach { alarm ->
                             val localDateTime = toLocalDateTime(alarm.nextTrigger, zoneId)
+                            val descriptionText = "${pickEventEmoji(alarm.description ?: "")} ${alarm.description ?: "-"}"
 
                             add(
                                 listOf(
-                                    PdfCell.TextCell(alarm.description ?: "-"),
+                                    PdfCell.TextCell(descriptionText),
                                     PdfCell.TextCell(localDateTime.format(dateFormatter)),
                                     PdfCell.TextCell(formatOffsetText(alarm.offsetMinutes))
                                 )
@@ -369,17 +380,17 @@ class PdfViewModel @Inject constructor(
                 ReminderViewModel.UiEvent.ShowMessage("PDF generated successfully")
                     .also { /* handled by HomeScreen */ }
 
-            } catch (e: Exception) {
+            }
+            catch (e: Exception) {
                 Timber.tag(DEBUG_TAG).e(e, "💥 Next 7 days reminders PDF error [PdfViewModel.kt::generateNext7DaysRemindersPdf]")
 
                 ReminderViewModel.UiEvent.ShowMessage("PDF generation failed")
                     .also { /* handled by HomeScreen */ }
 
-            } finally {
-                _isGeneratingPdf.value = false
             }
-
-            //Helper Functions
+            finally {
+                _isWorkingPDF.value = false
+            }
         }
     }
 
@@ -405,4 +416,35 @@ class PdfViewModel @Inject constructor(
             else ->
                 "${offsetMinutes} min before"
         }
+
+    private val eventEmojiMap: Map<String, String> = mapOf(
+        "medicine" to "💊",
+        "money" to "💰",
+        "travel" to "✈️",
+        "home" to "🏠",
+        "celebration" to "🎉",
+        "time" to "⏰",
+        "default" to "🔔"
+    )
+
+    private fun pickEventEmoji(title: String): String {
+        val t = title.lowercase()
+        return when {
+            listOf("medicine", "pill", "tablet", "dose").any { t.contains(it) } ->
+                eventEmojiMap["medicine"]!!
+            listOf("pay", "rent", "emi", "bank", "bill", "payment", "renewal").any { t.contains(it) } ->
+                eventEmojiMap["money"]!!
+            listOf("flight", "trip", "travel", "airport").any { t.contains(it) } ->
+                eventEmojiMap["travel"]!!
+            listOf("plant", "plants", "water", "garden").any { t.contains(it) } ->
+                eventEmojiMap["home"]!!
+            listOf("birthday", "party", "anniversary", "celebration").any { t.contains(it) } ->
+                eventEmojiMap["celebration"]!!
+            listOf("debug", "test").any { t.contains(it) } ->
+                eventEmojiMap["time"]!!
+            else -> eventEmojiMap["default"]!!
+        }
+
+    }
+
 }

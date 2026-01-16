@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.CalendarViewWeek
 import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.ImportExport
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Sync
@@ -51,10 +52,8 @@ private const val TAG = "HomeBottomTray"
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeBottomTray(
-    isSyncing: Boolean,
-    isBackingUp: Boolean,
-    isRestoring: Boolean,
-    isGeneratingPdf: Boolean,
+    isWorking: Boolean,
+    isWorkingPDF: Boolean,
     onCleanupClick: () -> Unit,
     onGeneratePdfClick: () -> Unit,
     on7DaysPdfClick: () -> Unit,
@@ -77,6 +76,7 @@ fun HomeBottomTray(
             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            //Debug
             item {
                 ActionChip(
                     label = "Debug", //"Cleanup",
@@ -88,13 +88,14 @@ fun HomeBottomTray(
                 )
             }
 
+            //PDF Report
             item {
                 ActionChip(
-                    label = if (isGeneratingPdf) "Generating PDF" else "PDF Report",
-                    icon = if (isGeneratingPdf) null else Icons.Default.PictureAsPdf,
-                    enabled = !isGeneratingPdf,
+                    label = if (isWorkingPDF) "Working" else "PDF Report",
+                    icon = Icons.Default.PictureAsPdf,
+                    enabled = !isWorkingPDF,
                     trailing = {
-                        if (isGeneratingPdf) {
+                        if (isWorkingPDF) {
                             androidx.compose.material3.CircularProgressIndicator(
                                 modifier = Modifier.size(18.dp),
                                 strokeWidth = 2.dp
@@ -108,13 +109,14 @@ fun HomeBottomTray(
                 )
             }
 
+            //7Days Reminders
             item {
                 ActionChip(
-                    label = if (isGeneratingPdf) "Generating..." else "7Days Reminders",
-                    icon = if (isGeneratingPdf) null else Icons.Default.CalendarViewWeek,
-                    enabled = !isGeneratingPdf,
+                    label = if (isWorkingPDF) "Working" else "7Days Reminders",
+                    icon = Icons.Default.CalendarViewWeek,
+                    enabled = !isWorkingPDF,
                     trailing = {
-                        if (isGeneratingPdf) {
+                        if (isWorkingPDF) {
                             androidx.compose.material3.CircularProgressIndicator(
                                 modifier = Modifier.size(18.dp),
                                 strokeWidth = 2.dp
@@ -128,24 +130,14 @@ fun HomeBottomTray(
                 )
             }
 
+            //Export
             item {
                 ActionChip(
-                    label = "Export",
-                    icon = Icons.Default.Download,
-                    onClick = {
-                        Timber.tag(TAG).d("Export clicked")
-                        onExportClick()
-                    }
-                )
-            }
-
-            item {
-                ActionChip(
-                    label = if (isSyncing) "Syncing…" else "Sync",
-                    icon = if (isSyncing) null else Icons.Default.Sync,
-                    enabled = !isSyncing,
+                    label = if (isWorkingPDF) "Working" else "Export",
+                    icon = Icons.Default.ImportExport,
+                    enabled = !isWorkingPDF,
                     trailing = {
-                        if (isSyncing) {
+                        if (isWorkingPDF) {
                             androidx.compose.material3.CircularProgressIndicator(
                                 modifier = Modifier.size(18.dp),
                                 strokeWidth = 2.dp
@@ -153,20 +145,41 @@ fun HomeBottomTray(
                         }
                     },
                     onClick = {
-                        Timber.tag(TAG).d("Sync clicked (isSyncing=$isSyncing)")
+                        Timber.tag(TAG).d("Export clicked")
+                        onExportClick()
+                    }
+                )
+            }
+
+            //Sync
+            item {
+                ActionChip(
+                    label = if (isWorking) "Working" else "Sync",
+                    icon = if (isWorking) null else Icons.Default.Sync,
+                    enabled = !isWorking,
+                    trailing = {
+                        if (isWorking) {
+                            androidx.compose.material3.CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp
+                            )
+                        }
+                    },
+                    onClick = {
+                        Timber.tag(TAG).d("Sync clicked (isSyncing=$isWorking)")
                         onSyncClick()
                     }
                 )
             }
 
-
+            //Backup
             item {
                 ActionChip(
-                    label = if (isBackingUp) "Backing up…" else "Backup",
-                    icon = if (isBackingUp) null else Icons.Default.Backup,
-                    enabled = !isBackingUp,
+                    label = if (isWorking) "Working" else "Backup",
+                    icon = if (isWorking) null else Icons.Default.Backup,
+                    enabled = !isWorking,
                     trailing = {
-                        if (isBackingUp) {
+                        if (isWorking) {
                             androidx.compose.material3.CircularProgressIndicator(
                                 modifier = Modifier.size(18.dp),
                                 strokeWidth = 2.dp
@@ -177,13 +190,14 @@ fun HomeBottomTray(
                 )
             }
 
+            //Restore
             item {
                 ActionChip(
-                    label = if (isRestoring) "Restoring…" else "Restore",
-                    icon = if (isRestoring) null else Icons.Default.Restore,
-                    enabled = !isRestoring,
+                    label = if (isWorking) "Working" else "Restore",
+                    icon = if (isWorking) null else Icons.Default.Restore,
+                    enabled = !isWorking,
                     trailing = {
-                        if (isRestoring) {
+                        if (isWorking) {
                             androidx.compose.material3.CircularProgressIndicator(
                                 modifier = Modifier.size(18.dp),
                                 strokeWidth = 2.dp

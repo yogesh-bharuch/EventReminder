@@ -28,8 +28,6 @@ import java.time.*
 import java.time.format.DateTimeFormatter
 import java.util.UUID
 import javax.inject.Inject
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.flow.receiveAsFlow
 import com.example.eventreminder.logging.DELETE_TAG
 import com.example.eventreminder.logging.SAVE_TAG
 import com.example.eventreminder.logging.SYNC_TAG
@@ -58,14 +56,8 @@ class ReminderViewModel @Inject constructor(
         object Consumed : UiEvent()
     }
 
-    private val _isSyncing = MutableStateFlow(false)
-    val isSyncing: StateFlow<Boolean> = _isSyncing.asStateFlow()
-
-    private val _isBackingUp = MutableStateFlow(false)
-    val isBackingUp: StateFlow<Boolean> = _isBackingUp
-
-    private val _isRestoring = MutableStateFlow(false)
-    val isRestoring: StateFlow<Boolean> = _isRestoring
+    private val _isWoring = MutableStateFlow(false)
+    val isWorking: StateFlow<Boolean> = _isWoring.asStateFlow()
 
     fun clearUiEvent() {
         viewModelScope.launch {
@@ -359,12 +351,12 @@ class ReminderViewModel @Inject constructor(
     // - Repo is DB-only. ViewModel delegates rescheduling to engine after sync.
     // ============================================================
     fun syncRemindersWithServer() = viewModelScope.launch {
-        if (_isSyncing.value) {
+        if (_isWoring.value) {
             Timber.tag(SYNC_TAG).w("⛔ Sync ignored (already running) [ReminderViewModel.kt::syncRemindersWithServer]")
             return@launch
         }
 
-        _isSyncing.value = true
+        _isWoring.value = true
         //Timber.tag(SYNC_TAG).i("▶️ Sync started [ReminderViewModel.kt::syncRemindersWithServer]")
 
         try {
@@ -491,39 +483,39 @@ class ReminderViewModel @Inject constructor(
             _events.emit(UiEvent.ShowMessage(errorMsg))
         }
         finally {
-            _isSyncing.value = false
+            _isWoring.value = false
             //Timber.tag(SYNC_TAG).i("🔓 Sync state reset (_isSyncing=false) [ReminderViewModel.kt::syncRemindersWithServer]")
         }
     }
 
     fun backupReminders(context: Context) {
         viewModelScope.launch {
-            if (_isBackingUp.value) return@launch   // 🔒 guard
+            if (_isWoring.value) return@launch   // 🔒 guard
 
-            _isBackingUp.value = true
+            _isWoring.value = true
             try {
                 val msg = repo.exportRemindersToJson(context)
                 _events.emit(UiEvent.ShowMessage(msg))
             } catch (e: Exception) {
                 _events.emit(UiEvent.ShowMessage("Backup failed"))
             } finally {
-                _isBackingUp.value = false          // ✅ MUST reset
+                _isWoring.value = false          // ✅ MUST reset
             }
         }
     }
 
     fun restoreReminders(context: Context) {
         viewModelScope.launch {
-            if (_isRestoring.value) return@launch   // 🔒 guard
+            if (_isWoring.value) return@launch   // 🔒 guard
 
-            _isRestoring.value = true
+            _isWoring.value = true
             try {
                 val msg = repo.restoreRemindersFromBackup(context)
                 _events.emit(UiEvent.ShowMessage(msg))
             } catch (e: Exception) {
                 _events.emit(UiEvent.ShowMessage("Restore failed"))
             } finally {
-                _isRestoring.value = false          // ✅ MUST reset
+                _isWoring.value = false          // ✅ MUST reset
             }
         }
     }

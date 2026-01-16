@@ -46,11 +46,8 @@ fun HomeScreen(
 
     val context = LocalContext.current
     val activity = context as Activity
-    val isSyncing by reminderVm.isSyncing.collectAsState()
-    val isBackingUp by reminderVm.isBackingUp.collectAsState()
-    val isRestoring by reminderVm.isRestoring.collectAsState()
-    val isGeneratingPdf by pdfviewModel.isGeneratingPdf.collectAsState()
-
+    val isWorking by reminderVm.isWorking.collectAsState()
+    val isWorkingPDF by pdfviewModel.isWorkingPDF.collectAsState()
 
     // ---------------------------------------------------------
     // Snackbar Host (ViewModel → HomeScreen)
@@ -165,10 +162,8 @@ fun HomeScreen(
         },
         bottomBar = {
             HomeBottomTray(
-                isSyncing = isSyncing,
-                isBackingUp = isBackingUp,
-                isRestoring = isRestoring,
-                isGeneratingPdf = isGeneratingPdf,
+                isWorking = isWorking,
+                isWorkingPDF = isWorkingPDF,
                 onCleanupClick = {
                     coroutineScope.launch {
                         navController.navigate(SchedulingDebugRoute)
@@ -188,10 +183,7 @@ fun HomeScreen(
                 },
                 onExportClick = {
                     coroutineScope.launch {
-                        //reminderVm.exportRemindersCsv()
-                        //pdfviewModel.runReminderListReport()
                         pdfviewModel.generateContactsPdf()
-                        //snackbarHostState.showSnackbar("Export complete")
                     }
                 },
                 onSyncClick = {
