@@ -21,6 +21,7 @@ const val DELETE_TAG = "DeleteReminder"
 const val DISMISS_TAG = "DismissReminder"
 const val SYNC_TAG = "SyncReminders"
 const val DEBUG_TAG = "DebugTag"
+const val SHARE_PDF_TAG = "SharePdf"
 
 // -------------------------------------------------------------
 // Scheduling / Engine

@@ -218,20 +218,21 @@ fun HomeScreen(
             // HEADER — Show Firebase Email only
             val email = FirebaseAuth.getInstance().currentUser?.email ?: "Guest"
 
-            Row(Modifier.padding(bottom = 8.dp)) {
+            Row(Modifier.padding(bottom = 1.dp)) {
                 Text("Welcome: ", fontSize = 12.sp)
                 Text(email, fontSize = 10.sp)
             }
 
-            HorizontalDivider(thickness = 1.dp, color = Color.Gray)
-            Spacer(Modifier.height(8.dp))
+            HorizontalDivider(thickness = 2.dp, color = Color.Gray)
+            Spacer(Modifier.height(16.dp))
 
             // Empty State or List
             if (groupedSections.isEmpty()) {
 
                 BirthdayEmptyState()
 
-            } else {
+            }
+            /*else {
 
                 // Button → Open Last Reminder
                 Row {
@@ -254,9 +255,9 @@ fun HomeScreen(
                     ) {
                         Text("Open last card")
                     }
-                }
+                }*/
 
-                Spacer(Modifier.height(10.dp))
+                //Spacer(Modifier.height(10.dp))
 
                 // Events List
                 EventsListGrouped(
@@ -269,7 +270,7 @@ fun HomeScreen(
                     },
                     modifier = Modifier.weight(1f)
                 )
-            }
+            //}
         }
     }
 }

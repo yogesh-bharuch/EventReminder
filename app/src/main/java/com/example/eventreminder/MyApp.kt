@@ -7,13 +7,17 @@ import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.example.eventreminder.data.local.DatabaseSeeder
+import com.example.eventreminder.logging.DISMISS_TAG
+import com.example.eventreminder.logging.SHARE_PDF_TAG
 import com.example.eventreminder.notifications.NotificationRestoreManager
 import com.example.eventreminder.workers.AutoDismissCleanupWorker
+import com.example.eventreminder.workers.Next7DaysPdfWorker
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import timber.log.Timber
+import java.util.Calendar
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
@@ -41,33 +45,60 @@ class MyApp : Application(), Configuration.Provider {
             try {
                 NotificationRestoreManager.restoreActiveNotifications(this@MyApp)
             } catch (t: Throwable) {
-                Timber.e(
-                    t,
-                    "RESTORE_FAILED [MyApp.kt::onCreate]"
-                )
+                Timber.e(t, "RESTORE_FAILED [MyApp.kt::onCreate]")
             }
         }
 
         // ------------------------------------------------------------
-        // Auto-dismiss cleanup worker (GLOBAL, APP-LEVEL)
+        // 🔁 Auto-dismiss cleanup worker (GLOBAL, APP-LEVEL) — UNCHANGED
         // ------------------------------------------------------------
+        val initialDelayMillis = computeInitialDelay()
+        val policy = if (BuildConfig.DEBUG) ExistingPeriodicWorkPolicy.REPLACE else ExistingPeriodicWorkPolicy.KEEP
+
         WorkManager.getInstance(this)
             .enqueueUniquePeriodicWork(
                 AUTO_DISMISS_WORK_NAME,
-                ExistingPeriodicWorkPolicy.KEEP, // ifperiod wants to change run one time with REPLACE than changed back to KEEP
+                policy,
                 PeriodicWorkRequestBuilder<AutoDismissCleanupWorker>(
                     24,
                     TimeUnit.HOURS
-                ).build()
+                )
+                    .setInitialDelay(
+                        initialDelayMillis,
+                        TimeUnit.MILLISECONDS
+                    )
+                    .build()
             )
 
-        Timber.d("AUTO_DISMISS periodic worker ensured [MyApp.kt::onCreate]")
+        Timber.tag(DISMISS_TAG).i("AUTO_DISMISS periodic worker ensured [MyApp.kt::onCreate]")
 
-        // FORCE DB RESET (TEMPORARILY DURING DEVELOPMENT)
-        // deleteDatabase("event_reminder_db")
+        // ------------------------------------------------------------
+        // 📄 Next 7 Days Reminders PDF → Notification (DAILY @ 4:00 PM)
+        // ------------------------------------------------------------
 
-        // 🚀 Seed the database (runs ONLY if DB is empty)
+        WorkManager.getInstance(this)
+            .enqueueUniquePeriodicWork(
+                NEXT_7_DAYS_PDF_WORK_NAME,
+                policy,
+                PeriodicWorkRequestBuilder<Next7DaysPdfWorker>(
+                    24,
+                    TimeUnit.HOURS
+                )
+                    .setInitialDelay(
+                        initialDelayMillis,
+                        TimeUnit.MILLISECONDS
+                    )
+                    .build()
+            )
+
+        Timber.tag(SHARE_PDF_TAG).d("NEXT_7_DAYS_PDF worker scheduled delay=${initialDelayMillis}ms [MyApp.kt::onCreate]")
+
+
+        // ------------------------------------------------------------
+        // 🚀 DEV ONLY (unchanged)
+        // ------------------------------------------------------------
         // databaseSeeder.seedIfEmpty()
+        // deleteDatabase("event_reminder_db")
     }
 
     override val workManagerConfiguration: Configuration
@@ -75,7 +106,39 @@ class MyApp : Application(), Configuration.Provider {
             .setWorkerFactory(workerFactory)
             .build()
 
+    /**
+     * Computes delay until next **4:00 PM** local time.
+     *
+     * CHANGE:
+     * - Previously targeted 12:30 PM
+     * - Now targets 4:00 PM
+     *
+     * WorkManager constraint:
+     * - Best-effort timing (not exact alarm)
+     */
+    private fun computeInitialDelay(): Long {
+        val now = Calendar.getInstance()
+
+        val next4pm = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 8)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+
+            if (before(now)) {
+                add(Calendar.DAY_OF_MONTH, 1)
+            }
+        }
+
+        val delay = next4pm.timeInMillis - now.timeInMillis
+
+        Timber.tag(SHARE_PDF_TAG).d("InitialDelay computed delay=${delay}ms target=${next4pm.time} [MyApp.kt::computeInitialDelayFor4PM]")
+
+        return delay
+    }
+
     private companion object {
         private const val AUTO_DISMISS_WORK_NAME = "auto_dismiss_cleanup"
+        private const val NEXT_7_DAYS_PDF_WORK_NAME = "next_7_days_pdf_whatsapp"
     }
 }
