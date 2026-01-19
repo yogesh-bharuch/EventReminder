@@ -72,6 +72,8 @@ class SplashViewModel @Inject constructor(
             // ----------------------------------------------------
             // STEP 2: Resolve FirebaseAuth (OEM hydration safe)
             // ----------------------------------------------------
+            //delay(5_000) // 🔬 EXPERIMENT: prove FirebaseAuth hydration delay
+
             val auth = FirebaseAuth.getInstance()
 
             var user = auth.currentUser

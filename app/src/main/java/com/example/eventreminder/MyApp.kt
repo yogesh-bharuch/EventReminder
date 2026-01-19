@@ -50,10 +50,17 @@ class MyApp : Application(), Configuration.Provider {
         }
 
         // ------------------------------------------------------------
-        // 🔁 Auto-dismiss cleanup worker (GLOBAL, APP-LEVEL) — UNCHANGED
+        // 🔁 Auto-dismiss cleanup worker (GLOBAL, APP-LEVEL)
         // ------------------------------------------------------------
         val initialDelayMillis = computeInitialDelay()
-        val policy = if (BuildConfig.DEBUG) ExistingPeriodicWorkPolicy.REPLACE else ExistingPeriodicWorkPolicy.KEEP
+        val nextRun = computeNextRunTime()
+
+        val policy =
+            if (BuildConfig.DEBUG)
+                //ExistingPeriodicWorkPolicy.KEEP
+                ExistingPeriodicWorkPolicy.REPLACE
+            else
+                ExistingPeriodicWorkPolicy.KEEP
 
         WorkManager.getInstance(this)
             .enqueueUniquePeriodicWork(
@@ -70,10 +77,10 @@ class MyApp : Application(), Configuration.Provider {
                     .build()
             )
 
-        Timber.tag(DISMISS_TAG).i("AUTO_DISMISS periodic worker ensured [MyApp.kt::onCreate]")
+        Timber.tag(DISMISS_TAG).i("AUTO_DISMISS worker scheduled delay=${initialDelayMillis}ms [MyApp.kt::onCreate]")
 
         // ------------------------------------------------------------
-        // 📄 Next 7 Days Reminders PDF → Notification (DAILY @ 4:00 PM)
+        // 📄 Next 7 Days Reminders PDF → Notification
         // ------------------------------------------------------------
 
         WorkManager.getInstance(this)
@@ -91,11 +98,10 @@ class MyApp : Application(), Configuration.Provider {
                     .build()
             )
 
-        Timber.tag(SHARE_PDF_TAG).d("NEXT_7_DAYS_PDF worker scheduled delay=${initialDelayMillis}ms [MyApp.kt::onCreate]")
-
+        Timber.tag(SHARE_PDF_TAG).d("NEXT_7_DAYS_PDF worker scheduled target=${nextRun.time} delay=${initialDelayMillis}ms " + "[MyApp.kt::onCreate]")
 
         // ------------------------------------------------------------
-        // 🚀 DEV ONLY (unchanged)
+        // 🚀 DEV ONLY
         // ------------------------------------------------------------
         // databaseSeeder.seedIfEmpty()
         // deleteDatabase("event_reminder_db")
@@ -107,21 +113,43 @@ class MyApp : Application(), Configuration.Provider {
             .build()
 
     /**
-     * Computes delay until next **4:00 PM** local time.
+     * Caller:
+     *  - onCreate()
      *
-     * CHANGE:
-     * - Previously targeted 12:30 PM
-     * - Now targets 4:00 PM
+     * Responsibility:
+     *  - Computes delay until next configured trigger time.
      *
-     * WorkManager constraint:
-     * - Best-effort timing (not exact alarm)
+     * Return:
+     *  - Milliseconds delay for WorkManager initialDelay.
      */
     private fun computeInitialDelay(): Long {
         val now = Calendar.getInstance()
+        val nextRun = computeNextRunTime()
 
-        val next4pm = Calendar.getInstance().apply {
+        val delay = nextRun.timeInMillis - now.timeInMillis
+
+        //Timber.tag(SHARE_PDF_TAG).d("InitialDelay computed target=${nextRun.time} delay=${delay}ms " + "[MyApp.kt::computeInitialDelay]")
+
+        return delay
+    }
+
+    /**
+     * Caller(s):
+     *  - computeInitialDelay()
+     *  - onCreate() (logging only)
+     *
+     * Responsibility:
+     *  - Computes next scheduled run time (human-readable).
+     *
+     * Return:
+     *  - Calendar pointing to next run.
+     */
+    private fun computeNextRunTime(): Calendar {
+        val now = Calendar.getInstance()
+
+        return Calendar.getInstance().apply {
             set(Calendar.HOUR_OF_DAY, 8)
-            set(Calendar.MINUTE, 0)
+            set(Calendar.MINUTE, 20)
             set(Calendar.SECOND, 0)
             set(Calendar.MILLISECOND, 0)
 
@@ -129,12 +157,6 @@ class MyApp : Application(), Configuration.Provider {
                 add(Calendar.DAY_OF_MONTH, 1)
             }
         }
-
-        val delay = next4pm.timeInMillis - now.timeInMillis
-
-        Timber.tag(SHARE_PDF_TAG).d("InitialDelay computed delay=${delay}ms target=${next4pm.time} [MyApp.kt::computeInitialDelayFor4PM]")
-
-        return delay
     }
 
     private companion object {

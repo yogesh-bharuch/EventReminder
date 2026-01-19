@@ -5,6 +5,7 @@ import com.example.eventreminder.data.local.ReminderFireStateDao
 import com.example.eventreminder.data.repo.ReminderRepository
 import com.example.eventreminder.receivers.ReminderReceiver
 import com.example.eventreminder.util.NotificationHelper
+import com.google.firebase.auth.FirebaseAuth
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
@@ -12,6 +13,9 @@ import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import timber.log.Timber
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import kotlin.math.abs
 
 private const val TAG = "NotificationRestore"
@@ -54,6 +58,21 @@ object NotificationRestoreManager {
     suspend fun restoreActiveNotifications(context: Context) {
         withContext(Dispatchers.IO) {
 
+            // -------------------------------------------------
+            // 🔐 Auth guard — REQUIRED for Application startup
+            // -------------------------------------------------
+            val currentUser = FirebaseAuth.getInstance().currentUser
+            if (currentUser == null) {
+                val nowEpoch = System.currentTimeMillis()
+                val readable = DateTimeFormatter
+                    .ofPattern("dd MMM, yyyy HH:mm:ss 'GMT'XXX")
+                    .withZone(ZoneId.systemDefault())
+                    .format(Instant.ofEpochMilli(nowEpoch))
+
+                Timber.tag(TAG).w("RESTORE_SKIPPED user=logged_out time=$readable epoch=$nowEpoch " + "[NotificationRestoreManager.kt::restoreActiveNotifications]")
+                return@withContext
+            }
+
             Timber.tag(TAG).i("RESTORE_START [NotificationRestoreManager.kt::restoreActiveNotifications]")
 
             val entryPoint = EntryPointAccessors.fromApplication(
@@ -66,7 +85,7 @@ object NotificationRestoreManager {
 
             val fireStates = fireStateDao.getActiveFiredFireStates()
 
-            Timber.tag(TAG).i("RESTORE_FOUND count=${fireStates.size} [NotificationRestoreManager.kt::restoreActiveNotifications]")
+            Timber.tag(TAG).i("RESTORE_FOUND count=${fireStates.size} " + "[NotificationRestoreManager.kt::restoreActiveNotifications]")
 
             for (state in fireStates) {
 
@@ -77,8 +96,7 @@ object NotificationRestoreManager {
                 }
 
                 val offsetMillis = state.offsetMillis
-                val notificationId =
-                    generateNotificationIdFromString(reminder.id, offsetMillis)
+                val notificationId = generateNotificationIdFromString(reminder.id, offsetMillis)
 
                 Timber.tag(TAG).i("RESTORE_APPLY → id=${reminder.id} notifId=$notificationId " + "[NotificationRestoreManager.kt::restoreActiveNotifications]")
 

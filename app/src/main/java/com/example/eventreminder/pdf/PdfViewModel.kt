@@ -15,6 +15,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import timber.log.Timber
+import java.time.Instant
+import java.time.ZoneId
 import javax.inject.Inject
 import com.example.eventreminder.ui.viewmodels.ReminderViewModel
 
@@ -89,7 +91,17 @@ class PdfViewModel @Inject constructor(
             _isWorkingPDF.value = true
 
             try {
+                Timber.tag(DEBUG_TAG)
+                    .d("All alarms PDF requested [PdfViewModel.kt::allAlarmsReport]")
+
                 val report = reminderReportDataBuilder.buildActiveAlarmReport()
+
+                Timber.tag(DEBUG_TAG)
+                    .d(
+                        "Active alarms count=${report.sortedAlarms.size} generatedAt=${report.generatedAt} " +
+                                "[PdfViewModel.kt::allAlarmsReport]"
+                    )
+
                 val uri = pdfGenerator
                     .generateAlarmsReportPdf(appContext, report)
                     .getOrNull()
@@ -104,17 +116,67 @@ class PdfViewModel @Inject constructor(
                 Timber.tag(SAVE_TAG)
                     .d("📄 Alarm PDF generated → $uri [PdfViewModel.kt::allAlarmsReport]")
 
-                ReminderViewModel.UiEvent.ShowMessage("PDF generated successfully")
-
-            }
-            catch (e: Exception) {
+            } catch (e: Exception) {
                 Timber.tag(SAVE_TAG)
                     .e(e, "💥 Alarm PDF generation error [PdfViewModel.kt::allAlarmsReport]")
-
-                ReminderViewModel.UiEvent.ShowMessage("PDF generation failed")
-
+            } finally {
+                _isWorkingPDF.value = false
             }
-            finally {
+        }
+    }
+
+    // =========================================================
+    // ContactsPdf REPORT
+    // =========================================================
+    /**
+     * Caller(s):
+     *  - HomeScreen → bottom tray → Export
+     *
+     * Responsibility:
+     *  - Generates a static contacts PDF.
+     *  - Serves as a format and MediaStore blueprint.
+     *
+     * Side Effects:
+     *  - Writes PDF to public Documents storage.
+     */
+    fun generateContactsPdf() {
+        viewModelScope.launch(Dispatchers.IO) {
+            if (_isWorkingPDF.value) return@launch
+            _isWorkingPDF.value = true
+
+            try {
+                val headers = listOf("Sr.No", "Name", "Lastname", "Phone")
+                val colWidths = listOf(60f, 120f, 120f, 200f)
+
+                val rows = listOf(
+                    listOf(
+                        PdfCell.TextCell("1"),
+                        PdfCell.TextCell("Yogesh"),
+                        PdfCell.TextCell("Vyas"),
+                        PdfCell.TextCell("9998000000")
+                    ),
+                    listOf(
+                        PdfCell.TextCell("2"),
+                        PdfCell.TextCell("Rahul"),
+                        PdfCell.TextCell("Sharma"),
+                        PdfCell.TextCell("8888000000")
+                    )
+                )
+
+                val uri = repository.generatePdf(
+                    title = "My Contacts",
+                    headers = headers,
+                    colWidths = colWidths,
+                    rows = rows,
+                    layout = PdfLayoutConfig(),
+                    fileName = "contacts.pdf"
+                )
+
+                if (uri != null) {
+                    _openPdfEvent.send(uri)
+                }
+
+            } finally {
                 _isWorkingPDF.value = false
             }
         }
@@ -137,7 +199,8 @@ class PdfViewModel @Inject constructor(
             if (_isWorkingPDF.value) return@launch
             _isWorkingPDF.value = true
 
-            Timber.tag(DEBUG_TAG).d("Next 7 days reminders PDF requested [PdfViewModel.kt::generateNext7DaysRemindersPdf]")
+            Timber.tag(DEBUG_TAG)
+                .d("Next 7 days PDF requested [PdfViewModel.kt::generateNext7DaysRemindersPdf]")
 
             try {
                 val uri = generateNext7DaysRemindersPdfInternal()
@@ -152,17 +215,10 @@ class PdfViewModel @Inject constructor(
                 Timber.tag(SAVE_TAG)
                     .d("📄 Next 7 days PDF generated → $uri [PdfViewModel.kt::generateNext7DaysRemindersPdf]")
 
-                ReminderViewModel.UiEvent.ShowMessage("PDF generated successfully")
-
-            }
-            catch (e: Exception) {
+            } catch (e: Exception) {
                 Timber.tag(DEBUG_TAG)
                     .e(e, "💥 Next 7 days PDF error [PdfViewModel.kt::generateNext7DaysRemindersPdf]")
-
-                ReminderViewModel.UiEvent.ShowMessage("PDF generation failed")
-
-            }
-            finally {
+            } finally {
                 _isWorkingPDF.value = false
             }
         }
@@ -174,7 +230,7 @@ class PdfViewModel @Inject constructor(
     /**
      * Caller(s):
      *  - generateNext7DaysRemindersPdf()
-     *  - Future background Worker (8 AM automation)
+     *  - Background Worker (daily automation)
      *
      * Responsibility:
      *  - Generates Next 7 Days reminders PDF without UI side effects.
@@ -186,6 +242,13 @@ class PdfViewModel @Inject constructor(
     private suspend fun generateNext7DaysRemindersPdfInternal(): Uri? {
 
         val reminders = reminderReportDataBuilder.buildNext7DaysReminders()
+        val zoneId = ZoneId.systemDefault()
+
+        Timber.tag(DEBUG_TAG)
+            .d(
+                "Next7Days reminders loaded count=${reminders.size} now=${Instant.now().atZone(zoneId)} " +
+                        "[PdfViewModel.kt::generateNext7DaysRemindersPdfInternal]"
+            )
 
         val headers = listOf("Description", "Trigger Time", "Offset")
         val colWidths = listOf(220f, 200f, 100f)
@@ -193,16 +256,19 @@ class PdfViewModel @Inject constructor(
         val formatter =
             java.time.format.DateTimeFormatter.ofPattern("dd MMM yyyy, hh:mm a")
 
-        val zoneId = java.time.ZoneId.systemDefault()
-
         val (todayReminders, upcomingReminders) =
             reminders.partition { isToday(it.nextTrigger, zoneId) }
+
+        Timber.tag(DEBUG_TAG)
+            .d(
+                "Partitioned reminders today=${todayReminders.size} upcoming=${upcomingReminders.size} " +
+                        "[PdfViewModel.kt::generateNext7DaysRemindersPdfInternal]"
+            )
 
         val rows = buildList {
 
             // TODAY
-            if (todayReminders.isEmpty())
-            {
+            if (todayReminders.isEmpty()) {
                 add(listOf(PdfCell.TextCell("Today  -  No Reminder"), PdfCell.TextCell(" "), PdfCell.TextCell(" ")))
             } else {
                 add(listOf(PdfCell.TextCell("Today"), PdfCell.TextCell(" "), PdfCell.TextCell(" ")))
@@ -218,8 +284,7 @@ class PdfViewModel @Inject constructor(
             }
 
             // UPCOMING
-            if (upcomingReminders.isEmpty())
-            {
+            if (upcomingReminders.isEmpty()) {
                 add(listOf(PdfCell.TextCell("Upcoming  -  No Reminder"), PdfCell.TextCell(" "), PdfCell.TextCell(" ")))
             } else {
                 add(listOf(PdfCell.TextCell("Upcoming"), PdfCell.TextCell(" "), PdfCell.TextCell(" ")))
@@ -235,95 +300,24 @@ class PdfViewModel @Inject constructor(
             }
         }
 
-        val layout = PdfLayoutConfig(
-            pageWidth = 595,
-            pageHeight = 842,
-            margin = 50f,
-            titleSpacing = 30f,
-            afterTitleSpacing = 40f,
-            afterHeaderSpacing = 30f,
-            rowSpacing = 25f,
-            footerBreathing = 30f
-        )
-
         return repository.generatePdf(
             title = "Reminders – Next 7 Days",
             headers = headers,
             colWidths = colWidths,
             rows = rows,
-            layout = layout,
+            layout = PdfLayoutConfig(),
             fileName = "Reminders_Next_7_Days.pdf"
         )
     }
 
     // =========================================================
-    // CONTACTS REPORT → PDF (FORMAT BLUEPRINT)
-    // =========================================================
-    /**
-     * Caller(s):
-     *  - HomeScreen → bottom tray → Export
-     *
-     * Responsibility:
-     *  - Generates a static contacts PDF.
-     *  - Serves as a format and MediaStore blueprint.
-     *
-     * Notes:
-     *  - Not part of reminder system logic.
-     */
-    fun generateContactsPdf() {
-        viewModelScope.launch(Dispatchers.IO) {
-            if (_isWorkingPDF.value) return@launch
-            _isWorkingPDF.value = true
-
-            Timber.tag(DEBUG_TAG)
-                .d("Contacts PDF generation requested [PdfViewModel.kt::generateContactsPdf]")
-
-            try {
-                val headers = listOf("Sr.No", "Name", "Lastname", "Phone")
-                val colWidths = listOf(60f, 120f, 120f, 200f)
-                val rows = listOf(
-                    listOf(PdfCell.TextCell("1"), PdfCell.TextCell("Yogesh"), PdfCell.TextCell("Vyas"), PdfCell.TextCell("9998000000")),
-                    listOf(PdfCell.TextCell("2"), PdfCell.TextCell("Rahul"), PdfCell.TextCell("Sharma"), PdfCell.TextCell("8888000000"))
-                )
-
-                val layout = PdfLayoutConfig(
-                    pageWidth = 595,
-                    pageHeight = 842,
-                    margin = 50f,
-                    titleSpacing = 30f,
-                    afterTitleSpacing = 50f,
-                    afterHeaderSpacing = 35f,
-                    rowSpacing = 25f,
-                    footerBreathing = 30f
-                )
-
-                val uri = repository.generatePdf(
-                    title = "My Contacts",
-                    headers = headers,
-                    colWidths = colWidths,
-                    rows = rows,
-                    layout = layout,
-                    fileName = "contacts.pdf"
-                )
-
-                if (uri != null) {
-                    _openPdfEvent.send(uri)
-                }
-
-            } finally {
-                _isWorkingPDF.value = false
-            }
-        }
-    }
-
-    // =========================================================
     // Helpers
     // =========================================================
-    private fun toLocalDateTime(epochMillis: Long, zoneId: java.time.ZoneId) =
-        java.time.Instant.ofEpochMilli(epochMillis).atZone(zoneId).toLocalDateTime()
+    private fun toLocalDateTime(epochMillis: Long, zoneId: ZoneId) =
+        Instant.ofEpochMilli(epochMillis).atZone(zoneId).toLocalDateTime()
 
-    private fun isToday(epochMillis: Long, zoneId: java.time.ZoneId): Boolean =
-        java.time.Instant.ofEpochMilli(epochMillis).atZone(zoneId).toLocalDate() ==
+    private fun isToday(epochMillis: Long, zoneId: ZoneId): Boolean =
+        Instant.ofEpochMilli(epochMillis).atZone(zoneId).toLocalDate() ==
                 java.time.LocalDate.now(zoneId)
 
     private fun formatOffsetText(offsetMinutes: Long): String =

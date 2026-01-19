@@ -1,6 +1,10 @@
 package com.example.eventreminder.pdf
 
+import com.example.eventreminder.logging.DEBUG_TAG
+import timber.log.Timber
+import java.time.Instant
 import java.time.LocalDateTime
+import java.time.ZoneId
 import javax.inject.Inject
 
 /**
@@ -56,7 +60,20 @@ class ReminderReportDataBuilder @Inject constructor(
      */
     suspend fun buildActiveAlarmReport(): ActiveAlarmReport {
 
+        val zoneId = ZoneId.systemDefault()
+        val now = Instant.now()
+
+        Timber.tag(DEBUG_TAG).d(
+            "BUILD_ACTIVE_REPORT_START now=${now.atZone(zoneId)} epoch=${now.toEpochMilli()} " +
+                    "[ReminderReportDataBuilder.kt::buildActiveAlarmReport]"
+        )
+
         val alarms = alarmRepo.loadActiveAlarms()
+
+        Timber.tag(DEBUG_TAG).d(
+            "ACTIVE_ALARMS_LOADED count=${alarms.size} " +
+                    "[ReminderReportDataBuilder.kt::buildActiveAlarmReport]"
+        )
 
         // Group by title (A→Z)
         val grouped = alarms
@@ -71,11 +88,18 @@ class ReminderReportDataBuilder @Inject constructor(
 
         val flatSorted = alarms.sortedBy { it.nextTrigger }
 
-        return ActiveAlarmReport(
+        val report = ActiveAlarmReport(
             groupedByTitle = grouped,
             sortedAlarms = flatSorted,
             generatedAt = LocalDateTime.now()
         )
+
+        Timber.tag(DEBUG_TAG).d(
+            "BUILD_ACTIVE_REPORT_DONE grouped=${grouped.size} flat=${flatSorted.size} " +
+                    "[ReminderReportDataBuilder.kt::buildActiveAlarmReport]"
+        )
+
+        return report
     }
 
     // =========================================================
@@ -103,16 +127,34 @@ class ReminderReportDataBuilder @Inject constructor(
      */
     suspend fun buildNext7DaysReminders(): List<AlarmEntry> {
 
+        val zoneId = ZoneId.systemDefault()
         val now = System.currentTimeMillis()
         val sevenDaysLater = now + (7L * 24 * 60 * 60 * 1000)
 
+        Timber.tag(DEBUG_TAG).d(
+            "NEXT_7_DAYS_START now=${Instant.ofEpochMilli(now).atZone(zoneId)} " +
+                    "epoch=$now limit=${Instant.ofEpochMilli(sevenDaysLater).atZone(zoneId)} " +
+                    "[ReminderReportDataBuilder.kt::buildNext7DaysReminders]"
+        )
+
         val alarms = alarmRepo.loadActiveAlarms()
 
-        return alarms
+        Timber.tag(DEBUG_TAG).d(
+            "ACTIVE_ALARMS_LOADED total=${alarms.size} " +
+                    "[ReminderReportDataBuilder.kt::buildNext7DaysReminders]"
+        )
+
+        val filtered = alarms
             .filter { alarm ->
                 alarm.nextTrigger in now..sevenDaysLater
             }
             .sortedBy { it.nextTrigger }
-    }
 
+        Timber.tag(DEBUG_TAG).d(
+            "NEXT_7_DAYS_DONE kept=${filtered.size} " +
+                    "[ReminderReportDataBuilder.kt::buildNext7DaysReminders]"
+        )
+
+        return filtered
+    }
 }

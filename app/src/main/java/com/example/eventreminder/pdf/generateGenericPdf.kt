@@ -10,6 +10,8 @@ import com.example.eventreminder.logging.DEBUG_TAG
 import timber.log.Timber
 import java.io.OutputStream
 import java.text.SimpleDateFormat
+import java.time.Instant
+import java.time.ZoneId
 import java.util.*
 
 /**
@@ -73,7 +75,14 @@ fun generateGenericPdf(
     outputStream: OutputStream
 ) {
 
-    Timber.tag(DEBUG_TAG).d("Entered in. [generateGenericPdf.kt::generateGenericPdf]")
+    val zoneId = ZoneId.systemDefault()
+    val startEpoch = System.currentTimeMillis()
+
+    Timber.tag(DEBUG_TAG).d(
+        "PDF_RENDER_START title=\"$title\" " +
+                "time=${Instant.ofEpochMilli(startEpoch).atZone(zoneId)} epoch=$startEpoch " +
+                "[generateGenericPdf.kt::generateGenericPdf]"
+    )
 
     val pdfDocument = PdfDocument()
 
@@ -125,6 +134,11 @@ fun generateGenericPdf(
 
     // Helper: start a new page and draw title + header
     fun startNewPage(): PageCtx {
+
+        Timber.tag(DEBUG_TAG).d(
+            "NEW_PAGE_START page=$pageNumber [generateGenericPdf.kt::generateGenericPdf]"
+        )
+
         val pageInfo = PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber).create()
         val page = pdfDocument.startPage(pageInfo)
         val canvas = page.canvas
@@ -200,5 +214,12 @@ fun generateGenericPdf(
     pdfDocument.writeTo(outputStream)
     pdfDocument.close()
 
-    Timber.tag(DEBUG_TAG).d("PDF render completed. [generateGenericPdf.kt::generateGenericPdf]")
+    val endEpoch = System.currentTimeMillis()
+
+    Timber.tag(DEBUG_TAG).d(
+        "PDF_RENDER_DONE pages=$pageNumber " +
+                "durationMs=${endEpoch - startEpoch} " +
+                "finishedAt=${Instant.ofEpochMilli(endEpoch).atZone(zoneId)} epoch=$endEpoch " +
+                "[generateGenericPdf.kt::generateGenericPdf]"
+    )
 }
