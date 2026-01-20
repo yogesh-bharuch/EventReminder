@@ -217,7 +217,6 @@ fun HomeScreen(
 
             // HEADER — Show Firebase Email only
             val email = FirebaseAuth.getInstance().currentUser?.email ?: "Guest"
-
             Row(Modifier.padding(bottom = 1.dp)) {
                 Text("Welcome: ", fontSize = 12.sp)
                 Text(email, fontSize = 10.sp)
@@ -226,51 +225,25 @@ fun HomeScreen(
             HorizontalDivider(thickness = 2.dp, color = Color.Gray)
             Spacer(Modifier.height(16.dp))
 
-            // Empty State or List
+            // Empty State or List screen display
             if (groupedSections.isEmpty()) {
 
                 BirthdayEmptyState()
 
             }
-            /*else {
 
-                // Button → Open Last Reminder
-                Row {
-                    Button(
-                        onClick = {
-                            val lastReminder = groupedSections
-                                .flatMap { it.events }
-                                .maxByOrNull { it.eventEpochMillis }
+            // Events List
+            EventsListGrouped(
+                sections = groupedSections,
+                viewModel = reminderVm,
+                onClick = { id ->
+                    navController.navigate(
+                        AddEditReminderRoute(eventId = id)
+                    )
+                },
+                modifier = Modifier.weight(1f)
+            )
 
-                            if (lastReminder != null) {
-                                navController.navigate(
-                                    PixelPreviewRouteString(reminderIdString = lastReminder.id)
-                                )
-                            } else {
-                                coroutineScope.launch {
-                                    snackbarHostState.showSnackbar("No reminders found")
-                                }
-                            }
-                        }
-                    ) {
-                        Text("Open last card")
-                    }
-                }*/
-
-                //Spacer(Modifier.height(10.dp))
-
-                // Events List
-                EventsListGrouped(
-                    sections = groupedSections,
-                    viewModel = reminderVm,
-                    onClick = { id ->
-                        navController.navigate(
-                            AddEditReminderRoute(eventId = id)
-                        )
-                    },
-                    modifier = Modifier.weight(1f)
-                )
-            //}
         }
     }
 }
