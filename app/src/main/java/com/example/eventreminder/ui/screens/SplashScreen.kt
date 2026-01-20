@@ -36,8 +36,7 @@ fun SplashScreen(
     val context = LocalContext.current
     var hasNavigated by remember { mutableStateOf(false) }
 
-    Timber.tag(AUTH_STATE_TAG)
-        .d("Splash composed [SplashScreen.kt::SplashScreen]")
+    Timber.tag(AUTH_STATE_TAG).d("Splash screen started [SplashScreen.kt::SplashScreen]")
 
     // ------------------------------------------------------------
     // Battery Optimization Check (once)
@@ -56,8 +55,7 @@ fun SplashScreen(
     // ONE-TIME INITIALIZATION
     // ------------------------------------------------------------
     LaunchedEffect(Unit) {
-        Timber.tag(AUTH_STATE_TAG)
-            .i("INIT → ViewModel.initialize() [SplashScreen.kt::LaunchedEffect]")
+        //Timber.tag(AUTH_STATE_TAG).i("INIT → ViewModel.initialize() [SplashScreen.kt::LaunchedEffect]")
         viewModel.initialize()
     }
 

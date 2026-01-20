@@ -31,6 +31,7 @@ import kotlinx.coroutines.launch
 import timber.log.Timber
 import com.example.eventreminder.logging.SAVE_TAG
 import com.example.eventreminder.logging.SYNC_TAG
+import com.example.eventreminder.ui.viewmodels.SplashViewModel
 
 
 private const val TAG = "HomeScreen"
@@ -40,12 +41,13 @@ private const val TAG = "HomeScreen"
 fun HomeScreen(
     navController: NavController,
     reminderVm: ReminderViewModel,
-    pdfviewModel: PdfViewModel = hiltViewModel()
+    pdfviewModel: PdfViewModel = hiltViewModel(),
+    splashVm: SplashViewModel = hiltViewModel()
 ) {
     Timber.tag(TAG).d("HomeScreen composed")
-
     val context = LocalContext.current
     val activity = context as Activity
+    val session by splashVm.sessionState.collectAsState(initial = null)
     val isWorking by reminderVm.isWorking.collectAsState()
     val isWorkingPDF by pdfviewModel.isWorkingPDF.collectAsState()
 
@@ -54,6 +56,7 @@ fun HomeScreen(
     // ---------------------------------------------------------
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
+
 
     LaunchedEffect(reminderVm) {
         //Timber.tag(SAVE_TAG).d("📥 HomeScreen UiEvent collector STARTED. [HomeScreen.kt::UiEventCollector]")
@@ -151,10 +154,10 @@ fun HomeScreen(
             navController.navigate(AddEditReminderRoute())
         },
         onSignOut = {
-            Timber.tag(TAG).d("Signing out")
-            FirebaseAuth.getInstance().signOut()
-            navController.navigate(LoginRoute) {
-                popUpTo(HomeRoute) { inclusive = true }
+            Timber.tag(TAG).i("🚪 Sign-out requested [HomeScreen.kt::onSignOut]")
+            splashVm.logout()
+            navController.navigate(SplashRoute) {
+                popUpTo(0) { inclusive = true }
             }
         },
         onManageRemindersClick = {
@@ -189,7 +192,26 @@ fun HomeScreen(
                 onSyncClick = {
                     coroutineScope.launch {
                         Timber.tag(SYNC_TAG).i("▶️ Sync clicked [HomeScreen.kt::onSyncClick]")
-                        reminderVm.syncRemindersWithServer()
+
+                        val user = FirebaseAuth.getInstance().currentUser
+
+                        when {
+                            user == null -> {
+                                Timber.tag(SYNC_TAG).w("⛔ Sync blocked → Firebase user is null [HomeScreen.kt::onSyncClick]")
+                                reminderVm.showMessage("Please sign in to enable sync")
+                                return@launch
+                            }
+
+                            !user.isEmailVerified -> {
+                                Timber.tag(SYNC_TAG).w("⛔ Sync blocked → Email not verified [HomeScreen.kt::onSyncClick]")
+                                reminderVm.showMessage("Verify your email to enable sync")
+                                return@launch
+                            }
+
+                            else -> {
+                                reminderVm.syncRemindersWithServer()
+                            }
+                        }
                     }
                 },
                 onBackupClick = {
@@ -216,7 +238,7 @@ fun HomeScreen(
         ) {
 
             // HEADER — Show Firebase Email only
-            val email = FirebaseAuth.getInstance().currentUser?.email ?: "Guest"
+            val email = session?.email ?: "Guest"
             Row(Modifier.padding(bottom = 1.dp)) {
                 Text("Welcome: ", fontSize = 12.sp)
                 Text(email, fontSize = 10.sp)

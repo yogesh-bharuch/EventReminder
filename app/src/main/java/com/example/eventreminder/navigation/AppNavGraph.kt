@@ -97,11 +97,18 @@ fun AppNavGraph(
         // LOGIN ROUTE, ENTRY GATE (External Login Module)
         // =============================================================
         composable<LoginRoute> {
-            FirebaseLoginEntry(
-                onLoginSuccess = {
+            /*FirebaseLoginEntry(onLoginSuccess = {
                     Timber.tag(TAG).i("Login success → HomeGraph [AppNavGraph.kt::LoginRoute]")
                     navController.navigate(route = HomeGraphRoute) {
                         popUpTo(route = LoginRoute) { inclusive = true }
+                    }
+                }) */
+            FirebaseLoginEntry(
+                onLoginSuccess = {
+                    Timber.tag(TAG).i("Login success → Splash (re-evaluate session) [AppNavGraph.kt::LoginRoute]")
+
+                    navController.navigate(route = SplashRoute) {
+                        popUpTo(0) { inclusive = true }
                     }
                 }
             )

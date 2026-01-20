@@ -5,6 +5,7 @@ import com.example.eventreminder.data.local.ReminderDao
 import com.example.eventreminder.data.local.ReminderFireStateDao
 import com.example.eventreminder.data.model.EventReminder
 import com.example.eventreminder.data.model.ReminderFireStateEntity
+import com.example.eventreminder.logging.AUTH_STATE_TAG
 import com.example.eventreminder.sync.core.UserIdProvider
 import com.example.eventreminder.util.BackupHelper
 import kotlinx.coroutines.flow.Flow
@@ -85,10 +86,7 @@ class ReminderRepository @Inject constructor(
      * Returns:
      * - last fired timestamp for reminder+offset or null
      */
-    suspend fun getLastFiredAt(
-        reminderId: String,
-        offsetMillis: Long
-    ): Long? =
+    suspend fun getLastFiredAt(reminderId: String, offsetMillis: Long): Long? =
         fireStateDao.getLastFiredAt(reminderId, offsetMillis)
 
     /**
@@ -98,17 +96,8 @@ class ReminderRepository @Inject constructor(
      * Responsibility:
      * - Persist notification fire time per offset
      */
-    suspend fun upsertLastFiredAt(
-        reminderId: String,
-        offsetMillis: Long,
-        ts: Long
-    ) {
-        Timber.tag(TAG).e(
-            "FIRESTATE_UPSERT → id=%s offset=%d firedAt=%d [ReminderRepository.kt::upsertLastFiredAt]",
-            reminderId,
-            offsetMillis,
-            ts
-        )
+    suspend fun upsertLastFiredAt(reminderId: String, offsetMillis: Long, ts: Long) {
+        Timber.tag(TAG).e("FIRESTATE_UPSERT → id=%s offset=%d firedAt=%d [ReminderRepository.kt::upsertLastFiredAt]", reminderId, offsetMillis, ts)
 
         fireStateDao.upsert(
             ReminderFireStateEntity(
@@ -135,11 +124,7 @@ class ReminderRepository @Inject constructor(
      * - Does NOT disable, delete, or reschedule anything
      * - Safe no-op if fire-state row does not exist
      */
-    suspend fun recordDismissed(
-        reminderId: String,
-        offsetMillis: Long,
-        dismissedAt: Long = System.currentTimeMillis()
-    ) {
+    suspend fun recordDismissed(reminderId: String, offsetMillis: Long, dismissedAt: Long = System.currentTimeMillis()) {
         fireStateDao.updateDismissedAt(
             id = reminderId,
             offsetMillis = offsetMillis,
@@ -213,7 +198,9 @@ class ReminderRepository @Inject constructor(
     // ============================================================
 
     suspend fun normalizeRepeatRules() {
-        dao.normalizeRepeatRule(uid = requireUid())
+        val UpdatedCount = dao.normalizeRepeatRule(uid = requireUid())
+        Timber.tag(TAG).w(" $UpdatedCount records updated for normalizeRepeatRules [ReminderRepository.kt::normalizeRepeatRules]")
+        Timber.tag(DELETE_TAG).w(" $UpdatedCount records updated for normalizeRepeatRules [ReminderRepository.kt::normalizeRepeatRules]")
     }
 
     // ============================================================

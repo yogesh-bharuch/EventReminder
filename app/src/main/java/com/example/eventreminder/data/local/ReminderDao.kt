@@ -234,7 +234,7 @@ interface ReminderDao {
           AND repeatRule = ''
         """
     )
-    suspend fun normalizeRepeatRule(uid: String)
+    suspend fun normalizeRepeatRule(uid: String): Int
 
     // ============================================================
     // HELPERS

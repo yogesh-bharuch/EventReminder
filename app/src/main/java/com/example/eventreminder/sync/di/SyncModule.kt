@@ -41,19 +41,6 @@ object SyncModule {
     }
 
     // --------------------------
-    // User ID Provider
-    // --------------------------
-    @Provides
-    @Singleton
-    fun provideUserIdProvider(): UserIdProvider {
-        return UserIdProvider {
-            val uid = FirebaseAuth.getInstance().currentUser?.uid
-            Timber.tag("SYNC_UID").i("Providing UID = %s", uid)
-            uid
-        }
-    }
-
-    // --------------------------
     // Reminder Sync Entity Config
     // --------------------------
     @Provides

@@ -520,4 +520,22 @@ class ReminderViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Emit a one-off UI message (Snackbar).
+     *
+     * Caller(s):
+     * - HomeScreen (pre-flight guards)
+     * - Sync / Backup / Restore guards
+     *
+     * Responsibility:
+     * - Emit UiEvent.ShowMessage
+     */
+    fun showMessage(message: String) {
+        viewModelScope.launch {
+            Timber.tag(SAVE_TAG).d("ℹ️ UI message emitted → $message [ReminderViewModel.kt::showMessage]")
+            _events.emit(UiEvent.ShowMessage(message))
+        }
+    }
+
+
 }
