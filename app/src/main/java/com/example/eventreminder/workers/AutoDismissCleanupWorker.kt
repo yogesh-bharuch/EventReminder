@@ -14,10 +14,8 @@ import timber.log.Timber
 import kotlin.math.abs
 import com.example.eventreminder.logging.DISMISS_TAG
 
-
-private const val TAG = "AutoDismissCleanupWorker"
 private const val AUTO_DISMISS_THRESHOLD_MILLIS =
-    24L * 60 * 60 * 1000 // 24h
+    48L * 60 * 60 * 1000 // 48h
 
 /**
  * AutoDismissCleanupWorker
@@ -47,7 +45,7 @@ class AutoDismissCleanupWorker(
 
     override suspend fun doWork(): Result {
 
-        Timber.tag(TAG).i(
+        Timber.tag(DISMISS_TAG).i(
             "AUTO_DISMISS_WORKER_START [AutoDismissCleanupWorker.kt::doWork]"
         )
 
@@ -64,7 +62,7 @@ class AutoDismissCleanupWorker(
 
         val staleRows = fireStateDao.getStaleFireStates(cutoff)
 
-        Timber.tag(TAG).i("AUTO_DISMISS_FOUND count=${staleRows.size} cutoff=$cutoff [AutoDismissCleanupWorker.kt::doWork]")
+        Timber.tag(DISMISS_TAG).i("AUTO_DISMISS_FOUND count=${staleRows.size} cutoff=$cutoff [AutoDismissCleanupWorker.kt::doWork]")
 
         for (state in staleRows) {
 
@@ -89,7 +87,7 @@ class AutoDismissCleanupWorker(
             }
         }
 
-        Timber.tag(TAG).i("AUTO_DISMISS_WORKER_DONE [AutoDismissCleanupWorker.kt::doWork]")
+        Timber.tag(DISMISS_TAG).i("AUTO_DISMISS_WORKER_DONE [AutoDismissCleanupWorker.kt::doWork]")
 
         return Result.success()
     }
