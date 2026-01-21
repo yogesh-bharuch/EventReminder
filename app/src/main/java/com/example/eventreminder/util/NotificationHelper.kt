@@ -5,9 +5,6 @@ package com.example.eventreminder.util
 // Sound is bound to CHANNEL (Android O+ compliant)
 // =============================================================
 
-// =============================================================
-// Imports
-// =============================================================
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -35,12 +32,16 @@ private const val CH_MEDICINE = "channel_medicine"
 private const val CH_WORKOUT = "channel_workout"
 private const val CH_GENERAL = "channel_general"
 
+// 🔕 Silent restore channel (NEW, isolated)
+private const val CH_RESTORE_SILENT = "channel_restore_silent"
+
 /**
  * NotificationHelper
  *
  * - Category-based notification channels
  * - Deterministic channel sound (Android O+ safe)
  * - UUID always propagated for secure navigation
+ * - Silent restore handled via dedicated channel
  */
 object NotificationHelper {
 
@@ -69,8 +70,50 @@ object NotificationHelper {
     ) {
         val nm = context.getSystemService(NotificationManager::class.java)
 
+        val uuid = extras[ReminderReceiver.EXTRA_REMINDER_ID_STRING] as? String
+        val eventTypeExtra = extras[ReminderReceiver.EXTRA_EVENT_TYPE] as? String
+
+        Timber.tag(TAG).d("🔔 showNotification silent=$silent uuid=$uuid eventType=$eventTypeExtra")
+
         // ---------------------------------------------------------
-        // Deterministic sound per event type (CHANNEL SAFE)
+        // 🔕 SILENT RESTORE PATH (ISOLATED)
+        // ---------------------------------------------------------
+        if (silent) {
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                if (nm.getNotificationChannel(CH_RESTORE_SILENT) == null) {
+                    val silentChannel = NotificationChannel(
+                        CH_RESTORE_SILENT,
+                        "Restored Notifications (Silent)",
+                        NotificationManager.IMPORTANCE_LOW
+                    ).apply {
+                        setSound(null, null)
+                        enableVibration(false)
+                        enableLights(false)
+                        description = "Restored reminders without sound or vibration"
+                    }
+
+                    nm.createNotificationChannel(silentChannel)
+
+                    Timber.tag(TAG).d("📡 Created silent restore channel=$CH_RESTORE_SILENT")
+                }
+            }
+
+            postNotification(
+                context = context,
+                nm = nm,
+                channelId = CH_RESTORE_SILENT,
+                notificationId = notificationId,
+                title = title,
+                message = message,
+                extras = extras,
+                silent = true
+            )
+            return
+        }
+
+        // ---------------------------------------------------------
+        // 🔊 NORMAL (CATEGORY) PATH — UNCHANGED
         // ---------------------------------------------------------
         val channelSound: Uri = when (eventType.uppercase()) {
             "BIRTHDAY" ->
@@ -85,14 +128,6 @@ object NotificationHelper {
                 RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
         }
 
-        val uuid = extras[ReminderReceiver.EXTRA_REMINDER_ID_STRING] as? String
-        val eventTypeExtra = extras[ReminderReceiver.EXTRA_EVENT_TYPE] as? String
-
-        Timber.tag(TAG).d("🔔 showNotification → uuid=$uuid eventType=$eventTypeExtra")
-
-        // ---------------------------------------------------------
-        // Channel mapping
-        // ---------------------------------------------------------
         val channelId = when (eventType.uppercase()) {
             "BIRTHDAY" -> CH_BIRTHDAY
             "ANNIVERSARY" -> CH_ANNIVERSARY
@@ -109,14 +144,8 @@ object NotificationHelper {
             else -> "General Reminders"
         }
 
-        // ---------------------------------------------------------
-        // Create notification channel (Android O+)
-        // NOTE: Sound is immutable once channel exists
-        // ---------------------------------------------------------
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val existing = nm.getNotificationChannel(channelId)
-
-            if (existing == null) {
+            if (nm.getNotificationChannel(channelId) == null) {
                 val channel = NotificationChannel(
                     channelId,
                     channelName,
@@ -139,9 +168,36 @@ object NotificationHelper {
             }
         }
 
-        // =========================================================
-        // TAP → OPEN MAIN ACTIVITY (UUID SAFE)
-        // =========================================================
+        postNotification(
+            context = context,
+            nm = nm,
+            channelId = channelId,
+            notificationId = notificationId,
+            title = title,
+            message = message,
+            extras = extras,
+            silent = false,
+            sound = channelSound
+        )
+    }
+
+    // =========================================================
+    // INTERNAL POST (shared, no behavior drift)
+    // =========================================================
+    private fun postNotification(
+        context: Context,
+        nm: NotificationManager,
+        channelId: String,
+        notificationId: Int,
+        title: String,
+        message: String,
+        extras: Map<String, Any?>,
+        silent: Boolean,
+        sound: Uri? = null
+    ) {
+        val uuid = extras[ReminderReceiver.EXTRA_REMINDER_ID_STRING] as? String
+        val eventTypeExtra = extras[ReminderReceiver.EXTRA_EVENT_TYPE] as? String
+
         val tapIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or
                     Intent.FLAG_ACTIVITY_CLEAR_TOP or
@@ -160,42 +216,8 @@ object NotificationHelper {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        // =========================================================
-        // OPEN CARD ACTION
-        // =========================================================
-        val openIntent = Intent(context, MainActivity::class.java).apply {
-            action = ReminderReceiver.ACTION_OPEN_CARD
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or
-                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                    Intent.FLAG_ACTIVITY_SINGLE_TOP
-
-            putExtrasFromMap(extras)
-            putExtra(ReminderReceiver.EXTRA_FROM_NOTIFICATION, true)
-            putExtra(ReminderReceiver.EXTRA_REMINDER_ID_STRING, uuid)
-            putExtra(ReminderReceiver.EXTRA_EVENT_TYPE, eventTypeExtra)
-        }
-
-        val openPI = PendingIntent.getActivity(
-            context,
-            notificationId + 1,
-            openIntent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-
-        // =========================================================
-        // DISMISS ACTION (DB bookkeeping only — no lifecycle change)
-        // =========================================================
-        Timber.tag(TAG).e(
-            "DISMISS_PI_CREATE → notifId=%d uuid=%s offset=%s [NotificationHelper.kt::showNotification]",
-            notificationId,
-            uuid,
-            extras[ReminderReceiver.EXTRA_OFFSET_MILLIS]
-        )
-
         val dismissIntent = Intent(context, ReminderReceiver::class.java).apply {
             action = ReminderReceiver.ACTION_DISMISS
-
-            // REQUIRED for DB write
             putExtra(ReminderReceiver.EXTRA_NOTIFICATION_ID, notificationId)
             putExtra(ReminderReceiver.EXTRA_REMINDER_ID_STRING, uuid)
             putExtra(
@@ -206,52 +228,32 @@ object NotificationHelper {
 
         val dismissPI = PendingIntent.getBroadcast(
             context,
-            notificationId + 2,
+            notificationId + 1,
             dismissIntent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        // ---------------------------------------------------------
-        // Emoji prefix (presentation only)
-        // ---------------------------------------------------------
-        val emojiPrefix = when (eventType.uppercase()) {
-            "BIRTHDAY" -> "🎂 "
-            "ANNIVERSARY" -> "❤️ "
-            "MEDICINE" -> "💊 "
-            "MEETING" -> "📅 "
-            "WORKOUT" -> "💪 "
-            else -> ""
-        }
-
-        val fullMessage = "$emojiPrefix$message"
-
-        // ---------------------------------------------------------
-        // Build notification
-        // ---------------------------------------------------------
         val builder = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
-            .setContentText(fullMessage)
+            .setContentText(message)
             .setOngoing(true)
             .setAutoCancel(false)
-            .setOnlyAlertOnce(silent)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setOnlyAlertOnce(true)
+            .setPriority(
+                if (silent) NotificationCompat.PRIORITY_LOW
+                else NotificationCompat.PRIORITY_HIGH
+            )
             .setContentIntent(tapPI)
-            .setVibrate(longArrayOf(0, 300, 200, 300))
-            .setStyle(NotificationCompat.BigTextStyle().bigText(fullMessage))
-            .addAction(R.drawable.ic_open, "Open Card", openPI)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(message))
             .addAction(R.drawable.ic_close, "Dismiss", dismissPI)
 
-        // Pre-O devices → runtime sound
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
-            builder.setSound(channelSound)
+        if (!silent && Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            builder.setSound(sound)
         }
 
-        // ---------------------------------------------------------
-        // Post notification
-        // ---------------------------------------------------------
         nm.notify(notificationId, builder.build())
 
-        Timber.tag(TAG).d("📢 Notification posted id=$notificationId channel=$channelId uuid=$uuid")
+        Timber.tag(TAG).d("📢 Notification posted id=$notificationId channel=$channelId silent=$silent uuid=$uuid")
     }
 }

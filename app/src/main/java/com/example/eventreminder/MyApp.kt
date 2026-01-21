@@ -9,6 +9,7 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.example.eventreminder.data.local.DatabaseSeeder
 import com.example.eventreminder.logging.DISMISS_TAG
+import com.example.eventreminder.logging.RESTORE_NOT_DISMISSED_TAG
 import com.example.eventreminder.logging.SHARE_PDF_TAG
 import com.example.eventreminder.notifications.NotificationRestoreManager
 import com.example.eventreminder.workers.AutoDismissCleanupWorker
@@ -44,11 +45,15 @@ class MyApp : Application(), Configuration.Provider {
         // ------------------------------------------------------------
         // 🔁 Restore fired-but-not-dismissed notifications (UI only)
         // ------------------------------------------------------------
+        Timber.tag(RESTORE_NOT_DISMISSED_TAG).i("RESTORE_INITIATED [MyApp.kt::onCreate]")
         CoroutineScope(Dispatchers.Default).launch {
             try {
                 NotificationRestoreManager.restoreActiveNotifications(this@MyApp)
+                Timber.tag(RESTORE_NOT_DISMISSED_TAG).i("RESTORE_JOB_SUCCESS [MyApp.kt::onCreate]")
             } catch (t: Throwable) {
                 Timber.e(t, "RESTORE_FAILED [MyApp.kt::onCreate]")
+            } finally {
+                Timber.tag(RESTORE_NOT_DISMISSED_TAG).i("RESTORE_JOB_COMPLETED [MyApp.kt::onCreate]")
             }
         }
 

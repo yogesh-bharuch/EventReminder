@@ -1,22 +1,11 @@
 package com.example.eventreminder.receivers
 
-/*// =============================================================
-// BootReceiver — Clean Reboot Restore (Engine-Driven)
-// UUID-only version using ReminderSchedulingEngine.
-//
-// Responsibilities AFTER engine adoption:
-//  • Detect boot/package-replaced event
-//  • Load reminders from repository
-//  • Delegate ALL scheduling/missed-fire logic to Engine
-//  • Restore fired-but-not-dismissed notifications (UI only)
-//
-// ZERO alarm logic lives here now.
-// =============================================================*/
-
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import com.example.eventreminder.data.repo.ReminderRepository
+import com.example.eventreminder.logging.BOOT_RECEIVER_TAG
+import com.example.eventreminder.logging.RESTORE_NOT_DISMISSED_TAG
 import com.example.eventreminder.notifications.NotificationRestoreManager
 import com.example.eventreminder.scheduler.ReminderSchedulingEngine
 import dagger.hilt.android.AndroidEntryPoint
@@ -27,14 +16,25 @@ import timber.log.Timber
 import java.time.Instant
 import javax.inject.Inject
 
-private const val TAG = "BootReceiver"
-
 @AndroidEntryPoint
 class BootReceiver : BroadcastReceiver() {
 
     @Inject lateinit var repo: ReminderRepository
     @Inject lateinit var schedulingEngine: ReminderSchedulingEngine
 
+    /**
+     * Caller(s):
+     *  - Android system (BOOT_COMPLETED)
+     *  - Android system (MY_PACKAGE_REPLACED)
+     *
+     * Responsibility:
+     *  - Detect device reboot or app replacement
+     *  - Restore scheduling state via ReminderSchedulingEngine
+     *  - Restore fired-but-not-dismissed notifications (UI only)
+     *
+     * Return:
+     *  - Unit
+     */
     override fun onReceive(context: Context, intent: Intent) {
 
         val isBootEvent =
@@ -43,42 +43,47 @@ class BootReceiver : BroadcastReceiver() {
 
         if (!isBootEvent) return
 
-        Timber.tag(TAG).i("BOOT_EVENT → action=${intent.action} [BootReceiver.kt::onReceive]")
+        Timber.tag(BOOT_RECEIVER_TAG).i("BOOT_EVENT action=${intent.action} [BootReceiver.kt::onReceive]")
 
         CoroutineScope(Dispatchers.IO).launch {
+
+            // =====================================================
+            // 1️⃣ Engine boot restore (scheduling + missed detection)
+            // =====================================================
             try {
-                // -----------------------------------------------------
-                // 1️⃣ Engine boot restore (scheduling + missed detection)
-                // -----------------------------------------------------
                 val reminders = repo.getNonDeletedEnabled()
-                val now = Instant.now().toEpochMilli()
+                val nowEpoch = Instant.now().toEpochMilli()
 
                 reminders.forEach { reminder ->
                     try {
                         schedulingEngine.processBootRestore(
                             reminder = reminder,
-                            nowEpochMillis = now
+                            nowEpochMillis = nowEpoch
                         )
                     } catch (t: Throwable) {
-                        Timber.tag(TAG).e(t, "Engine boot-restore failed for ${reminder.id} [BootReceiver.kt::onReceive]")
+                        Timber.tag(BOOT_RECEIVER_TAG).e(t, "ENGINE_RESTORE_FAILED id=${reminder.id} [BootReceiver.kt::onReceive]")
                     }
                 }
 
-                Timber.tag(TAG).i("BOOT_ENGINE_RESTORE_COMPLETE [BootReceiver.kt::onReceive]")
-
-                // -----------------------------------------------------
-                // 2️⃣ Restore fired-but-not-dismissed notifications (UI)
-                // -----------------------------------------------------
-                try {
-                    NotificationRestoreManager.restoreActiveNotifications(context)
-                } catch (t: Throwable) {
-                    Timber.tag(TAG).e(t, "Notification restore failed [BootReceiver.kt::onReceive]")
-                }
-
-                Timber.tag(TAG).i("BOOT_NOTIFICATION_RESTORE_COMPLETE [BootReceiver.kt::onReceive]")
+                Timber.tag(BOOT_RECEIVER_TAG).i("BOOT_ENGINE_RESTORE_SUCCESS count=${reminders.size} [BootReceiver.kt::onReceive]")
 
             } catch (t: Throwable) {
-                Timber.tag(TAG).e(t, "BOOT restore FAILED ❌ [BootReceiver.kt::onReceive]")
+                Timber.tag(BOOT_RECEIVER_TAG).e(t, "BOOT_ENGINE_RESTORE_FATAL [BootReceiver.kt::onReceive]")
+            }
+
+            // =====================================================
+            // 2️⃣ Restore fired-but-not-dismissed notifications (UI)
+            // =====================================================
+            Timber.tag(RESTORE_NOT_DISMISSED_TAG).i("RESTORE_INITIATED source=boot [BootReceiver.kt::onReceive]")
+
+            try {
+                NotificationRestoreManager.restoreActiveNotifications(context)
+
+                Timber.tag(RESTORE_NOT_DISMISSED_TAG).i("RESTORE_JOB_SUCCESS source=boot [BootReceiver.kt::onReceive]")
+            } catch (t: Throwable) {
+                Timber.tag(RESTORE_NOT_DISMISSED_TAG).e(t, "RESTORE_FAILED source=boot [BootReceiver.kt::onReceive]")
+            } finally {
+                Timber.tag(RESTORE_NOT_DISMISSED_TAG).i("RESTORE_JOB_COMPLETED source=boot [BootReceiver.kt::onReceive]")
             }
         }
     }
