@@ -1,9 +1,5 @@
 package com.example.eventreminder.workers
 
-// =============================================================
-// Next7DaysPdfWorker — Daily PDF → Notification (Share + Dismiss)
-// =============================================================
-
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -15,17 +11,15 @@ import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.example.eventreminder.R
+import com.example.eventreminder.data.session.SessionRepository
 import com.example.eventreminder.logging.SHARE_PDF_TAG
-import com.example.eventreminder.pdf.PdfCell
-import com.example.eventreminder.pdf.PdfLayoutConfig
-import com.example.eventreminder.pdf.PdfRepository
-import com.example.eventreminder.pdf.ReminderReportDataBuilder
+import com.example.eventreminder.pdf.Next7DaysPdfUseCase
 import com.example.eventreminder.receivers.ReminderReceiver
-import com.google.firebase.auth.FirebaseAuth
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
+import kotlinx.coroutines.flow.first
 import timber.log.Timber
 import java.time.Instant
 import java.time.ZoneId
@@ -36,7 +30,6 @@ private const val CHANNEL_ID = "next_7_days_pdf"
 
 /**
  * Shared time context for this Worker.
- * Single source of truth for readable + epoch logs.
  */
 private val WORKER_ZONE_ID: ZoneId = ZoneId.systemDefault()
 
@@ -48,23 +41,17 @@ private val WORKER_TIME_FORMATTER: DateTimeFormatter =
 /**
  * Next7DaysPdfWorker
  *
- * Called by:
+ * Caller:
  *  - WorkManager (periodic, daily)
  *
  * Responsibility:
- *  - Generate "Next 7 Days Reminders" PDF (headless).
- *  - Show notification with:
- *      • Share PDF
- *      • Dismiss (REUSE ReminderReceiver)
+ *  - Guard execution using SessionRepository
+ *  - Delegate PDF generation to Next7DaysPdfUseCase
+ *  - Show notification with Share + Dismiss actions
  *
- * Constraints:
- *  - NO UI launch
- *  - NO ViewModel
- *  - NO HiltWorker
- *  - EntryPointAccessors only
- *
- * Return:
- *  - Result.success() always (idempotent)
+ * IMPORTANT:
+ *  - ZERO PDF logic lives here
+ *  - ZERO reminder grouping logic lives here
  */
 class Next7DaysPdfWorker(
     context: Context,
@@ -77,135 +64,70 @@ class Next7DaysPdfWorker(
     @EntryPoint
     @InstallIn(SingletonComponent::class)
     interface WorkerEntryPoint {
-        fun reminderReportDataBuilder(): ReminderReportDataBuilder
-        fun pdfRepository(): PdfRepository
+        fun next7DaysPdfUseCase(): Next7DaysPdfUseCase
+        fun sessionRepository(): SessionRepository
     }
 
-    /**
-     * Caller:
-     *  - WorkManager
-     *
-     * Responsibility:
-     *  - Executes daily background PDF generation.
-     *  - Logs lifecycle with readable time + epoch.
-     *  - Never throws (idempotent worker).
-     *
-     * Return:
-     *  - Result.success()
-     */
     override suspend fun doWork(): Result {
 
         val startEpoch = System.currentTimeMillis()
 
-        Timber.tag(SHARE_PDF_TAG).i("WORK_START time=${WORKER_TIME_FORMATTER.format(Instant.ofEpochMilli(startEpoch))} epoch=$startEpoch " + "[Next7DaysPdfWorker.kt::doWork]")
-
-        // -------------------------------------------------
-        // 🔐 Auth guard — REQUIRED for background execution
-        // -------------------------------------------------
-        val currentUser = FirebaseAuth.getInstance().currentUser
-        if (currentUser == null) {
-            Timber.tag(SHARE_PDF_TAG).w(
-                "WORK_SKIPPED user=logged_out time=${WORKER_TIME_FORMATTER.format(Instant.now())} epoch=${System.currentTimeMillis()} " +
-                        "[Next7DaysPdfWorker.kt::doWork]"
-            )
-            return Result.success()
-        }
+        Timber.tag(SHARE_PDF_TAG).i("WORK_START time=${WORKER_TIME_FORMATTER.format(Instant.ofEpochMilli(startEpoch))} " + "epoch=$startEpoch [Next7DaysPdfWorker.kt::doWork]")
 
         val entryPoint = EntryPointAccessors.fromApplication(
             applicationContext,
             WorkerEntryPoint::class.java
         )
 
-        val builder = entryPoint.reminderReportDataBuilder()
-        val repository = entryPoint.pdfRepository()
+        // -------------------------------------------------
+        // 🔐 SESSION GUARD (AUTHORITATIVE)
+        // -------------------------------------------------
+        val session = entryPoint
+            .sessionRepository()
+            .sessionState
+            .first()
 
-        try {
-            // -------------------------------------------------
-            // 1️⃣ Load reminder data
-            // -------------------------------------------------
-            val reminders = builder.buildNext7DaysReminders()
+        if (session.uid == null) {
+            Timber.tag(SHARE_PDF_TAG).w("WORK_SKIPPED no_session time=${WORKER_TIME_FORMATTER.format(Instant.now())} " + "[Next7DaysPdfWorker.kt::doWork]")
+            return Result.success()
+        }
 
-            Timber.tag(SHARE_PDF_TAG).d("DATA_LOADED count=${reminders.size} time=${WORKER_TIME_FORMATTER.format(Instant.now())} " + "[Next7DaysPdfWorker.kt::doWork]")
+        // -------------------------------------------------
+        // 🚀 Delegate to UseCase
+        // -------------------------------------------------
+        return try {
 
-            // Timber.tag(SHARE_PDF_TAG).d( "ROWS_BUILD_START time=${WORKER_TIME_FORMATTER.format(Instant.now())} " + "[Next7DaysPdfWorker.kt::doWork]" )
-
-            // -------------------------------------------------
-            // 2️⃣ Build PDF rows (readable time + offset)
-            // -------------------------------------------------
-            val rowTimeFormatter =
-                DateTimeFormatter.ofPattern("dd MMM yyyy, hh:mm a").withZone(WORKER_ZONE_ID)
-
-            val rows = reminders.map { alarm ->
-                listOf(
-                    PdfCell.TextCell(alarm.description ?: "-"),
-                    PdfCell.TextCell(
-                        rowTimeFormatter.format(Instant.ofEpochMilli(alarm.nextTrigger))
-                    ),
-                    PdfCell.TextCell(formatOffsetText(alarm.offsetMinutes))
-                )
-            }
-
-            // Timber.tag(SHARE_PDF_TAG).d( "ROWS_BUILD_DONE rows=${rows.size} time=${WORKER_TIME_FORMATTER.format(Instant.now())} " + "[Next7DaysPdfWorker.kt::doWork]" )
-
-            // -------------------------------------------------
-            // 3️⃣ Generate PDF (fixed daily filename)
-            // -------------------------------------------------
-            Timber.tag(SHARE_PDF_TAG).d("PDF_GENERATION_START filename=Reminders_Next_7_Days.pdf " + "[Next7DaysPdfWorker.kt::doWork]")
-
-            val uri: Uri? = repository.generatePdf(
-                title = "Reminders – Next 7 Days",
-                headers = listOf("Description", "Trigger Time", "Offset"),
-                colWidths = listOf(220f, 200f, 100f),
-                rows = rows,
-                layout = PdfLayoutConfig(),
-                fileName = "Reminders_Next_7_Days.pdf"
-            )
+            val uri: Uri? = entryPoint
+                .next7DaysPdfUseCase()
+                .generate()
 
             if (uri == null) {
                 Timber.tag(SHARE_PDF_TAG).e("PDF_GENERATION_FAILED [Next7DaysPdfWorker.kt::doWork]")
                 return Result.success()
             }
 
-            Timber.tag(SHARE_PDF_TAG).i("PDF_GENERATED uri=$uri time=${WORKER_TIME_FORMATTER.format(Instant.now())} " + "[Next7DaysPdfWorker.kt::doWork]")
+            Timber.tag(SHARE_PDF_TAG).i("PDF_GENERATED uri=$uri [Next7DaysPdfWorker.kt::doWork]")
 
-            // -------------------------------------------------
-            // 4️⃣ Show notification (Share + Dismiss)
-            // -------------------------------------------------
             showNotification(uri)
 
             Timber.tag(SHARE_PDF_TAG).i("WORK_COMPLETE_SUCCESS [Next7DaysPdfWorker.kt::doWork]")
 
+            Result.success()
+
         } catch (t: Throwable) {
             Timber.tag(SHARE_PDF_TAG).e(t, "WORK_FAILED_EXCEPTION [Next7DaysPdfWorker.kt::doWork]")
+            Result.success()
         }
-
-        return Result.success()
     }
 
     // =========================================================
     // Notification (Share + Dismiss)
     // =========================================================
-    /**
-     * Caller:
-     *  - doWork()
-     *
-     * Responsibility:
-     *  - Displays notification with Share + Dismiss actions.
-     *  - Ensures notification channel exists.
-     *
-     * Side Effects:
-     *  - Posts system notification.
-     */
     private fun showNotification(uri: Uri) {
-
-        //Timber.tag(SHARE_PDF_TAG).d("NOTIFICATION_BUILD_START uri=$uri [Next7DaysPdfWorker.kt::showNotification]")
 
         val nm =
             applicationContext.getSystemService(NotificationManager::class.java)
 
-        // -----------------------------------------------------
-        // 🔔 Ensure notification channel exists (Android 8+)
-        // -----------------------------------------------------
         ensureNotificationChannel(nm)
 
         // -----------------------------------------------------
@@ -217,8 +139,6 @@ class Next7DaysPdfWorker(
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
 
-        // Timber.tag(SHARE_PDF_TAG).d("SHARE_INTENT_READY time=${WORKER_TIME_FORMATTER.format(Instant.now())} " + "[Next7DaysPdfWorker.kt::showNotification]" )
-
         val sharePI = PendingIntent.getActivity(
             applicationContext,
             NOTIFICATION_ID,
@@ -227,14 +147,12 @@ class Next7DaysPdfWorker(
         )
 
         // -----------------------------------------------------
-        // Dismiss → REUSE ReminderReceiver
+        // Dismiss → ReminderReceiver
         // -----------------------------------------------------
         val dismissIntent = Intent(applicationContext, ReminderReceiver::class.java).apply {
             action = ReminderReceiver.ACTION_DISMISS
             putExtra(ReminderReceiver.EXTRA_NOTIFICATION_ID, NOTIFICATION_ID)
         }
-
-        // Timber.tag(SHARE_PDF_TAG).d("DISMISS_INTENT_READY notifId=$NOTIFICATION_ID time=${WORKER_TIME_FORMATTER.format(Instant.now())} " + "[Next7DaysPdfWorker.kt::showNotification]" )
 
         val dismissPI = PendingIntent.getBroadcast(
             applicationContext,
@@ -255,28 +173,16 @@ class Next7DaysPdfWorker(
 
         nm.notify(NOTIFICATION_ID, notification)
 
-        Timber.tag(SHARE_PDF_TAG).d("NOTIFICATION_SHOWN time=${WORKER_TIME_FORMATTER.format(Instant.now())} notifId=$NOTIFICATION_ID " + "[Next7DaysPdfWorker.kt::showNotification]")
+        Timber.tag(SHARE_PDF_TAG).d("NOTIFICATION_SHOWN notifId=$NOTIFICATION_ID [Next7DaysPdfWorker.kt::showNotification]")
     }
 
     // =========================================================
-    // Notification Channel (Android 8+ requirement)
+    // Notification Channel
     // =========================================================
-    /**
-     * Caller:
-     *  - showNotification()
-     *
-     * Responsibility:
-     *  - Creates notification channel if missing.
-     */
     private fun ensureNotificationChannel(nm: NotificationManager) {
 
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-
-        val existing = nm.getNotificationChannel(CHANNEL_ID)
-        if (existing != null) {
-            // Timber.tag(SHARE_PDF_TAG).d( "CHANNEL_EXISTS id=$CHANNEL_ID time=${WORKER_TIME_FORMATTER.format(Instant.now())} " + "[Next7DaysPdfWorker.kt::ensureNotificationChannel]" )
-            return
-        }
+        if (nm.getNotificationChannel(CHANNEL_ID) != null) return
 
         val channel = NotificationChannel(
             CHANNEL_ID,
@@ -288,25 +194,5 @@ class Next7DaysPdfWorker(
         }
 
         nm.createNotificationChannel(channel)
-
-        // Timber.tag(SHARE_PDF_TAG).d( "CHANNEL_CREATED id=$CHANNEL_ID time=${WORKER_TIME_FORMATTER.format(Instant.now())} " + "[Next7DaysPdfWorker.kt::ensureNotificationChannel]" )
     }
-
-    // =========================================================
-    // Offset formatter (shared semantics with UI)
-    // =========================================================
-    /**
-     * Caller:
-     *  - doWork()
-     *
-     * Responsibility:
-     *  - Converts offset minutes into readable text.
-     */
-    private fun formatOffsetText(offsetMinutes: Long): String =
-        when {
-            offsetMinutes <= 0L -> "on time"
-            offsetMinutes % (24 * 60) == 0L -> "${offsetMinutes / (24 * 60)} day before"
-            offsetMinutes % 60 == 0L -> "${offsetMinutes / 60} hr before"
-            else -> "${offsetMinutes} min before"
-        }
 }

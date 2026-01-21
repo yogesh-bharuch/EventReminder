@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.eventreminder.logging.DEBUG_TAG
 import com.example.eventreminder.logging.SAVE_TAG
+import com.example.eventreminder.logging.SHARE_PDF_TAG
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -55,7 +56,8 @@ class PdfViewModel @Inject constructor(
     @ApplicationContext private val appContext: Context,
     private val pdfGenerator: PdfGenerator,
     private val reminderReportDataBuilder: ReminderReportDataBuilder,
-    private val repository: PdfRepository
+    private val repository: PdfRepository,
+    private val next7DaysPdfUseCase: Next7DaysPdfUseCase
 ) : ViewModel() {
 
     // ---------------------------------------------------------
@@ -96,11 +98,8 @@ class PdfViewModel @Inject constructor(
 
                 val report = reminderReportDataBuilder.buildActiveAlarmReport()
 
-                Timber.tag(DEBUG_TAG)
-                    .d(
-                        "Active alarms count=${report.sortedAlarms.size} generatedAt=${report.generatedAt} " +
-                                "[PdfViewModel.kt::allAlarmsReport]"
-                    )
+                Timber.tag(SHARE_PDF_TAG)
+                    .d("Active alarms count=${report.sortedAlarms.size} generatedAt=${report.generatedAt} " + "[PdfViewModel.kt::allAlarmsReport]")
 
                 val uri = pdfGenerator
                     .generateAlarmsReportPdf(appContext, report)
@@ -199,35 +198,36 @@ class PdfViewModel @Inject constructor(
             if (_isWorkingPDF.value) return@launch
             _isWorkingPDF.value = true
 
-            Timber.tag(DEBUG_TAG)
-                .d("Next 7 days PDF requested [PdfViewModel.kt::generateNext7DaysRemindersPdf]")
+            Timber.tag(SHARE_PDF_TAG).d("Next 7 days PDF requested [PdfViewModel.kt::generateNext7DaysRemindersPdf]")
 
             try {
-                val uri = generateNext7DaysRemindersPdfInternal()
+                //val uri = generateNext7DaysRemindersPdfInternal()
+                val uri = next7DaysPdfUseCase.generate()
 
                 if (uri == null) {
                     ReminderViewModel.UiEvent.ShowMessage("PDF generation failed")
+                    Timber.tag(SHARE_PDF_TAG).e("Next 7 days PDF failed [PdfViewModel.kt::generateNext7DaysRemindersPdf]")
                     return@launch
                 }
 
                 _openPdfEvent.send(uri)
 
-                Timber.tag(SAVE_TAG)
-                    .d("📄 Next 7 days PDF generated → $uri [PdfViewModel.kt::generateNext7DaysRemindersPdf]")
+                Timber.tag(SAVE_TAG).d("📄 Next 7 days PDF generated → $uri [PdfViewModel.kt::generateNext7DaysRemindersPdf]")
 
             } catch (e: Exception) {
-                Timber.tag(DEBUG_TAG)
-                    .e(e, "💥 Next 7 days PDF error [PdfViewModel.kt::generateNext7DaysRemindersPdf]")
+                Timber.tag(DEBUG_TAG).e(e, "💥 Next 7 days PDF error [PdfViewModel.kt::generateNext7DaysRemindersPdf]")
             } finally {
                 _isWorkingPDF.value = false
             }
         }
     }
 
+/*
     // =========================================================
     // NEXT 7 DAYS REMINDERS → HEADLESS GENERATOR
     // =========================================================
-    /**
+
+/**
      * Caller(s):
      *  - generateNext7DaysRemindersPdf()
      *  - Background Worker (daily automation)
@@ -239,6 +239,8 @@ class PdfViewModel @Inject constructor(
      * Output:
      *  - Uri of generated PDF, or null on failure.
      */
+
+
     private suspend fun generateNext7DaysRemindersPdfInternal(): Uri? {
 
         val reminders = reminderReportDataBuilder.buildNext7DaysReminders()
@@ -350,4 +352,7 @@ class PdfViewModel @Inject constructor(
             else -> eventEmojiMap["default"]!!
         }
     }
+  */
 }
+
+

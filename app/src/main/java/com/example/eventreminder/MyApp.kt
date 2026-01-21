@@ -1,6 +1,7 @@
 package com.example.eventreminder
 
 import android.app.Application
+import android.content.Context
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import androidx.work.ExistingPeriodicWorkPolicy
@@ -24,18 +25,20 @@ import javax.inject.Inject
 @HiltAndroidApp
 class MyApp : Application(), Configuration.Provider {
 
-    @Inject
-    lateinit var workerFactory: HiltWorkerFactory
+    @Inject lateinit var workerFactory: HiltWorkerFactory
+    @Inject lateinit var databaseSeeder: DatabaseSeeder
 
-    @Inject
-    lateinit var databaseSeeder: DatabaseSeeder
+    // ============================================================
+    // 🔧 CONFIG — CHANGE TIME ONLY HERE
+    // ============================================================
+    private val NEXT_7_DAYS_HOUR = 8
+    private val NEXT_7_DAYS_MINUTE = 50
 
     override fun onCreate() {
         super.onCreate()
 
         if (BuildConfig.DEBUG) {
             Timber.plant(Timber.DebugTree())
-            Timber.d("Timber initialized in DEBUG mode [MyApp.kt::onCreate]")
         }
 
         // ------------------------------------------------------------
@@ -49,62 +52,49 @@ class MyApp : Application(), Configuration.Provider {
             }
         }
 
-        // ------------------------------------------------------------
-        // 🔁 Auto-dismiss cleanup worker (GLOBAL, APP-LEVEL)
-        // ------------------------------------------------------------
         val initialDelayMillis = computeInitialDelay()
         val nextRun = computeNextRunTime()
+        val timeKey = buildTimeKey()
 
-        val policy =
-            if (BuildConfig.DEBUG)
-                //ExistingPeriodicWorkPolicy.KEEP
-                ExistingPeriodicWorkPolicy.REPLACE
-            else
-                ExistingPeriodicWorkPolicy.KEEP
-
+        // ------------------------------------------------------------
+        // 🔁 Auto-dismiss cleanup worker (SAFE TO ALWAYS RESCHEDULE)
+        // ------------------------------------------------------------
         WorkManager.getInstance(this)
             .enqueueUniquePeriodicWork(
                 AUTO_DISMISS_WORK_NAME,
-                policy,
-                PeriodicWorkRequestBuilder<AutoDismissCleanupWorker>(
-                    24,
-                    TimeUnit.HOURS
-                )
-                    .setInitialDelay(
-                        initialDelayMillis,
-                        TimeUnit.MILLISECONDS
-                    )
+                if (BuildConfig.DEBUG) ExistingPeriodicWorkPolicy.REPLACE else ExistingPeriodicWorkPolicy.KEEP,
+                PeriodicWorkRequestBuilder<AutoDismissCleanupWorker>(24, TimeUnit.HOURS)
+                    .setInitialDelay(initialDelayMillis, TimeUnit.MILLISECONDS)
                     .build()
             )
 
-        Timber.tag(DISMISS_TAG).i("AUTO_DISMISS worker scheduled delay=${initialDelayMillis}ms [MyApp.kt::onCreate]")
+        Timber.tag(DISMISS_TAG).i("AUTO_DISMISS scheduled delay=${initialDelayMillis}ms [MyApp.kt::onCreate]")
 
         // ------------------------------------------------------------
-        // 📄 Next 7 Days Reminders PDF → Notification
+        // 📄 Next 7 Days PDF — RESCHEDULE ON TIME CHANGE
         // ------------------------------------------------------------
+        val prefs = getSharedPreferences("wm_flags", Context.MODE_PRIVATE)
+        val storedTimeKey = prefs.getString(KEY_NEXT7_TIME, null)
 
-        WorkManager.getInstance(this)
-            .enqueueUniquePeriodicWork(
-                NEXT_7_DAYS_PDF_WORK_NAME,
-                policy,
-                PeriodicWorkRequestBuilder<Next7DaysPdfWorker>(
-                    24,
-                    TimeUnit.HOURS
+        val shouldReschedule = storedTimeKey != timeKey
+
+        if (shouldReschedule) {
+
+            WorkManager.getInstance(this)
+                .enqueueUniquePeriodicWork(
+                    NEXT_7_DAYS_PDF_WORK_NAME,
+                    ExistingPeriodicWorkPolicy.REPLACE, // 🔑 IMPORTANT
+                    PeriodicWorkRequestBuilder<Next7DaysPdfWorker>(24, TimeUnit.HOURS)
+                        .setInitialDelay(initialDelayMillis, TimeUnit.MILLISECONDS)
+                        .build()
                 )
-                    .setInitialDelay(
-                        initialDelayMillis,
-                        TimeUnit.MILLISECONDS
-                    )
-                    .build()
-            )
 
-        Timber.tag(SHARE_PDF_TAG).d("NEXT_7_DAYS_PDF worker scheduled target=${nextRun.time} delay=${initialDelayMillis}ms " + "[MyApp.kt::onCreate]")
+            prefs.edit().putString(KEY_NEXT7_TIME, timeKey).apply()
 
-        // ------------------------------------------------------------
-        // 🚀 DEV ONLY
-        // ------------------------------------------------------------
-        // databaseSeeder.seedIfEmpty()
-        // deleteDatabase("event_reminder_db")
+            Timber.tag(SHARE_PDF_TAG).i("NEXT_7_DAYS_PDF worker RESCHEDULED time=$timeKey " + "target=${nextRun.time} delay=${initialDelayMillis}ms " + "[MyApp.kt::onCreate]")
+        } else {
+            Timber.tag(SHARE_PDF_TAG).d("NEXT_7_DAYS_PDF worker unchanged (time=$timeKey) [MyApp.kt::onCreate]")
+        }
     }
 
     override val workManagerConfiguration: Configuration
@@ -112,44 +102,24 @@ class MyApp : Application(), Configuration.Provider {
             .setWorkerFactory(workerFactory)
             .build()
 
-    /**
-     * Caller:
-     *  - onCreate()
-     *
-     * Responsibility:
-     *  - Computes delay until next configured trigger time.
-     *
-     * Return:
-     *  - Milliseconds delay for WorkManager initialDelay.
-     */
+    // ============================================================
+    // ⏱ Time helpers
+    // ============================================================
+    private fun buildTimeKey(): String =
+        "%02d:%02d".format(NEXT_7_DAYS_HOUR, NEXT_7_DAYS_MINUTE)
+
     private fun computeInitialDelay(): Long {
         val now = Calendar.getInstance()
         val nextRun = computeNextRunTime()
-
-        val delay = nextRun.timeInMillis - now.timeInMillis
-
-        //Timber.tag(SHARE_PDF_TAG).d("InitialDelay computed target=${nextRun.time} delay=${delay}ms " + "[MyApp.kt::computeInitialDelay]")
-
-        return delay
+        return nextRun.timeInMillis - now.timeInMillis
     }
 
-    /**
-     * Caller(s):
-     *  - computeInitialDelay()
-     *  - onCreate() (logging only)
-     *
-     * Responsibility:
-     *  - Computes next scheduled run time (human-readable).
-     *
-     * Return:
-     *  - Calendar pointing to next run.
-     */
     private fun computeNextRunTime(): Calendar {
         val now = Calendar.getInstance()
 
         return Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, 14)
-            set(Calendar.MINUTE, 0)
+            set(Calendar.HOUR_OF_DAY, NEXT_7_DAYS_HOUR)
+            set(Calendar.MINUTE, NEXT_7_DAYS_MINUTE)
             set(Calendar.SECOND, 0)
             set(Calendar.MILLISECOND, 0)
 
@@ -162,5 +132,6 @@ class MyApp : Application(), Configuration.Provider {
     private companion object {
         private const val AUTO_DISMISS_WORK_NAME = "auto_dismiss_cleanup"
         private const val NEXT_7_DAYS_PDF_WORK_NAME = "next_7_days_pdf_whatsapp"
+        private const val KEY_NEXT7_TIME = "next7days_time"
     }
 }

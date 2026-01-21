@@ -16,6 +16,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
 import com.example.eventreminder.R
 import com.example.eventreminder.navigation.*
 import com.example.eventreminder.pdf.PdfViewModel
@@ -30,8 +32,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import timber.log.Timber
 import com.example.eventreminder.logging.SAVE_TAG
+import com.example.eventreminder.logging.SHARE_PDF_TAG
 import com.example.eventreminder.logging.SYNC_TAG
 import com.example.eventreminder.ui.viewmodels.SplashViewModel
+import com.example.eventreminder.workers.Next7DaysPdfWorker
 
 
 private const val TAG = "HomeScreen"
@@ -247,6 +251,12 @@ fun HomeScreen(
             HorizontalDivider(thickness = 2.dp, color = Color.Gray)
             Spacer(Modifier.height(16.dp))
 
+            Button(
+                onClick = { runNext7DaysPdfDebug(context) }
+            ) {
+                Text("DEBUG: Run Next 7 Days PDF")
+            }
+
             // Empty State or List screen display
             if (groupedSections.isEmpty()) {
 
@@ -270,6 +280,16 @@ fun HomeScreen(
     }
 }
 
+fun runNext7DaysPdfDebug(context: Context) {
+    Timber.tag(SHARE_PDF_TAG).i("DEBUG → Enqueue OneTime Next7DaysPdfWorker [HomeScreen.kt::runNext7DaysPdfDebug]")
+
+    val request = OneTimeWorkRequestBuilder<Next7DaysPdfWorker>()
+        .addTag("debug_next_7_days_pdf")
+        .build()
+
+    WorkManager.getInstance(context).enqueue(request)
+}
+
 // =============================================================
 // Sound Test Buttons
 // =============================================================
@@ -291,3 +311,4 @@ fun SoundTestButtons(context: Context) {
         Button(onClick = { play(R.raw.workout) }) { Text("Play Workout Sound") }
     }
 }
+
