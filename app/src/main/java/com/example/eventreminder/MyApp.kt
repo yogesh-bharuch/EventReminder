@@ -32,11 +32,11 @@ class MyApp : Application(), Configuration.Provider {
     // ============================================================
     // 🔧 CONFIG — CHANGE TIME ONLY HERE
     // ============================================================
-    private val NEXT_7_DAYS_HOUR = 17
-    private val NEXT_7_DAYS_MINUTE = 55
+    private val NEXT_7_DAYS_HOUR = 7
+    private val NEXT_7_DAYS_MINUTE = 10
 
-    private val AUTO_DISMISS_HOUR = 17
-    private val AUTO_DISMISS_MINUTE = 55
+    private val AUTO_DISMISS_HOUR = 7
+    private val AUTO_DISMISS_MINUTE = 10
 
     override fun onCreate() {
         super.onCreate()
