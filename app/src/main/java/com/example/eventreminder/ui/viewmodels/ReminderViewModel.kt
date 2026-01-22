@@ -411,16 +411,14 @@ class ReminderViewModel @Inject constructor(
                     //Timber.tag(SYNC_TAG).i("ℹ️ Sync completed with no changes [ReminderViewModel.kt::syncRemindersWithServer]")
                     "Sync completed (no changes)"
                 } else {
-                    Timber.tag(SYNC_TAG).i("📊 Sync summary L→R(C:${result.localToRemoteCreated},U:${result.localToRemoteUpdated},D:${result.localToRemoteDeleted}) " +
-                                "R→L(C:${result.remoteToLocalCreated},U:${result.remoteToLocalUpdated},D:${result.remoteToLocalDeleted}) " +
-                                "[ReminderViewModel.kt::syncRemindersWithServer]")
+                    //Timber.tag(SYNC_TAG).i("📊 Sync summary L→R(C:${result.localToRemoteCreated},U:${result.localToRemoteUpdated},D:${result.localToRemoteDeleted}) R→L(C:${result.remoteToLocalCreated},U:${result.remoteToLocalUpdated},D:${result.remoteToLocalDeleted}) [ReminderViewModel.kt::syncRemindersWithServer]")
 
                     buildString {
-                        append("Sync completed\n")
+                        append("Sync completed\n  ")
                         append(
                             "Local → Cloud: C:${result.localToRemoteCreated}, " +
                                     "U:${result.localToRemoteUpdated}, " +
-                                    "D:${result.localToRemoteDeleted}\n"
+                                    "D:${result.localToRemoteDeleted}\n  "
                         )
                         append(
                             "Cloud → Local: C:${result.remoteToLocalCreated}, " +

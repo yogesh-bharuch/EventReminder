@@ -266,12 +266,16 @@ class SyncEngine(
         val lastLocalSyncAt = meta?.lastLocalSyncAt
 
         // -----------------------------------------------------
-        // 🌐 NETWORK READ (GUARDED)
+        // 🌐 NETWORK READ (FIRESTORE-OPTIMIZED)
         // -----------------------------------------------------
         //Timber.tag(SYNC_TAG).d("🌐 R2L BEFORE collection.get(). [SyncEngine.kt::syncRemoteToLocal]")
+        //val TEST_UID = "ynyAQJRDHddkI2FNgGcGAnE1Puy2"//"Gg7j2KWTgHT1PsOUAevovZrn9bo1"
+        //val TEST_UPDATED_AT = 1768883054892L
         val snapshot = try {
             config.getCollectionRef()
                 .whereEqualTo("uid", userId)
+                .whereGreaterThan("updatedAt", lastRemoteSyncAt ?: 0L)
+                .orderBy("updatedAt")
                 .limit(500)
                 .get()
                 .await()
@@ -283,7 +287,8 @@ class SyncEngine(
             }
             throw t
         }
-        Timber.tag(SYNC_TAG).d("🌐 R2L total: ${snapshot.size()} fetched. [SyncEngine.kt::syncRemoteToLocal]")
+
+        Timber.tag(SYNC_TAG).d("R2L ${snapshot.size()} updated records found. after lastRemoteSyncAt ${formatEpochMillis(lastRemoteSyncAt)} Hrs. ($lastRemoteSyncAt) [SyncEngine.kt::syncRemoteToLocal]")
 
         if (snapshot.isEmpty) return
 
@@ -298,38 +303,37 @@ class SyncEngine(
             val remoteUpdatedAt = extractUpdatedAtMillis(data["updatedAt"])
             val isRemoteDeleted = data["isDeleted"] as? Boolean ?: false
 
+            // -----------------------------------------------------
+            // LOCAL TOMBSTONE GUARD
+            // -----------------------------------------------------
             if (config.daoAdapter.isLocalDeleted(docId)) {
                 result.remoteToLocalSkipped++
                 continue
             }
 
+            // -----------------------------------------------------
+            // REMOTE DELETE
+            // -----------------------------------------------------
             if (isRemoteDeleted) {
                 result.remoteToLocalDeleted++
                 toDeleteIds.add(docId)
                 continue
             }
 
-            val shouldApply =
-                lastRemoteSyncAt == null ||
-                        (remoteUpdatedAt != null && remoteUpdatedAt > lastRemoteSyncAt)
-
-            if (!shouldApply) {
-                result.remoteToLocalSkipped++
-                continue
-            }
-
+            // -----------------------------------------------------
+            // HIGH-WATER MARK UPDATE
+            // -----------------------------------------------------
             if (
                 remoteUpdatedAt != null &&
-                (maxRemoteUpdatedAt == null || remoteUpdatedAt > maxRemoteUpdatedAt!!)
+                (maxRemoteUpdatedAt == null || remoteUpdatedAt > maxRemoteUpdatedAt)
             ) {
                 maxRemoteUpdatedAt = remoteUpdatedAt
             }
 
             // -----------------------------------------------------
-            // COUNT R2L CREATE vs UPDATE (MISSING PART)
+            // CREATE vs UPDATE COUNT
             // -----------------------------------------------------
             val localUpdatedAt = config.daoAdapter.getLocalUpdatedAt(docId)
-
             if (localUpdatedAt != null) {
                 result.remoteToLocalUpdated++
             } else {
@@ -351,7 +355,7 @@ class SyncEngine(
         }
 
         // -----------------------------------------------------
-        // METADATA UPDATE (ONLY IF FULL SUCCESS)
+        // METADATA UPDATE (ONLY AFTER FULL SUCCESS)
         // -----------------------------------------------------
         if (maxRemoteUpdatedAt != lastRemoteSyncAt) {
             syncMetadataDao.upsert(
@@ -361,19 +365,13 @@ class SyncEngine(
                     lastRemoteSyncAt = maxRemoteUpdatedAt
                 )
             )
-            Timber.tag(SYNC_TAG).d("R2L syncMetadata table updated for lastRemoteSyncAt→ ${formatEpochMillis(maxRemoteUpdatedAt)}. ($maxRemoteUpdatedAt) [SyncEngine.kt::syncRemoteToLocal]")
+            Timber.tag(SYNC_TAG).d("R2L syncMetadata table updated for syncTime\n lastRemoteSyncAt=${formatEpochMillis(maxRemoteUpdatedAt)} ($maxRemoteUpdatedAt)\n lastLocalSyncAt=${formatEpochMillis(lastLocalSyncAt)} ($lastLocalSyncAt) " + "[SyncEngine.kt::syncRemoteToLocal]")
+
+            //Timber.tag(SYNC_TAG).d("R2L syncMetadata updated lastRemoteSyncAt=${formatEpochMillis(maxRemoteUpdatedAt)} ($maxRemoteUpdatedAt) [SyncEngine.kt::syncRemoteToLocal]")
         }
 
-        Timber.tag(SYNC_TAG).d(
-            "✅ R2L Completed for key=${config.key} " +
-                    "[created=${result.remoteToLocalCreated}, " +
-                    "updated=${result.remoteToLocalUpdated}, " +
-                    "deleted=${result.remoteToLocalDeleted}, " +
-                    "skipped=${result.remoteToLocalSkipped}]\n" +
-                    "after lastRemoteSyncAt= ${formatEpochMillis(lastRemoteSyncAt)} Hrs. ($lastRemoteSyncAt).\n" +
-                    "[SyncEngine.kt::syncRemoteToLocal]"
-        )
-        //Timber.tag(SYNC_TAG).d("✅ R2L Completed for key=${config.key} [SyncEngine.kt::syncRemoteToLocal]")
+        // created: updated  deleted  skipped
+        //Timber.tag(SYNC_TAG).d("✅ R2L Completed for key=${config.key}\n [created=${result.remoteToLocalCreated}\n updated=${result.remoteToLocalUpdated}\n deleted=${result.remoteToLocalDeleted}\n skipped=${result.remoteToLocalSkipped}]\n after=${formatEpochMillis(lastRemoteSyncAt)} ($lastRemoteSyncAt) [SyncEngine.kt::syncRemoteToLocal]")
     }
 
 
