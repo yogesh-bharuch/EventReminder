@@ -51,7 +51,7 @@ class Next7DaysPdfUseCase @Inject constructor(
         val now = Instant.now()
         val formatter = DateTimeFormatter.ofPattern("dd MMM, yyyy 'T:' HH:mm:ss z").withZone(zoneId)
 
-        Timber.tag(SHARE_PDF_TAG).d("Next7DaysPdfUseCase START now=${formatter.format(now)} " + "[Next7DaysPdfUseCase.kt::generate]")
+        Timber.tag(SHARE_PDF_TAG).d("Next7DaysPdfUseCase START now= ${formatter.format(now)} " + "[Next7DaysPdfUseCase.kt::generate]")
 
         val reminders = reminderReportDataBuilder.buildNext7DaysReminders()
 
@@ -143,7 +143,7 @@ class Next7DaysPdfUseCase @Inject constructor(
             colWidths = listOf(220f, 200f, 100f),
             rows = rows,
             layout = PdfLayoutConfig(),
-            fileName = "Reminders_Next_7_Days.pdf"
+            fileName = "7_DaysReminders_${System.currentTimeMillis()}.pdf"
         )
 
         Timber.tag(SHARE_PDF_TAG).d("Next7DaysPdfUseCase END uri=$uri " + "[Next7DaysPdfUseCase.kt::generate]")

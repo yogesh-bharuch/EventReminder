@@ -168,7 +168,7 @@ class PdfViewModel @Inject constructor(
                     colWidths = colWidths,
                     rows = rows,
                     layout = PdfLayoutConfig(),
-                    fileName = "contacts.pdf"
+                    fileName = "contacts_${System.currentTimeMillis()}.pdf"
                 )
 
                 if (uri != null) {

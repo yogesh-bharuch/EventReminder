@@ -254,7 +254,7 @@ fun HomeScreen(
             Button(
                 onClick = { runNext7DaysPdfDebug(context) }
             ) {
-                Text("DEBUG: Run Next 7 Days PDF")
+                Text("Run Next 7 Days PDF")
             }
 
             // Empty State or List screen display
@@ -281,7 +281,7 @@ fun HomeScreen(
 }
 
 fun runNext7DaysPdfDebug(context: Context) {
-    Timber.tag(SHARE_PDF_TAG).i("DEBUG → Enqueue OneTime Next7DaysPdfWorker [HomeScreen.kt::runNext7DaysPdfDebug]")
+    Timber.tag(SHARE_PDF_TAG).i("Enqueue OneTime Next7DaysPdfWorker Initiated From: [HomeScreen.kt::runNext7DaysPdfDebug]")
 
     val request = OneTimeWorkRequestBuilder<Next7DaysPdfWorker>()
         .addTag("debug_next_7_days_pdf")

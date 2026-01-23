@@ -12,6 +12,7 @@ import com.example.eventreminder.logging.DISMISS_TAG
 import com.example.eventreminder.logging.RESTORE_NOT_DISMISSED_TAG
 import com.example.eventreminder.logging.SHARE_PDF_TAG
 import com.example.eventreminder.notifications.NotificationRestoreManager
+import com.example.eventreminder.util.PdfCleanupUtil
 import com.example.eventreminder.workers.AutoDismissCleanupWorker
 import com.example.eventreminder.workers.Next7DaysPdfWorker
 import dagger.hilt.android.HiltAndroidApp
@@ -44,6 +45,12 @@ class MyApp : Application(), Configuration.Provider {
         if (BuildConfig.DEBUG) {
             Timber.plant(Timber.DebugTree())
         }
+
+        // ------------------------------------------------------------
+        // ♻️ App startup PDF cleanup (storage maintenance)
+        // 🧹 Cleanup generated PDFs (storage hygiene only)
+        // ------------------------------------------------------------
+        PdfCleanupUtil.cleanupGeneratedPdfs(applicationContext)
 
         // ------------------------------------------------------------
         // 🔁 Restore fired-but-not-dismissed notifications (UI only)

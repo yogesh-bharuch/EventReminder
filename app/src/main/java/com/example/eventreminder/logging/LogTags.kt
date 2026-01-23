@@ -24,6 +24,7 @@ const val RESTORE_NOT_DISMISSED_TAG = "NotificationRestore"
 const val SYNC_TAG = "SyncReminders"
 const val DEBUG_TAG = "DebugTag"
 const val SHARE_PDF_TAG = "SharePdf"
+const val CLEANUP_PDF_TAG = "CleanUpTempFiles"
 const val SHARE_LOGIN_TAG = "LoginTag"
 
 // -------------------------------------------------------------
