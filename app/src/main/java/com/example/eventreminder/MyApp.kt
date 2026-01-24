@@ -33,11 +33,11 @@ class MyApp : Application(), Configuration.Provider {
     // ============================================================
     // 🔧 CONFIG — CHANGE TIME ONLY HERE
     // ============================================================
-    private val NEXT_7_DAYS_HOUR = 7
-    private val NEXT_7_DAYS_MINUTE = 10
+    private val NEXT_7_DAYS_HOUR = 13
+    private val NEXT_7_DAYS_MINUTE = 40
 
-    private val AUTO_DISMISS_HOUR = 7
-    private val AUTO_DISMISS_MINUTE = 10
+    private val AUTO_DISMISS_HOUR = 10
+    private val AUTO_DISMISS_MINUTE = 5
 
     override fun onCreate() {
         super.onCreate()
@@ -100,7 +100,7 @@ class MyApp : Application(), Configuration.Provider {
         }
 
         // ============================================================
-        // 📄 NEXT 7 DAYS PDF WORKER
+        // 📄 NEXT 7 DAYS PDF — DAILY PIPELINE (WORKMANAGER ONLY)
         // ============================================================
         val next7TimeKey = buildTimeKey(NEXT_7_DAYS_HOUR, NEXT_7_DAYS_MINUTE)
         val storedNext7Key = prefs.getString(KEY_NEXT7_TIME, null)
@@ -110,6 +110,11 @@ class MyApp : Application(), Configuration.Provider {
             val initialDelayMillis = computeInitialDelay(NEXT_7_DAYS_HOUR, NEXT_7_DAYS_MINUTE)
             val nextRun = computeNextRunTime(NEXT_7_DAYS_HOUR, NEXT_7_DAYS_MINUTE)
 
+            // --------------------------------------------------------
+            // ✅ SCHEDULER ONLY
+            // Execution pipeline:
+            // WorkManager → Next7DaysPdfWorker → Coordinator → UseCase → Notification → Ledger
+            // --------------------------------------------------------
             WorkManager.getInstance(this)
                 .enqueueUniquePeriodicWork(
                     NEXT_7_DAYS_PDF_WORK_NAME,

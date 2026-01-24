@@ -16,8 +16,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
-import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.WorkManager
 import com.example.eventreminder.R
 import com.example.eventreminder.navigation.*
 import com.example.eventreminder.pdf.PdfViewModel
@@ -34,8 +32,15 @@ import timber.log.Timber
 import com.example.eventreminder.logging.SAVE_TAG
 import com.example.eventreminder.logging.SHARE_PDF_TAG
 import com.example.eventreminder.logging.SYNC_TAG
+import com.example.eventreminder.pdf.PdfGenerationCoordinator
 import com.example.eventreminder.ui.viewmodels.SplashViewModel
-import com.example.eventreminder.workers.Next7DaysPdfWorker
+import dagger.hilt.android.EntryPointAccessors
+import dagger.hilt.EntryPoint
+import dagger.hilt.InstallIn
+import dagger.hilt.components.SingletonComponent
+import com.example.eventreminder.pdf.PdfDeliveryMode
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 
 
 private const val TAG = "HomeScreen"
@@ -174,8 +179,6 @@ fun HomeScreen(
                 onCleanupClick = {
                     coroutineScope.launch {
                         navController.navigate(SchedulingDebugRoute)
-                        //reminderVm.cleanupOldReminders()
-                        //snackbarHostState.showSnackbar("Old reminders cleaned")
                     }
                 },
                 onGeneratePdfClick = {
@@ -280,15 +283,47 @@ fun HomeScreen(
     }
 }
 
-fun runNext7DaysPdfDebug(context: Context) {
-    Timber.tag(SHARE_PDF_TAG).i("Enqueue OneTime Next7DaysPdfWorker Initiated From: [HomeScreen.kt::runNext7DaysPdfDebug]")
-
-    val request = OneTimeWorkRequestBuilder<Next7DaysPdfWorker>()
-        .addTag("debug_next_7_days_pdf")
-        .build()
-
-    WorkManager.getInstance(context).enqueue(request)
+// ---------------------------------------------------------
+// Debug Coordinator EntryPoint
+// ---------------------------------------------------------
+@EntryPoint
+@InstallIn(SingletonComponent::class)
+interface DebugPdfCoordinatorEntryPoint {
+    fun pdfGenerationCoordinator(): PdfGenerationCoordinator
 }
+
+/**
+ * Debug pipeline for Next 7 Days PDF.
+ *
+ * Routed through PdfGenerationCoordinator to use the unified pipeline:
+ *  - session guard
+ *  - generation
+ *  - notification
+ *  - UI delivery
+ *  - same path as daily worker + bottom tray
+ */
+fun runNext7DaysPdfDebug(context: Context) {
+
+    Timber.tag(SHARE_PDF_TAG).i("DEBUG_NEXT7_PDF via coordinator [HomeScreen.kt::runNext7DaysPdfDebug]")
+
+    val entryPoint = EntryPointAccessors.fromApplication(
+        context.applicationContext,
+        DebugPdfCoordinatorEntryPoint::class.java
+    )
+
+    val coordinator = entryPoint.pdfGenerationCoordinator()
+
+    CoroutineScope(Dispatchers.IO).launch {
+
+        // 🧹 UI OVERRIDE: clear ledger so debug trigger always delivers once
+        coordinator.clearNext7DaysDelivery()
+
+        coordinator.generateNext7Days(
+            delivery = PdfDeliveryMode.UI_AND_NOTIFICATION
+        )
+    }
+}
+
 
 // =============================================================
 // Sound Test Buttons

@@ -11,15 +11,15 @@ import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.example.eventreminder.R
-import com.example.eventreminder.data.session.SessionRepository
 import com.example.eventreminder.logging.SHARE_PDF_TAG
-import com.example.eventreminder.pdf.Next7DaysPdfUseCase
+import com.example.eventreminder.pdf.PdfGenerationCoordinator
+import com.example.eventreminder.pdf.PdfGenerationResult
+import com.example.eventreminder.pdf.PdfDeliveryMode
 import com.example.eventreminder.receivers.ReminderReceiver
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
-import kotlinx.coroutines.flow.first
 import timber.log.Timber
 import java.time.Instant
 import java.time.ZoneId
@@ -34,9 +34,7 @@ private const val CHANNEL_ID = "next_7_days_pdf"
 private val WORKER_ZONE_ID: ZoneId = ZoneId.systemDefault()
 
 private val WORKER_TIME_FORMATTER: DateTimeFormatter =
-    DateTimeFormatter
-        .ofPattern("dd MMM, yyyy HH:mm:ss 'GMT'XXX")
-        .withZone(WORKER_ZONE_ID)
+    DateTimeFormatter.ofPattern("dd MMM, yyyy HH:mm:ss 'GMT'XXX").withZone(WORKER_ZONE_ID)
 
 /**
  * Next7DaysPdfWorker
@@ -45,13 +43,16 @@ private val WORKER_TIME_FORMATTER: DateTimeFormatter =
  *  - WorkManager (periodic, daily)
  *
  * Responsibility:
- *  - Guard execution using SessionRepository
- *  - Delegate PDF generation to Next7DaysPdfUseCase
+ *  - Trigger Next7Days PDF generation
+ *  - Delegate orchestration to PdfGenerationCoordinator
  *  - Show notification with Share + Dismiss actions
+ *  - Mark delivery ledger AFTER notification is shown
  *
  * IMPORTANT:
  *  - ZERO PDF logic lives here
  *  - ZERO reminder grouping logic lives here
+ *  - ZERO business logic lives here
+ *  - Worker is the ONLY delivery authority
  */
 class Next7DaysPdfWorker(
     context: Context,
@@ -64,8 +65,7 @@ class Next7DaysPdfWorker(
     @EntryPoint
     @InstallIn(SingletonComponent::class)
     interface WorkerEntryPoint {
-        fun next7DaysPdfUseCase(): Next7DaysPdfUseCase
-        fun sessionRepository(): SessionRepository
+        fun pdfGenerationCoordinator(): PdfGenerationCoordinator
     }
 
     override suspend fun doWork(): Result {
@@ -79,40 +79,54 @@ class Next7DaysPdfWorker(
             WorkerEntryPoint::class.java
         )
 
-        // -------------------------------------------------
-        // 🔐 SESSION GUARD (AUTHORITATIVE)
-        // -------------------------------------------------
-        val session = entryPoint
-            .sessionRepository()
-            .sessionState
-            .first()
-
-        if (session.uid == null) {
-            Timber.tag(SHARE_PDF_TAG).w("WORK_SKIPPED no_session time=${WORKER_TIME_FORMATTER.format(Instant.now())} " + "[Next7DaysPdfWorker.kt::doWork]")
-            return Result.success()
-        }
+        val coordinator = entryPoint.pdfGenerationCoordinator()
 
         // -------------------------------------------------
-        // 🚀 Delegate to UseCase
+        // 🚀 Delegate to Coordinator
         // -------------------------------------------------
         return try {
 
-            val uri: Uri? = entryPoint
-                .next7DaysPdfUseCase()
-                .generate()
+            val result = coordinator.generateNext7Days(
+                delivery = PdfDeliveryMode.NOTIFICATION_ONLY
+            )
 
-            if (uri == null) {
-                Timber.tag(SHARE_PDF_TAG).e("PDF_GENERATION_FAILED [Next7DaysPdfWorker.kt::doWork]")
-                return Result.success()
+            when (result) {
+
+                // -----------------------------------------
+                // Skipped (already delivered today / no session)
+                // -----------------------------------------
+                is PdfGenerationResult.Skipped -> {
+                    Timber.tag(SHARE_PDF_TAG).w("WORK_SKIPPED coordinator_skipped reason=${result.reason} " + "[Next7DaysPdfWorker.kt::doWork]")
+                    Result.success()
+                }
+
+                // -----------------------------------------
+                // Failed
+                // -----------------------------------------
+                is PdfGenerationResult.Failed -> {
+                    Timber.tag(SHARE_PDF_TAG).e("PDF_GENERATION_FAILED coordinator_failed reason=${result.error} " + "[Next7DaysPdfWorker.kt::doWork]")
+                    Result.success()
+                }
+
+                // -----------------------------------------
+                // Success → Show notification + mark ledger
+                // -----------------------------------------
+                is PdfGenerationResult.Success -> {
+
+                    val uri: Uri = result.uri
+
+                    Timber.tag(SHARE_PDF_TAG).i("PDF_GENERATED uri=$uri [Next7DaysPdfWorker.kt::doWork]")
+
+                    // 🔔 Show notification
+                    showNotification(uri)
+
+                    // 📓 MARK DELIVERY LEDGER (ONLY PLACE THIS HAPPENS)
+                    coordinator.markDeliveredFromWorker()
+                    Timber.tag(SHARE_PDF_TAG).i("WORK_COMPLETE_SUCCESS [Next7DaysPdfWorker.kt::doWork]")
+
+                    Result.success()
+                }
             }
-
-            Timber.tag(SHARE_PDF_TAG).i("PDF_GENERATED uri=$uri [Next7DaysPdfWorker.kt::doWork]")
-
-            showNotification(uri)
-
-            Timber.tag(SHARE_PDF_TAG).i("WORK_COMPLETE_SUCCESS [Next7DaysPdfWorker.kt::doWork]")
-
-            Result.success()
 
         } catch (t: Throwable) {
             Timber.tag(SHARE_PDF_TAG).e(t, "WORK_FAILED_EXCEPTION [Next7DaysPdfWorker.kt::doWork]")
@@ -121,12 +135,11 @@ class Next7DaysPdfWorker(
     }
 
     // =========================================================
-    // Notification (Share + Dismiss)
+    // Notification (Share + Dismiss buttons)
     // =========================================================
     private fun showNotification(uri: Uri) {
 
-        val nm =
-            applicationContext.getSystemService(NotificationManager::class.java)
+        val nm = applicationContext.getSystemService(NotificationManager::class.java)
 
         ensureNotificationChannel(nm)
 
@@ -173,7 +186,9 @@ class Next7DaysPdfWorker(
 
         nm.notify(NOTIFICATION_ID, notification)
 
-        Timber.tag(SHARE_PDF_TAG).d("NOTIFICATION_SHOWN notifId=$NOTIFICATION_ID [Next7DaysPdfWorker.kt::showNotification]")
+        Timber.tag(SHARE_PDF_TAG).d(
+            "NOTIFICATION_SHOWN notifId=$NOTIFICATION_ID [Next7DaysPdfWorker.kt::showNotification]"
+        )
     }
 
     // =========================================================

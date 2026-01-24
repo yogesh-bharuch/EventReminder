@@ -1,11 +1,5 @@
 package com.example.eventreminder.receivers
 
-/*// =============================================================
-// ReminderReceiver — Clean Engine-Driven Trigger Handler (UUID)
-// All scheduling, repeat-handling, and fire-state writes are now
-// delegated to ReminderSchedulingEngine.
-// =============================================================*/
-
 import android.app.NotificationManager
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -22,13 +16,30 @@ import timber.log.Timber
 import javax.inject.Inject
 import com.example.eventreminder.logging.DISMISS_TAG
 import com.example.eventreminder.logging.SHARE_PDF_TAG
+import com.example.eventreminder.data.delivery.PdfDeliveryLedger   // ✅ Step 4.3
+import java.time.LocalDate
+import java.time.ZoneId
 
 private const val TAG = "ReminderReceiver"
 
+/**
+ * ReminderReceiver
+ *
+ * A BroadcastReceiver that handles different reminder-related actions:
+ * - Dismissing notifications (both reminder and PDF-only notifications)
+ * - Opening reminder cards in the MainActivity
+ * - Handling normal alarm triggers to show notifications and reschedule repeats
+ *
+ * This class integrates with:
+ * - ReminderRepository (to persist dismiss events)
+ * - ReminderSchedulingEngine (to handle repeat reminders)
+ * - PdfDeliveryLedger (to mark PDF deliveries as completed)
+ */
 @AndroidEntryPoint
 class ReminderReceiver : BroadcastReceiver() {
 
     companion object {
+        // Keys for extras passed via Intents
         const val EXTRA_TITLE = "extra_title"
         const val EXTRA_MESSAGE = "extra_message"
         const val EXTRA_REPEAT_RULE = "extra_repeat_rule"
@@ -41,15 +52,25 @@ class ReminderReceiver : BroadcastReceiver() {
         const val EXTRA_REMINDER_ID_STRING = "reminder_id_string"
     }
 
+    // Dependencies injected via Hilt
     @Inject lateinit var repo: ReminderRepository
     @Inject lateinit var schedulingEngine: ReminderSchedulingEngine
+    // Step 4.3 — Notification Delivery Ledger
+    @Inject lateinit var pdfDeliveryLedger: PdfDeliveryLedger   // ✅ ledger
 
+    /**
+     * Entry point for BroadcastReceiver.
+     * Handles incoming Intents based on their action type:
+     * - ACTION_DISMISS → dismisses notifications
+     * - ACTION_OPEN_CARD → opens MainActivity with reminder details
+     * - Default (alarm trigger) → shows notification and processes repeat scheduling
+     */
     override fun onReceive(context: Context, intent: Intent) {
 
         Timber.tag(TAG).i("Receiver fired → action=${intent.action} [ReminderReceiver.kt::onReceive]")
 
         // ---------------------------------------------------------
-        // DISMISS Action
+        // Case 1: DISMISS Action
         // ---------------------------------------------------------
         if (intent.action == ACTION_DISMISS) {
 
@@ -57,17 +78,12 @@ class ReminderReceiver : BroadcastReceiver() {
             val reminderId = intent.getStringExtra(EXTRA_REMINDER_ID_STRING)
             val offsetMillis = intent.getLongExtra(EXTRA_OFFSET_MILLIS, 0L)
 
-            // =====================================================
             // PDF-ONLY DISMISS (Next7DaysPdfWorker)
-            // CHANGE:
-            // - reminderId == null → UI-only dismiss
-            // - NO DB write
-            // - NO engine call
-            // =====================================================
             if (reminderId.isNullOrBlank()) {
 
                 Timber.tag(SHARE_PDF_TAG).i("PDF_DISMISS_RECEIVED → notifId=$notificationId [ReminderReceiver.kt::onReceive]")
 
+                // Cancel the notification
                 if (notificationId != -1) {
                     val nm = context.getSystemService(NotificationManager::class.java)
                     nm.cancel(notificationId)
@@ -75,23 +91,34 @@ class ReminderReceiver : BroadcastReceiver() {
                     Timber.tag(SHARE_PDF_TAG).d("PDF notification dismissed → id=$notificationId [ReminderReceiver.kt::onReceive]")
                 }
 
+                // 🧾 Step 4.3 — Update (DataStore) ledger to mark PDF as delivered
+                CoroutineScope(Dispatchers.IO).launch {
+                    try {
+                        val today = LocalDate.now(ZoneId.systemDefault())
+                        pdfDeliveryLedger.markNext7DaysDelivered(today)
+
+                        Timber.tag(SHARE_PDF_TAG).i("PDF_LEDGER_UPDATED delivered_date=$today [ReminderReceiver.kt::onReceive]")
+                    } catch (t: Throwable) {
+                        Timber.tag(SHARE_PDF_TAG).e(t, "PDF_LEDGER_WRITE_FAILED [ReminderReceiver.kt::onReceive]")
+                    }
+                }
+
+                // ⛔ Stop further processing (no repo, no scheduling, no reschedule)
                 return
             }
 
-            // =====================================================
-            // REMINDER DISMISS (existing behavior — UNCHANGED)
-            // =====================================================
-            Timber.tag(DISMISS_TAG).e("DISMISS_RECEIVED → notifId=%d uuid=%s offset=%d [ReminderReceiver.kt::onReceive]", notificationId, reminderId, offsetMillis)
+            // ---- Normal reminder dismiss ----
+            Timber.tag(DISMISS_TAG).i("DISMISS_RECEIVED → notifId=%d uuid=%s offset=%d [ReminderReceiver.kt::onReceive]", notificationId, reminderId, offsetMillis)
 
             // Cancel notification immediately
             if (notificationId != -1) {
                 val nm = context.getSystemService(NotificationManager::class.java)
                 nm.cancel(notificationId)
 
-                Timber.tag(TAG).d("Notification dismissed → id=$notificationId [ReminderReceiver.kt::onReceive]")
+                Timber.tag(DISMISS_TAG).d("Notification dismissed → id=$notificationId [ReminderReceiver.kt::onReceive]")
             }
 
-            // Persist dismiss event (async, no UI blocking)
+            // Updates reminder_fire_state table for dismissedat filed  dismiss event (async, no UI blocking)
             CoroutineScope(Dispatchers.IO).launch {
                 try {
                     repo.recordDismissed(
@@ -107,7 +134,7 @@ class ReminderReceiver : BroadcastReceiver() {
         }
 
         // ---------------------------------------------------------
-        // OPEN_CARD Action
+        // Case 2: OPEN_CARD Action
         // ---------------------------------------------------------
         if (intent.action == ACTION_OPEN_CARD) {
 
@@ -123,6 +150,7 @@ class ReminderReceiver : BroadcastReceiver() {
 
             Timber.tag(TAG).d("📬 ACTION_OPEN_CARD → Forwarding UUID=$idString [ReminderReceiver.kt::onReceive]")
 
+            // Launch MainActivity with reminder details
             val activityIntent = Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or
                         Intent.FLAG_ACTIVITY_CLEAR_TOP or
@@ -138,7 +166,7 @@ class ReminderReceiver : BroadcastReceiver() {
         }
 
         // ---------------------------------------------------------
-        // NORMAL ALARM TRIGGER
+        // Case 3: Normal Alarm Trigger
         // ---------------------------------------------------------
         val idString = intent.getStringExtra(EXTRA_REMINDER_ID_STRING)
         if (idString.isNullOrBlank()) {
@@ -154,6 +182,7 @@ class ReminderReceiver : BroadcastReceiver() {
         val eventType = inferEventType(title, message)
         val notificationId = generateNotificationIdFromString(idString, offsetMillis)
 
+        // Show notification
         NotificationHelper.showNotification(
             context = context,
             notificationId = notificationId,
@@ -168,6 +197,7 @@ class ReminderReceiver : BroadcastReceiver() {
             )
         )
 
+        // Process repeat scheduling asynchronously
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 schedulingEngine.processRepeatTrigger(
@@ -180,14 +210,23 @@ class ReminderReceiver : BroadcastReceiver() {
         }
     }
 
-    private fun generateNotificationIdFromString(
-        idString: String,
-        offsetMillis: Long
-    ): Int {
+    //-------------------------------
+    // Helpers
+    //-------------------------------
+
+    /**
+     * Generates a unique notification ID based on reminder UUID and offset.
+     * Ensures ID is always positive and avoids Int.MIN_VALUE edge case.
+     */
+    private fun generateNotificationIdFromString(idString: String, offsetMillis: Long): Int {
         val raw = idString.hashCode() xor offsetMillis.hashCode()
         return if (raw == Int.MIN_VALUE) Int.MAX_VALUE else kotlin.math.abs(raw)
     }
 
+    /**
+     * Infers the event type (BIRTHDAY, ANNIVERSARY, MEDICINE, WORKOUT, MEETING, GENERAL)
+     * based on keywords found in the title or message.
+     */
     private fun inferEventType(title: String, message: String): String {
         val titleText = title.lowercase()
         val messageText = message.lowercase()

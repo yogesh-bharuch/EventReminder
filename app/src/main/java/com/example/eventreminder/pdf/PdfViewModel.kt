@@ -7,6 +7,9 @@ import androidx.lifecycle.viewModelScope
 import com.example.eventreminder.logging.DEBUG_TAG
 import com.example.eventreminder.logging.SAVE_TAG
 import com.example.eventreminder.logging.SHARE_PDF_TAG
+import com.example.eventreminder.pdf.PdfGenerationCoordinator
+import com.example.eventreminder.pdf.PdfGenerationResult
+import com.example.eventreminder.pdf.PdfDeliveryMode
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -57,7 +60,8 @@ class PdfViewModel @Inject constructor(
     private val pdfGenerator: PdfGenerator,
     private val reminderReportDataBuilder: ReminderReportDataBuilder,
     private val repository: PdfRepository,
-    private val next7DaysPdfUseCase: Next7DaysPdfUseCase
+    private val next7DaysPdfUseCase: Next7DaysPdfUseCase,
+    private val pdfGenerationCoordinator: PdfGenerationCoordinator   // 🔁 unified pipeline
 ) : ViewModel() {
 
     // ---------------------------------------------------------
@@ -93,13 +97,11 @@ class PdfViewModel @Inject constructor(
             _isWorkingPDF.value = true
 
             try {
-                Timber.tag(DEBUG_TAG)
-                    .d("All alarms PDF requested [PdfViewModel.kt::allAlarmsReport]")
+                Timber.tag(DEBUG_TAG).d("All alarms PDF requested [PdfViewModel.kt::allAlarmsReport]")
 
                 val report = reminderReportDataBuilder.buildActiveAlarmReport()
 
-                Timber.tag(SHARE_PDF_TAG)
-                    .d("Active alarms count=${report.sortedAlarms.size} generatedAt=${report.generatedAt} " + "[PdfViewModel.kt::allAlarmsReport]")
+                Timber.tag(SHARE_PDF_TAG).d("Active alarms count=${report.sortedAlarms.size} generatedAt=${report.generatedAt} " + "[PdfViewModel.kt::allAlarmsReport]")
 
                 val uri = pdfGenerator
                     .generateAlarmsReportPdf(appContext, report)
@@ -112,12 +114,10 @@ class PdfViewModel @Inject constructor(
 
                 _openPdfEvent.send(uri)
 
-                Timber.tag(SAVE_TAG)
-                    .d("📄 Alarm PDF generated → $uri [PdfViewModel.kt::allAlarmsReport]")
+                Timber.tag(SAVE_TAG).d("📄 Alarm PDF generated → $uri [PdfViewModel.kt::allAlarmsReport]")
 
             } catch (e: Exception) {
-                Timber.tag(SAVE_TAG)
-                    .e(e, "💥 Alarm PDF generation error [PdfViewModel.kt::allAlarmsReport]")
+                Timber.tag(SAVE_TAG).e(e, "💥 Alarm PDF generation error [PdfViewModel.kt::allAlarmsReport]")
             } finally {
                 _isWorkingPDF.value = false
             }
@@ -190,7 +190,7 @@ class PdfViewModel @Inject constructor(
      *
      * Responsibility:
      *  - UI-facing wrapper for next-7-days reminders PDF.
-     *  - Delegates headless generation to internal function.
+     *  - Delegates generation to centralized coordinator.
      *  - Emits open-PDF UI event on success.
      */
     fun generateNext7DaysRemindersPdf() {
@@ -201,18 +201,27 @@ class PdfViewModel @Inject constructor(
             Timber.tag(SHARE_PDF_TAG).d("Next 7 days PDF requested [PdfViewModel.kt::generateNext7DaysRemindersPdf]")
 
             try {
-                //val uri = generateNext7DaysRemindersPdfInternal()
-                val uri = next7DaysPdfUseCase.generate()
 
-                if (uri == null) {
-                    ReminderViewModel.UiEvent.ShowMessage("PDF generation failed")
-                    Timber.tag(SHARE_PDF_TAG).e("Next 7 days PDF failed [PdfViewModel.kt::generateNext7DaysRemindersPdf]")
-                    return@launch
+                // 🧹 UI OVERRIDE: clear ledger so user click always delivers once
+                pdfGenerationCoordinator.clearNext7DaysDelivery()
+
+                val result = pdfGenerationCoordinator.generateNext7Days(
+                    delivery = PdfDeliveryMode.UI_AND_NOTIFICATION
+                )
+
+                when (result) {
+                    is PdfGenerationResult.Success -> {
+                        _openPdfEvent.send(result.uri)
+                        Timber.tag(SAVE_TAG).d("📄 Next 7 days PDF generated → ${result.uri} " + "[PdfViewModel.kt::generateNext7DaysRemindersPdf]")
+                    }
+                    is PdfGenerationResult.Skipped -> {
+                        Timber.tag(SHARE_PDF_TAG).d("Next 7 days PDF skipped reason=${result.reason} " + "[PdfViewModel.kt::generateNext7DaysRemindersPdf]")
+                    }
+                    is PdfGenerationResult.Failed -> {
+                        ReminderViewModel.UiEvent.ShowMessage("PDF generation failed")
+                        Timber.tag(SHARE_PDF_TAG).e("Next 7 days PDF failed reason=${result.error} " + "[PdfViewModel.kt::generateNext7DaysRemindersPdf]")
+                    }
                 }
-
-                _openPdfEvent.send(uri)
-
-                Timber.tag(SAVE_TAG).d("📄 Next 7 days PDF generated → $uri [PdfViewModel.kt::generateNext7DaysRemindersPdf]")
 
             } catch (e: Exception) {
                 Timber.tag(DEBUG_TAG).e(e, "💥 Next 7 days PDF error [PdfViewModel.kt::generateNext7DaysRemindersPdf]")
@@ -222,137 +231,8 @@ class PdfViewModel @Inject constructor(
         }
     }
 
-/*
-    // =========================================================
-    // NEXT 7 DAYS REMINDERS → HEADLESS GENERATOR
-    // =========================================================
-
-/**
-     * Caller(s):
-     *  - generateNext7DaysRemindersPdf()
-     *  - Background Worker (daily automation)
-     *
-     * Responsibility:
-     *  - Generates Next 7 Days reminders PDF without UI side effects.
-     *  - SAFE for background / Worker execution.
-     *
-     * Output:
-     *  - Uri of generated PDF, or null on failure.
+    /*
+      Headless generator intentionally preserved for historical reference.
+      Orchestration is now centralized via PdfGenerationCoordinator.
      */
-
-
-    private suspend fun generateNext7DaysRemindersPdfInternal(): Uri? {
-
-        val reminders = reminderReportDataBuilder.buildNext7DaysReminders()
-        val zoneId = ZoneId.systemDefault()
-
-        Timber.tag(DEBUG_TAG)
-            .d(
-                "Next7Days reminders loaded count=${reminders.size} now=${Instant.now().atZone(zoneId)} " +
-                        "[PdfViewModel.kt::generateNext7DaysRemindersPdfInternal]"
-            )
-
-        val headers = listOf("Description", "Trigger Time", "Offset")
-        val colWidths = listOf(220f, 200f, 100f)
-
-        val formatter =
-            java.time.format.DateTimeFormatter.ofPattern("dd MMM yyyy, hh:mm a")
-
-        val (todayReminders, upcomingReminders) =
-            reminders.partition { isToday(it.nextTrigger, zoneId) }
-
-        Timber.tag(DEBUG_TAG)
-            .d(
-                "Partitioned reminders today=${todayReminders.size} upcoming=${upcomingReminders.size} " +
-                        "[PdfViewModel.kt::generateNext7DaysRemindersPdfInternal]"
-            )
-
-        val rows = buildList {
-
-            // TODAY
-            if (todayReminders.isEmpty()) {
-                add(listOf(PdfCell.TextCell("Today  -  No Reminder"), PdfCell.TextCell(" "), PdfCell.TextCell(" ")))
-            } else {
-                add(listOf(PdfCell.TextCell("Today"), PdfCell.TextCell(" "), PdfCell.TextCell(" ")))
-                todayReminders.forEach {
-                    add(
-                        listOf(
-                            PdfCell.TextCell("${pickEventEmoji(it.description ?: "")} ${it.description ?: "-"}"),
-                            PdfCell.TextCell(toLocalDateTime(it.nextTrigger, zoneId).format(formatter)),
-                            PdfCell.TextCell(formatOffsetText(it.offsetMinutes))
-                        )
-                    )
-                }
-            }
-
-            // UPCOMING
-            if (upcomingReminders.isEmpty()) {
-                add(listOf(PdfCell.TextCell("Upcoming  -  No Reminder"), PdfCell.TextCell(" "), PdfCell.TextCell(" ")))
-            } else {
-                add(listOf(PdfCell.TextCell("Upcoming"), PdfCell.TextCell(" "), PdfCell.TextCell(" ")))
-                upcomingReminders.forEach {
-                    add(
-                        listOf(
-                            PdfCell.TextCell("${pickEventEmoji(it.description ?: "")} ${it.description ?: "-"}"),
-                            PdfCell.TextCell(toLocalDateTime(it.nextTrigger, zoneId).format(formatter)),
-                            PdfCell.TextCell(formatOffsetText(it.offsetMinutes))
-                        )
-                    )
-                }
-            }
-        }
-
-        return repository.generatePdf(
-            title = "Reminders – Next 7 Days",
-            headers = headers,
-            colWidths = colWidths,
-            rows = rows,
-            layout = PdfLayoutConfig(),
-            fileName = "Reminders_Next_7_Days.pdf"
-        )
-    }
-
-    // =========================================================
-    // Helpers
-    // =========================================================
-    private fun toLocalDateTime(epochMillis: Long, zoneId: ZoneId) =
-        Instant.ofEpochMilli(epochMillis).atZone(zoneId).toLocalDateTime()
-
-    private fun isToday(epochMillis: Long, zoneId: ZoneId): Boolean =
-        Instant.ofEpochMilli(epochMillis).atZone(zoneId).toLocalDate() ==
-                java.time.LocalDate.now(zoneId)
-
-    private fun formatOffsetText(offsetMinutes: Long): String =
-        when {
-            offsetMinutes <= 0L -> "on time"
-            offsetMinutes % (24 * 60) == 0L -> "${offsetMinutes / (24 * 60)} day before"
-            offsetMinutes % 60 == 0L -> "${offsetMinutes / 60} hr before"
-            else -> "${offsetMinutes} min before"
-        }
-
-    private val eventEmojiMap = mapOf(
-        "medicine" to "💊",
-        "money" to "💰",
-        "travel" to "✈️",
-        "home" to "🏠",
-        "celebration" to "🎉",
-        "time" to "⏰",
-        "default" to "🔔"
-    )
-
-    private fun pickEventEmoji(title: String): String {
-        val t = title.lowercase()
-        return when {
-            listOf("medicine", "pill", "tablet", "dose").any { t.contains(it) } -> eventEmojiMap["medicine"]!!
-            listOf("pay", "rent", "emi", "bank", "bill", "payment", "renewal").any { t.contains(it) } -> eventEmojiMap["money"]!!
-            listOf("flight", "trip", "travel", "airport").any { t.contains(it) } -> eventEmojiMap["travel"]!!
-            listOf("plant", "plants", "water", "garden").any { t.contains(it) } -> eventEmojiMap["home"]!!
-            listOf("birthday", "party", "anniversary", "celebration").any { t.contains(it) } -> eventEmojiMap["celebration"]!!
-            listOf("debug", "test").any { t.contains(it) } -> eventEmojiMap["time"]!!
-            else -> eventEmojiMap["default"]!!
-        }
-    }
-  */
 }
-
-
