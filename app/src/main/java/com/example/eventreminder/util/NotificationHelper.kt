@@ -116,14 +116,10 @@ object NotificationHelper {
         // 🔊 NORMAL (CATEGORY) PATH — UNCHANGED
         // ---------------------------------------------------------
         val channelSound: Uri = when (eventType.uppercase()) {
-            "BIRTHDAY" ->
-                Uri.parse("android.resource://${context.packageName}/${R.raw.birthday}")
-            "ANNIVERSARY" ->
-                Uri.parse("android.resource://${context.packageName}/${R.raw.anniversary}")
-            "MEDICINE" ->
-                Uri.parse("android.resource://${context.packageName}/${R.raw.medicine}")
-            "WORKOUT" ->
-                Uri.parse("android.resource://${context.packageName}/${R.raw.workout}")
+            "BIRTHDAY" -> Uri.parse("android.resource://${context.packageName}/${R.raw.birthday}")
+            "ANNIVERSARY" -> Uri.parse("android.resource://${context.packageName}/${R.raw.anniversary}")
+            "MEDICINE" -> Uri.parse("android.resource://${context.packageName}/${R.raw.medicine}")
+            "WORKOUT" -> Uri.parse("android.resource://${context.packageName}/${R.raw.workout}")
             else ->
                 RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
         }
@@ -182,7 +178,7 @@ object NotificationHelper {
     }
 
     // =========================================================
-    // INTERNAL POST (shared, no behavior drift)
+    // INTERNAL POST (shared, deterministic behavior)
     // =========================================================
     private fun postNotification(
         context: Context,
@@ -196,8 +192,28 @@ object NotificationHelper {
         sound: Uri? = null
     ) {
         val uuid = extras[ReminderReceiver.EXTRA_REMINDER_ID_STRING] as? String
-        val eventTypeExtra = extras[ReminderReceiver.EXTRA_EVENT_TYPE] as? String
+        val eventTypeExtra =
+            (extras[ReminderReceiver.EXTRA_EVENT_TYPE] as? String)
+                ?: run {
+                    val t = title.lowercase()
+                    val m = message.lowercase()
+                    when {
+                        "birthday" in t -> "BIRTHDAY"
+                        "anniversary" in t -> "ANNIVERSARY"
+                        "medicine" in t -> "MEDICINE"
+                        "workout" in t -> "WORKOUT"
+                        "meeting" in t -> "MEETING"
+                        "pill" in m || "tablet" in m -> "MEDICINE"
+                        "exercise" in m || "gym" in m -> "WORKOUT"
+                        "meet" in m -> "MEETING"
+                        else -> "GENERAL"
+                    }
+                }
 
+
+        // -----------------------------------------------------
+        // Tap → MainActivity navigation
+        // -----------------------------------------------------
         val tapIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or
                     Intent.FLAG_ACTIVITY_CLEAR_TOP or
@@ -216,6 +232,9 @@ object NotificationHelper {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
+        // -----------------------------------------------------
+        // Dismiss
+        // -----------------------------------------------------
         val dismissIntent = Intent(context, ReminderReceiver::class.java).apply {
             action = ReminderReceiver.ACTION_DISMISS
             putExtra(ReminderReceiver.EXTRA_NOTIFICATION_ID, notificationId)
@@ -246,7 +265,44 @@ object NotificationHelper {
             )
             .setContentIntent(tapPI)
             .setStyle(NotificationCompat.BigTextStyle().bigText(message))
-            .addAction(R.drawable.ic_close, "Dismiss", dismissPI)
+
+        // =====================================================
+        // 🎯 ACTION POLICY
+        // =====================================================
+        when (eventTypeExtra?.uppercase()) {
+
+            // 🎂 Only birthdays & anniversaries get Open Card
+            "BIRTHDAY", "ANNIVERSARY" -> {
+                // Open Card
+                val openIntent = Intent(context, MainActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                            Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                            Intent.FLAG_ACTIVITY_SINGLE_TOP
+
+                    putExtrasFromMap(extras)
+                    putExtra(ReminderReceiver.EXTRA_FROM_NOTIFICATION, true)
+                    putExtra(ReminderReceiver.EXTRA_REMINDER_ID_STRING, uuid)
+                    putExtra(ReminderReceiver.EXTRA_EVENT_TYPE, eventTypeExtra)
+                }
+
+                val openPI = PendingIntent.getActivity(
+                    context,
+                    System.currentTimeMillis().toInt(),   // ✅ UNIQUE requestCode
+                    openIntent,
+                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+                )
+
+                builder.addAction(R.drawable.ic_open, "Open Card", openPI)
+                builder.addAction(R.drawable.ic_close, "Dismiss", dismissPI)
+            }
+
+            // -------------------------------------------------
+            // ℹ️ Other notifications
+            // -------------------------------------------------
+            else -> {
+                builder.addAction(R.drawable.ic_close, "Dismiss", dismissPI)
+            }
+        }
 
         if (!silent && Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
             builder.setSound(sound)
@@ -254,6 +310,6 @@ object NotificationHelper {
 
         nm.notify(notificationId, builder.build())
 
-        Timber.tag(TAG).d("📢 Notification posted id=$notificationId channel=$channelId silent=$silent uuid=$uuid")
+        Timber.tag(TAG).d("📢 Notification posted id=$notificationId channel=$channelId silent=$silent uuid=$uuid type=$eventTypeExtra")
     }
 }
