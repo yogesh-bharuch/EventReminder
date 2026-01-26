@@ -1,42 +1,47 @@
 package com.example.eventreminder.data.model
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
+import kotlinx.serialization.Serializable
+import java.util.UUID
 
 /**
- * EventReminder - now supports **multiple reminder offsets**.
+ * Local Room entity scoped to a Firebase user.
  *
- * eventEpochMillis:
- *      UTC epoch millis for the event time (chosen by user in their local zone).
- *
- * timeZone:
- *      IANA zone ID used when selecting date/time ("Asia/Kolkata").
- *
- * repeatRule:
- *      null | "every_minute" | "daily" | "weekly" | "monthly" | "yearly"
- *
- * reminderOffsets:
- *      List of offsets (millis) for multi-reminder support.
- *      Example: [0L, 3600000L, 86400000L] → at time, 1 hour before, 1 day before.
- *
- * enabled:
- *      Whether the reminder is active.
+ * Key guarantees:
+ * - Each reminder belongs to exactly one Firebase UID
+ * - Tombstone semantics remain unchanged
+ * - Safe for multi-user on the same device
  */
-
-@Entity(tableName = "reminders")
+@Entity(
+    tableName = "reminders",
+    indices = [
+        Index(value = ["uid"]),                     // fast per-user filtering
+        Index(value = ["uid", "id"], unique = true) // prevent cross-user UUID collision
+    ]
+)
+@Serializable
 data class EventReminder(
-    @PrimaryKey(autoGenerate = true) val id: Long = 0L,
 
+    val uid: String,
+    @PrimaryKey
+    val id: String = UUID.randomUUID().toString(),
     val title: String,
     val description: String? = null,
-
     val eventEpochMillis: Long,
     val timeZone: String,
-
     val repeatRule: String? = null,
-
-    // 🆕 Multiple reminder offsets (replace old reminderOffsetMillis)
     val reminderOffsets: List<Long> = listOf(0L),
-
-    val enabled: Boolean = true
+    val enabled: Boolean = true,
+    val isDeleted: Boolean = false,
+    /**
+     * Optional background image URI for pixel cards.
+     */
+    val backgroundUri: String? = null,
+    /**
+     * Last modified timestamp.
+     * Used for sync conflict resolution.
+     */
+    val updatedAt: Long = System.currentTimeMillis()
 )

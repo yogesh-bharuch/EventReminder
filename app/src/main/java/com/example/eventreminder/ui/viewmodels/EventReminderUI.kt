@@ -1,11 +1,21 @@
 package com.example.eventreminder.ui.viewmodels
 
+// =============================================================
+// Imports
+// =============================================================
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
+/**
+ * EventReminderUI
+ * -----------------
+ * UI-ready model used by EventCard and EventsListGrouped.
+ *
+ * NOW updated to use String UUID for reminder ID.
+ */
 data class EventReminderUI(
-    val id: Long,
+    val id: String,                     // <-- UUID
     val title: String,
     val description: String?,
     val eventEpochMillis: Long,
@@ -20,22 +30,26 @@ data class EventReminderUI(
             DateTimeFormatter.ofPattern("dd MMM yyyy, hh:mm a")
 
         fun from(
-            id: Long,
+            id: String,                 // <-- UUID
             title: String,
             desc: String?,
             eventMillis: Long,
             repeat: String?,
-            tz: String
+            tz: String,
+            offsets: List<Long>
         ): EventReminderUI {
 
             val zone = ZoneId.of(tz)
             val zdt = Instant.ofEpochMilli(eventMillis).atZone(zone)
-
-            // Display date
             val dateLabel = zdt.format(dateFormatter)
 
-            // Time remaining (simple)
-            val remaining = formatRemaining(eventMillis)
+            val remainingLabels =
+                offsets.sortedDescending().map { offMillis ->
+                    val triggerEpoch = eventMillis - offMillis
+                    formatRemaining(triggerEpoch)
+                }
+
+            val combinedRemaining = remainingLabels.joinToString(", ")
 
             return EventReminderUI(
                 id = id,
@@ -44,13 +58,13 @@ data class EventReminderUI(
                 eventEpochMillis = eventMillis,
                 repeatRule = repeat,
                 formattedDateLabel = dateLabel,
-                timeRemainingLabel = remaining
+                timeRemainingLabel = combinedRemaining
             )
         }
 
-        private fun formatRemaining(eventMillis: Long): String {
+        private fun formatRemaining(triggerMillis: Long): String {
             val now = Instant.now().toEpochMilli()
-            val diff = eventMillis - now
+            val diff = triggerMillis - now
 
             return when {
                 diff < 0 -> "Elapsed"
@@ -60,7 +74,7 @@ data class EventReminderUI(
                 diff < 172_800_000 -> "Tomorrow"
                 diff < 604_800_000 -> "In ${diff / 86_400_000} days"
                 else -> {
-                    val z = Instant.ofEpochMilli(eventMillis)
+                    val z = Instant.ofEpochMilli(triggerMillis)
                         .atZone(ZoneId.systemDefault())
                     val fmt = DateTimeFormatter.ofPattern("dd MMM yyyy")
                     "On ${z.format(fmt)}"

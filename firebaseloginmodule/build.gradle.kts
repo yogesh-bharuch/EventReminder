@@ -31,17 +31,19 @@ android {
         targetCompatibility = JavaVersion.VERSION_11
     }
 
-    kotlinOptions {
-        jvmTarget = "11"
+    kotlin {
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
+        }
     }
 
     buildFeatures {
         compose = true
     }
 
-    composeOptions {
+    /*composeOptions {
         kotlinCompilerExtensionVersion = "1.5.3"
-    }
+    }*/
 }
 
 dependencies {
@@ -49,7 +51,7 @@ dependencies {
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
-    implementation(libs.material)
+    //implementation(libs.material)
 
     // Jetpack Compose
     implementation(libs.androidx.ui)
@@ -63,9 +65,9 @@ dependencies {
     implementation(libs.firebase.auth.ktx)
 
     // Hilt DI
-    implementation(libs.hilt.android) // ✅ Core Hilt runtime
-    implementation(libs.hilt.navigation.compose) // For hiltViewModel()
-    kapt(libs.hilt.compiler) // For @HiltViewModel, @Inject
+    implementation(libs.hilt.android)
+    implementation(libs.hilt.navigation.compose)
+    kapt(libs.hilt.compiler)
 
     implementation(libs.navigation.compose)
 

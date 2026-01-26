@@ -1,4 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
-<paths>
-    <external-path name="external_files" path="." />
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Allow access to entire /data/data/<package>/cache/ -->
+    <cache-path
+        name="cache_root"
+        path="." />
+
+    <!-- Allow access to /data/data/<package>/cache/share_cards/ (legacy support) -->
+    <cache-path
+        name="share_cards"
+        path="share_cards/" />
+
+    <!-- Allow reading public PDFs from Documents/ReminderReports/ -->
+    <external-path
+        name="public_reports"
+        path="Documents/ReminderReports/" />
+
 </paths>

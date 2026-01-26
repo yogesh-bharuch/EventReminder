@@ -1,330 +1,297 @@
 package com.example.eventreminder.ui.screens
 
-import android.app.DatePickerDialog
-import android.app.TimePickerDialog
-import android.widget.DatePicker
-import android.widget.TimePicker
-import androidx.compose.foundation.layout.*
+// =============================================================
+// Imports
+// =============================================================
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Repeat
-import androidx.compose.material.icons.filled.Save
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import kotlinx.coroutines.delay
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
-import com.example.eventreminder.data.model.EventReminder
-import com.example.eventreminder.data.model.ReminderOffset
-import com.example.eventreminder.data.model.ReminderTitle
-import com.example.eventreminder.data.model.RepeatRule
+import com.example.eventreminder.ui.modules.actions.ReminderSaveButtonModule
+import com.example.eventreminder.ui.modules.date.ReminderDatePickerModule
+import com.example.eventreminder.ui.modules.dropdown.ReminderRepeatRuleDropdownModule
+import com.example.eventreminder.ui.modules.dropdown.ReminderTitleDropdownModule
+import com.example.eventreminder.ui.modules.offsets.ReminderOffsetsModule
+import com.example.eventreminder.ui.modules.time.ReminderTimePickerModule
 import com.example.eventreminder.ui.viewmodels.ReminderViewModel
-import com.example.eventreminder.util.NextOccurrenceCalculator
-import java.time.*
-import java.time.format.DateTimeFormatter
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.Button
+import androidx.compose.material3.IconButton
+import androidx.compose.runtime.rememberCoroutineScope
+import com.example.eventreminder.navigation.PixelPreviewRoute
+import kotlinx.coroutines.launch
+import timber.log.Timber
+import com.example.eventreminder.logging.SAVE_TAG
 
+
+// =============================================================
+// Add / Edit Reminder Screen
+// =============================================================
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddEditReminderScreen(
     navController: NavController,
     eventId: String?,
-    vm: ReminderViewModel = hiltViewModel()
+    reminderVm: ReminderViewModel
 ) {
-    val context = LocalContext.current
-    val uiState by vm.uiState.collectAsState()
-    val snackbarHost = remember { SnackbarHostState() }
+    val snackbarHostState = remember { SnackbarHostState() }
+    val coroutineScope = rememberCoroutineScope()
+    val focusManager = LocalFocusManager.current
 
-    val reminderId = eventId?.toLongOrNull()
-    val zoneId = ZoneId.systemDefault()
+    // FocusRequesters for full navigation chain
+    val dateFocus = remember { FocusRequester() }
+    val timeFocus = remember { FocusRequester() }
+    val offsetFocus = remember { FocusRequester() }
+    val repeatFocus = remember { FocusRequester() }
+    val saveFocus = remember { FocusRequester() }
+    val scope = rememberCoroutineScope()
 
-    // ------------------------------------------------------------------
-    // LOCAL UI STATE (Enum-powered)
-    // ------------------------------------------------------------------
-    var title by remember { mutableStateOf(ReminderTitle.EVENT) }
-    var description by remember { mutableStateOf("") }
-    var pickedDate by remember { mutableStateOf(LocalDate.now()) }
-    var pickedTime by remember { mutableStateOf(LocalTime.now().withSecond(0).withNano(0)) }
+    // Auto-open time dialog after date
+    val timePickerAutoOpen = remember { mutableStateOf(false) }
 
-    // 🆕 MULTIPLE REMINDER OFFSETS
-    var selectedOffsets by remember { mutableStateOf(mutableSetOf<ReminderOffset>()) }
+    val uiState by reminderVm.uiState.collectAsState()
+    val reminderId: String? = eventId
 
-    var selectedRepeat by remember { mutableStateOf(RepeatRule.NONE) }
-
-    // ------------------------------------------------------------------
-    // LOAD EXISTING REMINDER
-    // ------------------------------------------------------------------
+    // Load reminder
     LaunchedEffect(reminderId) {
-        if (reminderId != null) vm.load(reminderId)
-    }
-
-    LaunchedEffect(uiState.editReminder) {
-        uiState.editReminder?.let { r ->
-
-            title = ReminderTitle.entries.find { it.label == r.title } ?: ReminderTitle.EVENT
-            description = r.description ?: ""
-
-            val zdt = Instant.ofEpochMilli(r.eventEpochMillis).atZone(ZoneId.of(r.timeZone))
-            pickedDate = zdt.toLocalDate()
-            pickedTime = zdt.toLocalTime()
-
-            // 🆕 Load multi-reminder offsets
-            selectedOffsets = r.reminderOffsets
-                .mapNotNull { ReminderOffset.fromMillis(it) }
-                .toMutableSet()
-
-            selectedRepeat = RepeatRule.fromKey(r.repeatRule)
+        if (reminderId == null) {
+            // ⭐ ADD MODE → reset form to blank
+            reminderVm.resetAddEditForm()
+        } else {
+            // ⭐ EDIT MODE → load existing reminder
+            reminderVm.load(reminderId)
         }
     }
 
-    // ------------------------------------------------------------------
-    // VALIDATION ERRORS
-    // ------------------------------------------------------------------
+    // Validation snackbar
     LaunchedEffect(uiState.errorMessage) {
-        uiState.errorMessage?.let {
-            snackbarHost.showSnackbar(it)
-            vm.resetError()
+        uiState.errorMessage?.let { message ->
+            snackbarHostState.showSnackbar(message)
+            reminderVm.resetError()
         }
     }
 
-    // ------------------------------------------------------------------
-    // CLOSE SCREEN AFTER SAVE (NEXT OCCURRENCE)
-    // ------------------------------------------------------------------
-    LaunchedEffect(uiState.saved) {
-        if (uiState.saved && uiState.editReminder != null) {
-
-            val r = uiState.editReminder!!
-
-            val next = NextOccurrenceCalculator.nextOccurrence(
-                r.eventEpochMillis,
-                r.timeZone,
-                r.repeatRule
-            ) ?: r.eventEpochMillis
-
-            val readable = Instant.ofEpochMilli(next)
-                .atZone(ZoneId.of(r.timeZone))
-                .format(DateTimeFormatter.ofPattern("dd MMM yyyy, hh:mm a"))
-
-            snackbarHost.showSnackbar(
-                "${if (reminderId == null) "Created" else "Updated"}: ${r.title} → $readable"
-            )
-
-            vm.resetSaved()
-            navController.popBackStack()
-        }
-    }
-
-    // ------------------------------------------------------------------
-    // DATE PICKER (LOGICAL TITLE RULES)
-    // ------------------------------------------------------------------
-    val datePicker = remember(title) {
-        DatePickerDialog(
-            context,
-            { _: DatePicker, y: Int, m: Int, d: Int ->
-                pickedDate = LocalDate.of(y, m + 1, d)
-            },
-            pickedDate.year, pickedDate.monthValue - 1, pickedDate.dayOfMonth
-        ).apply {
-
-            val todayMillis = LocalDate.now().atStartOfDay(ZoneId.systemDefault())
-                .toInstant().toEpochMilli()
-
-            when (title) {
-                ReminderTitle.BIRTHDAY,
-                ReminderTitle.ANNIVERSARY ->
-                    datePicker.maxDate = todayMillis   // past only
-
-                else ->
-                    datePicker.minDate = todayMillis   // future only
-            }
-        }
-    }
-
-    val timePicker = remember {
-        TimePickerDialog(
-            context,
-            { _: TimePicker, h: Int, mi: Int -> pickedTime = LocalTime.of(h, mi) },
-            pickedTime.hour, pickedTime.minute, true
-        )
-    }
-
-    // ------------------------------------------------------------------
-    // UI LAYOUT
-    // ------------------------------------------------------------------
     Scaffold(
+        modifier = Modifier.imePadding(),   // ⭐ Auto-adjust UI when keyboard opens
+        snackbarHost = { androidx.compose.material3.SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
+                navigationIcon = {
+                    IconButton(onClick = { navController.popBackStack() }) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                },
                 title = {
-                    Text(if (reminderId == null) "Add Reminder" else "Edit Reminder")
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+
+                        val icon = if (reminderId == null) Icons.Filled.AddCircle else Icons.Filled.Edit
+
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = if (reminderId == null) "Add Reminder" else "Edit Reminder")
+                    }
                 }
             )
-        },
-        snackbarHost = { SnackbarHost(snackbarHost) }
+        }
+
+
     ) { padding ->
 
         LazyColumn(
             modifier = Modifier
                 .padding(padding)
-                .padding(16.dp),
+                .padding(16.dp)
+                .imePadding(),
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
 
-            // ------------------------------------------------------------
-            // TITLE DROPDOWN
-            // ------------------------------------------------------------
+            // TITLE
             item {
-                var expanded by remember { mutableStateOf(false) }
-
-                ExposedDropdownMenuBox(expanded, { expanded = !expanded }) {
-
-                    OutlinedTextField(
-                        value = title.label,
-                        onValueChange = {},
-                        label = { Text("Title") },
-                        readOnly = true,
-                        leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
-                        modifier = Modifier.menuAnchor().fillMaxWidth(),
-                        shape = RoundedCornerShape(14.dp)
-                    )
-
-                    ExposedDropdownMenu(expanded, { expanded = false }) {
-                        ReminderTitle.entries.forEach { option ->
-                            DropdownMenuItem(
-                                text = { Text(option.label) },
-                                onClick = {
-                                    title = option
-                                    expanded = false
-                                }
-                            )
-                        }
-                    }
-                }
+                ReminderTitleDropdownModule(
+                    selectedTitle = uiState.title,
+                    onTitleChanged = reminderVm::onTitleChanged
+                )
             }
 
-            // ------------------------------------------------------------
             // DESCRIPTION
-            // ------------------------------------------------------------
             item {
                 OutlinedTextField(
-                    value = description,
-                    onValueChange = { description = it },
+                    value = uiState.description,
+                    onValueChange = reminderVm::onDescriptionChanged,
                     label = { Text("Description") },
                     placeholder = { Text("Name / Event details") },
-                    leadingIcon = { Icon(Icons.Default.Info, contentDescription = null) },
+                    leadingIcon = { Icon(Icons.Default.Info, null) },
                     singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                    keyboardActions = KeyboardActions(
+                        onNext = {
+                            focusManager.clearFocus()
+                            dateFocus.requestFocus()
+                        }
+                    ),
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(14.dp)
                 )
             }
 
-            // ------------------------------------------------------------
-            // DATE & TIME
-            // ------------------------------------------------------------
+            // DATE + TIME + CARD BUTTON (stacked vertically)
             item {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Button(onClick = { datePicker.show() }) {
-                        Text("Date: $pickedDate")
-                    }
-                    Button(onClick = { timePicker.show() }) {
-                        Text("Time: $pickedTime")
-                    }
-                }
-            }
+                // DATE PICKER BUTTON
+                ReminderDatePickerModule(
+                    selectedDate = uiState.date,
+                    title = uiState.title,
+                    onDateChanged = {
+                        reminderVm.onDateChanged(it)
+                        // Auto-open → Time picker
+                        timeFocus.requestFocus()
+                        timePickerAutoOpen.value = true
+                    },
+                    modifier = Modifier.focusRequester(dateFocus)
+                )
+                Spacer(Modifier.height(12.dp))
 
-            // ------------------------------------------------------------
-            // 🆕 MULTI-REMINDER OFFSETS (CHECKBOX LIST)
-            // ------------------------------------------------------------
-            item {
-                Text("Reminder Alerts", style = MaterialTheme.typography.titleMedium)
+                // TIME PICKER + CARD BUTTON (same row)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                )
+                {
 
-                ReminderOffset.entries.forEach { off ->
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.Start
-                    ) {
-                        Checkbox(
-                            checked = selectedOffsets.contains(off),
-                            onCheckedChange = { checked ->
-                                selectedOffsets = selectedOffsets.toMutableSet().apply {
-                                    if (checked) add(off) else remove(off)
-                                }
-                            }
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(off.label)
-                    }
-                }
-            }
-
-            // ------------------------------------------------------------
-            // REPEAT RULE
-            // ------------------------------------------------------------
-            item {
-                var expanded by remember { mutableStateOf(false) }
-
-                Text("Repeat Rule")
-
-                ExposedDropdownMenuBox(expanded, { expanded = !expanded }) {
-
-                    OutlinedTextField(
-                        value = selectedRepeat.label,
-                        onValueChange = {},
-                        readOnly = true,
-                        leadingIcon = { Icon(Icons.Default.Repeat, contentDescription = null) },
-                        modifier = Modifier.menuAnchor().fillMaxWidth(),
-                        shape = RoundedCornerShape(14.dp)
+                    // TIME PICKER MODULE
+                    ReminderTimePickerModule(
+                        selectedTime = uiState.time,
+                        onTimeChanged = { time ->
+                            reminderVm.onTimeChanged(time)
+                            // Next → move to Offsets
+                            focusManager.clearFocus()
+                            offsetFocus.requestFocus()
+                        },
+                        autoOpen = timePickerAutoOpen.value,
+                        modifier = Modifier.weight(1f)
+                            .focusRequester(timeFocus)
                     )
+                    Spacer(modifier = Modifier.width(12.dp))
 
-                    ExposedDropdownMenu(expanded, { expanded = false }) {
-                        RepeatRule.entries.forEach { rule ->
-                            DropdownMenuItem(
-                                text = { Text(rule.label) },
-                                onClick = {
-                                    selectedRepeat = rule
-                                    expanded = false
+                    // CARD SCREEN BUTTON
+                    Button(
+                        onClick = {
+                            if (reminderId == null) {
+                                coroutineScope.launch {
+                                    snackbarHostState.showSnackbar("EventId is required")
                                 }
+                            } else {
+                                navController.navigate(PixelPreviewRoute(reminderId = reminderId))
+                            }
+                        }
+                    ) {
+                        Text("Build Card")
+                    }
+
+                }
+            }
+
+            // OFFSETS
+            item {
+                ReminderOffsetsModule(
+                    selectedOffsets = uiState.offsets,
+                    onOffsetsChanged = reminderVm::onOffsetsChanged,
+                    modifier = Modifier.focusRequester(offsetFocus)
+                )
+
+                // When offsets updated → move to Repeat rule
+                LaunchedEffect(uiState.offsets) {
+                    repeatFocus.requestFocus()
+                }
+            }
+
+            // REPEAT RULE
+            item {
+                ReminderRepeatRuleDropdownModule(
+                    selectedRule = uiState.repeat,
+                    onRuleChanged = reminderVm::onRepeatChanged,
+                    modifier = Modifier.focusRequester(repeatFocus)
+                )
+
+                // Auto-move to Save button
+                LaunchedEffect(uiState.repeat) {
+                    saveFocus.requestFocus()
+                }
+            }
+
+            // SAVE BUTTON
+            item {
+                ReminderSaveButtonModule(
+                    isEditMode = reminderId != null,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(saveFocus),
+
+                    onSave = {
+                        scope.launch {
+                            Timber.tag(SAVE_TAG).d("🔵 UI → Save clicked (existingId=$reminderId)")
+
+                            reminderVm.onSaveClicked(
+                                title = uiState.title,
+                                description = uiState.description,
+                                date = uiState.date,
+                                time = uiState.time,
+                                offsets = uiState.offsets,
+                                repeatRule = uiState.repeat,
+                                existingId = reminderId
                             )
+
+                            //delay(350) // smoother, enough time to emit snackbar
+                            navController.popBackStack()
                         }
                     }
-                }
+                )
             }
 
-            // ------------------------------------------------------------
-            // SAVE BUTTON
-            // ------------------------------------------------------------
-            item {
-                Button(
-                    onClick = {
-                        val zdt = ZonedDateTime.of(pickedDate, pickedTime, zoneId)
 
-                        val reminder = EventReminder(
-                            id = reminderId ?: 0L,
-                            title = title.label,
-                            description = description.ifBlank { null },
-                            eventEpochMillis = zdt.toInstant().toEpochMilli(),
-                            timeZone = zoneId.id,
-                            repeatRule = selectedRepeat.key,
-
-                            // 🆕 MULTIPLE OFFSETS
-                            reminderOffsets = selectedOffsets.map { it.millis },
-
-                            enabled = true
-                        )
-
-                        vm.saveReminder(reminder)
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(Icons.Default.Save, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text(if (reminderId == null) "Save" else "Update")
-                }
-            }
         }
     }
 }
