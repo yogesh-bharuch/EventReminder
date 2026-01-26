@@ -32,7 +32,7 @@ private const val TAG = "MainActivity"
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
-
+// releaseed as 1.0
     private companion object {
         const val EXTRA_FROM_NOTIFICATION = "from_notification"
         const val EXTRA_REMINDER_ID_STRING = "reminder_id_string"
