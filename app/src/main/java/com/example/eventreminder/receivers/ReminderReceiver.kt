@@ -152,9 +152,7 @@ class ReminderReceiver : BroadcastReceiver() {
 
             // Launch MainActivity with reminder details
             val activityIntent = Intent(context, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or
-                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                        Intent.FLAG_ACTIVITY_SINGLE_TOP
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
 
                 putExtra(EXTRA_FROM_NOTIFICATION, true)
                 putExtra(EXTRA_REMINDER_ID_STRING, idString)

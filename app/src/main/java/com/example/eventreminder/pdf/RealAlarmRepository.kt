@@ -4,10 +4,14 @@ package com.example.eventreminder.pdf
 // Imports
 // ============================================================
 import com.example.eventreminder.data.local.ReminderDao
+import com.example.eventreminder.logging.DEBUG_TAG
 import com.example.eventreminder.sync.core.UserIdProvider
 import com.example.eventreminder.util.NextOccurrenceCalculator
+import timber.log.Timber
 import javax.inject.Inject
 import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
 
 /**
  * RealAlarmRepository
@@ -59,39 +63,54 @@ class RealAlarmRepository @Inject constructor(
      * Side Effects:
      *  - None (read-only database access).
      */
-    suspend fun loadActiveAlarms(): List<AlarmEntry> {
+    suspend fun loadActiveAlarms(
+        includeTodayAlarms: Boolean = false
+    ): List<AlarmEntry> {
 
         val uid = userIdProvider.getUserId()
             ?: error("❌ UID is null — cannot load alarms for logged-out user")
 
-        val reminders = dao.getAllOnce(uid = uid)
-            .filter { it.enabled }
+        val zoneId = ZoneId.systemDefault()
+        val todayStart = LocalDate.now(zoneId)
+            .atStartOfDay(zoneId)
+            .toInstant()
+            .toEpochMilli()
 
         val now = Instant.now().toEpochMilli()
+
+        val reminders = dao.getAllOnce(uid = uid)
+            .filter { reminder ->
+                if (includeTodayAlarms) true else reminder.enabled
+            }
+
         val result = mutableListOf<AlarmEntry>()
 
         reminders.forEach { reminder ->
 
-            // Compute next local-time occurrence (epoch millis)
             val baseTriggerMs = NextOccurrenceCalculator.nextOccurrence(
                 reminder.eventEpochMillis,
                 reminder.timeZone,
                 reminder.repeatRule
             )
 
+            // -------------------------------------------------
+            // CASE 1: Normal future occurrence
+            // -------------------------------------------------
             if (baseTriggerMs != null) {
+
                 for (offsetMillis in reminder.reminderOffsets) {
 
-                    // Apply offset: event fires earlier
                     val triggerMs = baseTriggerMs - offsetMillis
 
-                    if (triggerMs > now) {
+                    val cutoff = if (includeTodayAlarms) todayStart else now
+
+                    if (triggerMs >= cutoff) {
                         result.add(
                             AlarmEntry(
                                 eventId = reminder.id,
                                 eventTitle = reminder.title,
-                                eventDateEpoch = reminder.eventEpochMillis, // actual event date
-                                nextTrigger = triggerMs,                    // final fire time
+                                eventDateEpoch = reminder.eventEpochMillis,
+                                nextTrigger = triggerMs,
                                 offsetMinutes = offsetMillis / 60000L,
                                 description = reminder.description ?: "-"
                             )
@@ -99,8 +118,36 @@ class RealAlarmRepository @Inject constructor(
                     }
                 }
             }
+
+            // -------------------------------------------------
+            // CASE 2: One-time reminder already fired today
+            // (baseTriggerMs == null)
+            // -------------------------------------------------
+            else if (includeTodayAlarms) {
+
+                val eventDay = Instant.ofEpochMilli(reminder.eventEpochMillis)
+                    .atZone(zoneId)
+                    .toLocalDate()
+
+                val today = LocalDate.now(zoneId)
+
+                if (eventDay == today) {
+
+                    result.add(
+                        AlarmEntry(
+                            eventId = reminder.id,
+                            eventTitle = reminder.title,
+                            eventDateEpoch = reminder.eventEpochMillis,
+                            nextTrigger = reminder.eventEpochMillis,
+                            offsetMinutes = 0L,
+                            description = reminder.description ?: "-"
+                        )
+                    )
+                }
+            }
         }
 
         return result
     }
+
 }

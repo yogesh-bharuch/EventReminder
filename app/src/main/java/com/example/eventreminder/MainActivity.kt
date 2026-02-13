@@ -32,21 +32,26 @@ private const val TAG = "MainActivity"
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
-
+// releaseed as 1.0
     private companion object {
         const val EXTRA_FROM_NOTIFICATION = "from_notification"
         const val EXTRA_REMINDER_ID_STRING = "reminder_id_string"
         const val EXTRA_EVENT_TYPE = "event_type"
     }
 
-    // Stable state key for LaunchedEffect
+    // Stable data holder
     private var pendingReminderId by mutableStateOf<String?>(null)
+
+    // Event trigger (forces LaunchedEffect even for same UUID)
+    private var navTrigger by mutableStateOf(0L)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         // Extract pending reminder (if launched from notification)
         pendingReminderId = intent.getStringExtra(EXTRA_REMINDER_ID_STRING)
+        navTrigger = System.currentTimeMillis()
+
         Timber.tag(TAG).d("onCreate → pendingReminderId=$pendingReminderId")
 
         // ✅ Tell Android to fit system windows (no edge-to-edge)
@@ -69,7 +74,7 @@ class MainActivity : ComponentActivity() {
                 // ---------------------------------------------------------
                 // Notification → PixelPreview Navigation Handler
                 // ---------------------------------------------------------
-                LaunchedEffect(pendingReminderId) {
+                LaunchedEffect(navTrigger) {
 
                     val uuid = pendingReminderId
                     if (uuid == null) return@LaunchedEffect
@@ -80,7 +85,8 @@ class MainActivity : ComponentActivity() {
                     val fromNotification =
                         intent.getBooleanExtra(EXTRA_FROM_NOTIFICATION, false)
 
-                    if (fromNotification && uuid.isNotBlank()) {
+                    if (uuid.isNotBlank()) {
+                    //if (fromNotification && uuid.isNotBlank()) {
 
                         Timber.tag(TAG).d("Navigate PixelPreview → UUID=$uuid")
 
@@ -118,6 +124,8 @@ class MainActivity : ComponentActivity() {
         setIntent(intent)
 
         pendingReminderId = intent.getStringExtra(EXTRA_REMINDER_ID_STRING)
+        navTrigger = System.currentTimeMillis()
+
         Timber.tag(TAG).d("onNewIntent → pendingReminderId=$pendingReminderId")
     }
 }

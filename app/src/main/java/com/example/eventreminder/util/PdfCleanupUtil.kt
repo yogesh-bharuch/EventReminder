@@ -12,7 +12,7 @@ object PdfCleanupUtil {
     fun cleanupGeneratedPdfs(context: Context) {
 
         val resolver = context.contentResolver
-        val collection = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL)
+        val collection = MediaStore.Files.getContentUri("external")
 
         val projection = arrayOf(
             MediaStore.MediaColumns._ID,
@@ -21,17 +21,21 @@ object PdfCleanupUtil {
         )
 
         val selection = """
-            ${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ?
-            OR ${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ?
-            OR ${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ?
-            OR ${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ?
-        """.trimIndent()
+        ${MediaStore.MediaColumns.MIME_TYPE} = ?
+        AND (
+            LOWER(${MediaStore.MediaColumns.DISPLAY_NAME}) LIKE ?
+            OR LOWER(${MediaStore.MediaColumns.DISPLAY_NAME}) LIKE ?
+            OR LOWER(${MediaStore.MediaColumns.DISPLAY_NAME}) LIKE ?
+            OR LOWER(${MediaStore.MediaColumns.DISPLAY_NAME}) LIKE ?
+        )
+    """.trimIndent()
 
         val args = arrayOf(
-            "%7_Days%",        // Next7Days
-            "%Report_All%",   // All alarms report
-            "%Contacts%",     // Contacts pdf
-            "%Reminders%"     // Reminders pdf
+            "application/pdf",
+            "%7_daysre%",
+            "%report_all%",
+            "%contacts%",
+            "%reminders%"
         )
 
         var deletedCount = 0
@@ -48,19 +52,20 @@ object PdfCleanupUtil {
                 val name = cursor.getString(nameIndex)
                 val path = cursor.getString(pathIndex)
 
-                // Safety guard → only Documents
-                if (path != Environment.DIRECTORY_DOCUMENTS + "/") continue
+                // ✅ Scoped storage safe guard
+                if (!path.startsWith(Environment.DIRECTORY_DOCUMENTS)) continue
 
                 val uri = Uri.withAppendedPath(collection, id.toString())
                 val rows = resolver.delete(uri, null, null)
 
                 if (rows > 0) {
                     deletedCount++
-                    Timber.tag(CLEANUP_PDF_TAG).d("PDF_CLEANUP deleted name=$name path=$path uri=$uri [PdfCleanupUtil.kt::cleanupGeneratedPdfs]")
+                    Timber.tag(CLEANUP_PDF_TAG).d("PDF_CLEANUP deleted name=$name path=$path uri=$uri " + "[PdfCleanupUtil.kt::cleanupGeneratedPdfs]")
                 }
             }
         }
 
         Timber.tag(CLEANUP_PDF_TAG).d("PDF_CLEANUP_COMPLETE total=$deletedCount [PdfCleanupUtil.kt::cleanupGeneratedPdfs]")
     }
+
 }
